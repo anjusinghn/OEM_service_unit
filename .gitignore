@@ -1,0 +1,27 @@
+node_modules/
+.turbo/
+dist/
+.next/
+coverage/
+.DS_Store
+.env
+.env.local
+.env.development
+.env.production
+!.env.example
+pnpm-lock.yaml
+
+# Prisma
+packages/db/prisma/migrations/**/migration_lock.toml
+
+# Separate projects
+landing/
+.opencode/
+
+# Research binary (too large for git)
+oem_research.docx
+
+# OS files
+Thumbs.db
+*.swp
+*.swo

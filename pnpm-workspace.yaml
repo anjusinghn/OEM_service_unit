@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - packages/oem-adapters/*
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "prisma"
+  - "esbuild"
+  - "sharp"

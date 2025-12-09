@@ -58,3 +58,63 @@ describe("createDispatchTools", () => {
     const result = JSON.parse(await depotTool.invoke({}) as string)
     expect(result).toHaveLength(1)
     expect(result[0].depotId).toBe("d-1")
+  })
+
+  it("parts_check returns parts and first depot recommendation", async () => {
+    const tools = createDispatchTools(context)
+    const partsTool = tools.find((t) => t.name === "parts_check")!
+    const result = JSON.parse(await partsTool.invoke({}) as string)
+    expect(result.partsToStage).toEqual(["brake_pad"])
+    expect(result.depotRecommendation.depotId).toBe("d-1")
+  })
+
+  it("parts_check returns null depot when no recommendations", async () => {
+    const emptyCtx: DispatchToolContext = { ...context, depotRecommendations: [] }
+    const tools = createDispatchTools(emptyCtx)
+    const partsTool = tools.find((t) => t.name === "parts_check")!
+    const result = JSON.parse(await partsTool.invoke({}) as string)
+    expect(result.depotRecommendation).toBeNull()
+  })
+
+  it("service_history returns sliced history (max 10)", async () => {
+    const tools = createDispatchTools(context)
+    const historyTool = tools.find((t) => t.name === "service_history")!
+    const result = JSON.parse(await historyTool.invoke({}) as string)
+    expect(result).toHaveLength(2)
+  })
+
+  it("fleet_stats returns route criticality and downtime cost", async () => {
+    const tools = createDispatchTools(context)
+    const statsTool = tools.find((t) => t.name === "fleet_stats")!
+    const result = JSON.parse(await statsTool.invoke({}) as string)
+    expect(result.routeCriticality).toBe(7)
+    expect(result.downtimeCostPerHour).toBe(500)
+  })
+
+  it("similar_cases filters history by weakest subsystem", async () => {
+    const tools = createDispatchTools(context)
+    const similarTool = tools.find((t) => t.name === "similar_cases")!
+    const result = JSON.parse(await similarTool.invoke({}) as string)
+    expect(result).toHaveLength(1)
+    expect(result[0].subsystem).toBe("brakes")
+  })
+
+  it("similar_cases returns empty when no matching subsystem", async () => {
+    const ctxNoMatch: DispatchToolContext = {
+      ...context,
+      health: { ...context.health, weakestSubsystem: "turbo" }
+    }
+    const tools = createDispatchTools(ctxNoMatch)
+    const similarTool = tools.find((t) => t.name === "similar_cases")!
+    const result = JSON.parse(await similarTool.invoke({}) as string)
+    expect(result).toHaveLength(0)
+  })
+
+  it("all tools have name and description", () => {
+    const tools = createDispatchTools(context)
+    for (const t of tools) {
+      expect(t.name).toBeTruthy()
+      expect(t.description).toBeTruthy()
+    }
+  })
+})

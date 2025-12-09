@@ -67,3 +67,71 @@ export default function IntelligencePage() {
           label="Best reward"
           value={bestScore.toFixed(2)}
           detail="Highest decision score"
+          tone="healthy"
+        />
+        <MetricCard
+          label="Worst reward"
+          value={worstScore.toFixed(2)}
+          detail="Lowest decision score"
+          tone={worstScore < 0.5 ? "critical" : "watch"}
+        />
+      </div>
+
+      <SectionCard title="Decision Quality Trend" description="AI+Heuristic vs Heuristic-only accuracy over time">
+        {intelligence.qualityTrend.length > 0 ? (
+          <QualityTrendChart data={intelligence.qualityTrend} />
+        ) : (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <Brain className="mr-2 h-5 w-5 opacity-40" />
+            <span className="text-sm">Not enough data for trend analysis yet.</span>
+          </div>
+        )}
+      </SectionCard>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <SectionCard title="Best Decisions" description="Highest reward scores">
+          <DecisionList decisions={intelligence.bestDecisions} tone="healthy" />
+        </SectionCard>
+        <SectionCard title="Worst Decisions" description="Lowest reward scores — review for improvement">
+          <DecisionList decisions={intelligence.worstDecisions} tone="critical" />
+        </SectionCard>
+      </div>
+
+      {intelligence.weightAdjustmentProposals.length > 0 && (
+        <SectionCard title="Weight Adjustment Proposals" description="AI-suggested priority weight changes">
+          <div className="flex flex-col gap-3">
+            {intelligence.weightAdjustmentProposals.map((proposal) => (
+              <div key={`${proposal.decisionType}-${proposal.proposedWeight}`} className="glass-card rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium capitalize text-foreground">{proposal.decisionType}</span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {proposal.currentWeight} → {proposal.proposedWeight}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{proposal.reason}</p>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {intelligence.learnedPatterns.length > 0 && (
+        <SectionCard title="Learned Patterns" description="Patterns discovered from service outcomes">
+          <div className="flex flex-col gap-2">
+            {intelligence.learnedPatterns.map((pattern) => (
+              <div key={pattern.pattern} className="flex items-start gap-3 glass-card rounded-xl p-3">
+                <Brain className="mt-0.5 h-4 w-4 shrink-0 text-ai" />
+                <div>
+                  <p className="text-sm text-foreground">{pattern.pattern}</p>
+                  <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                    confidence: {(pattern.confidence * 100).toFixed(0)}%
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+    </div>
+  )
+}

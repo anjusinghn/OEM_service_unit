@@ -1,0 +1,144 @@
+// ─────────────────────────────────────────────────────────────
+// kazindustries — Prisma Schema
+// Migrated from Drizzle ORM → Prisma ORM
+// Covers: Phase 0 (Foundation + Signal Trust) + Phase 1 (Service Orchestration)
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CORE / MULTI-TENANT
+// ═══════════════════════════════════════════════════════════════
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  users          User[]
+  vehicles       Vehicle[]
+  depots         Depot[]
+  oemConnections OemConnection[]
+  apiKeys        ApiKey[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  name           String
+  email          String   @unique
+  passwordHash   String?  @map("password_hash")
+  role           UserRole @default(VIEWER)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+enum UserRole {
+  PLATFORM_ADMIN
+  OEM_ADMIN
+  DEPOT_MANAGER
+  TECHNICIAN
+  VIEWER
+}
+
+model ApiKey {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  name           String
+  keyHash        String    @unique @map("key_hash")
+  lastUsedAt     DateTime? @map("last_used_at") @db.Timestamptz
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OEM ADAPTER CONNECTIONS
+// ═══════════════════════════════════════════════════════════════
+
+model OemConnection {
+  id             String              @id @default(cuid())
+  organizationId String              @map("organization_id")
+  adapterType    String              @map("adapter_type")
+  name           String
+  config         Json                @default("{}")
+  status         OemConnectionStatus @default(DISCONNECTED)
+  lastSyncAt     DateTime?           @map("last_sync_at") @db.Timestamptz
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("oem_connections")
+}
+
+enum OemConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  SYNCING
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VEHICLES
+// ═══════════════════════════════════════════════════════════════
+
+model Vehicle {
+  id                  String   @id @default(cuid())
+  organizationId      String?  @map("organization_id")
+  vin                 String   @unique @db.VarChar(32)
+  make                String
+  model               String
+  year                Int
+  buildBatch          String   @map("build_batch")
+  softwareVersion     String   @map("software_version")
+  region              String
+  routeName           String   @map("route_name")
+  cargoPriority       Int      @default(50) @map("cargo_priority")
+  routeCriticality    Int      @default(50) @map("route_criticality")
+  downtimeCostPerHour Int      @default(1000) @map("downtime_cost_per_hour")
+  nextStopHours       Float    @default(8) @map("next_stop_hours")
+  latitude            Float    @default(0)
+  longitude           Float    @default(0)
+  depotAffinityId     String?  @map("depot_affinity_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  affinityDepot   Depot?           @relation("VehicleAffinity", fields: [depotAffinityId], references: [id], onDelete: SetNull)
+  signals         VehicleSignal[]
+  healthSnapshots VehicleHealthSnapshot[]
+  prioritySnapshots PrioritySnapshot[]
+  events          VehicleEvent[]
+  faults          VehicleFault[]
+  serviceRequests ServiceRequest[]
+  serviceHistory  ServiceHistory[]
+  priorityEntry   PriorityEntry?
+  aiDecisionLogs  AiDecisionLog[]
+
+  @@index([organizationId])
+  @@index([region])
+  @@index([depotAffinityId])
+  @@map("vehicles")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIGNAL TRUST LAYER — TELEMETRY

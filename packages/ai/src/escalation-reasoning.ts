@@ -45,3 +45,50 @@ const heuristicEscalations = (input: EscalationReasoningInput): AiEscalation[] =
       affectedEntities: input.serviceRequests.slice(0, 10).map((request) => request.id),
       suggestedAction: "Review dispatch priority and depot allocation.",
       model: null,
+      latencyMs: null
+    })
+  }
+  const criticalVehicles = input.vehicles.filter((vehicle) => input.healthByVehicle[vehicle.id]?.status === "critical")
+  if (criticalVehicles.length >= 3) {
+    escalations.push({
+      type: "rapid_degradation",
+      severity: "critical",
+      title: "Multiple critical vehicles require review",
+      description: `${criticalVehicles.length} vehicles are currently critical.`,
+      affectedEntities: criticalVehicles.slice(0, 10).map((vehicle) => vehicle.id),
+      suggestedAction: "Escalate triage and consider dispatch override.",
+      model: null,
+      latencyMs: null
+    })
+  }
+  return escalations
+}
+
+export const runEscalationReasoning = async (input: EscalationReasoningInput): Promise<AiEscalation[]> => {
+  const startedAt = Date.now()
+  if (!canUseAi()) {
+    return heuristicEscalations(input)
+  }
+
+  try {
+    const model = createOpenRouterClient().withStructuredOutput(escalationSchema)
+    const chain = prompt.pipe(model)
+    const result = await chain.invoke({
+      context: JSON.stringify({
+        vehicles: input.vehicles,
+        healthByVehicle: input.healthByVehicle,
+        depots: input.depots,
+        technicians: input.technicians,
+        serviceRequests: input.serviceRequests
+      })
+    })
+
+    return result.escalations.map((escalation) => ({
+      ...escalation,
+      model: aiConfig.model,
+      latencyMs: Date.now() - startedAt
+    }))
+  } catch {
+    return heuristicEscalations(input)
+  }
+}

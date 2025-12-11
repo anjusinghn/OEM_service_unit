@@ -35,3 +35,39 @@ This platform should treat AI as a core decision layer that operates alongside t
   - watch points
   - alternative plan
 - This becomes the authoritative dispatch plan shown in the product and pushed downstream.
+
+### 5. Pattern Detection and Fleet Intelligence
+
+- AI should continuously analyze historical telemetry and service outcomes to detect supplier issues, firmware-related failures, geographic patterns, and emerging risk clusters.
+- These outputs should feed proactive maintenance and operational planning.
+
+### 6. Reinforcement and Learning
+
+- AI should be evaluated against outcomes such as first-time fix rate, downtime reduction, and SLA adherence.
+- Outcome feedback should improve prioritization, dispatch planning, depot selection, and technician assignment over time.
+
+## Operating Model
+
+```text
+[Telemetry + Fault Data]
+        |
+        v
+[Deterministic Layer] ------------------> Baseline priority, depot, technician
+        |                                       |
+        v                                       |
+[AI Layer / Agent] -----------------------------|
+        |
+        v
+[Adjusted Decisions + Dispatch Plan] --> Triage Queue / Service Workflow
+```
+
+- Both layers run concurrently.
+- AI uses deterministic output as context, then adjusts or strengthens the decision with reasoning and contingency planning.
+- All decisions must be auditable and stored for evaluation.
+
+## Product Outcome
+
+- AI is a co-pilot built into the orchestration engine, not an add-on.
+- Deterministic logic provides reliability and safety.
+- AI provides reasoning, adaptability, and optimization.
+- The system should measure deterministic vs AI-adjusted performance side by side and use that data to improve future decisions.

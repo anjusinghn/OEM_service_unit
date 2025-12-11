@@ -57,3 +57,62 @@ export function KanbanCard({ request, vehicle }: KanbanCardProps) {
           <div>
             <p className="font-mono text-xs font-semibold text-foreground">{request.id}</p>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {vehicle?.vin ?? request.vehicleId} · {request.weakestSubsystem}
+            </p>
+          </div>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            {request.priorityScore}
+          </span>
+        </div>
+
+        {(request.depotId ?? request.technicianId) ? (
+          <div className="mt-2 flex gap-3 text-[10px] text-muted-foreground">
+            {request.depotId && <span>📍 {request.depotId}</span>}
+            {request.technicianId && <span>👤 {request.technicianId}</span>}
+          </div>
+        ) : null}
+
+        {request.timeline.length > 0 && (
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            {request.timeline[request.timeline.length - 1]?.note}
+          </p>
+        )}
+
+        {!isTerminal && (
+          <div className="mt-3 flex gap-2">
+            {request.status !== "IN_PROGRESS" && (
+              <button
+                type="button"
+                onClick={advance}
+                disabled={busy}
+                className={cn(
+                  "flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium text-foreground bg-secondary hover:bg-secondary/80 transition-colors",
+                  busy && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <ArrowRight className="h-3 w-3" /> Advance
+              </button>
+            )}
+            {request.status === "IN_PROGRESS" && (
+              <button
+                type="button"
+                onClick={() => setShowCompletion(true)}
+                className="flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors"
+              >
+                <CheckCircle className="h-3 w-3" /> Complete
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showCompletion && (
+        <CompletionForm
+          requestId={request.id}
+          onClose={() => setShowCompletion(false)}
+          onComplete={reload}
+        />
+      )}
+    </>
+  )
+}

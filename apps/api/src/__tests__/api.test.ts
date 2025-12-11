@@ -92,3 +92,97 @@ beforeEach(() => {
   userFindByIdMock.mockResolvedValue(null)
   userVerifyPasswordMock.mockResolvedValue(null)
   vi.clearAllMocks()
+})
+
+afterAll(() => {
+  demoStore.dispose()
+})
+
+describe("api integration", () => {
+  describe("auth endpoints", () => {
+    it("returns 400 for login requests missing email or password", async () => {
+      const response = await request.post("/api/v1/auth/login").send({ email: "admin@kazindustries.dev" })
+
+      expect(response.status).toBe(400)
+      expect(response.body).toEqual({ error: "Email and password are required" })
+      expect(userVerifyPasswordMock).not.toHaveBeenCalled()
+    })
+
+    it("returns 401 for invalid login credentials", async () => {
+      const response = await request
+        .post("/api/v1/auth/login")
+        .send({ email: "admin@kazindustries.dev", password: "wrong-password" })
+
+      expect(response.status).toBe(401)
+      expect(response.body).toEqual({ error: "Invalid email or password" })
+      expect(userVerifyPasswordMock).toHaveBeenCalledWith("admin@kazindustries.dev", "wrong-password")
+    })
+
+    it("returns 401 for /auth/me without an auth header", async () => {
+      const response = await request.get("/api/v1/auth/me")
+
+      expect(response.status).toBe(401)
+      expect(response.body).toEqual({ error: "Authentication required" })
+    })
+
+    it("returns 401 for /auth/me with an invalid token", async () => {
+      const response = await request
+        .get("/api/v1/auth/me")
+        .set("Authorization", "Bearer invalid.token.here")
+
+      expect(response.status).toBe(401)
+      expect(response.body).toEqual({ error: "Invalid or expired token" })
+    })
+  })
+
+  describe("protected endpoints", () => {
+    it.each([
+      "/api/v1/dashboard",
+      "/api/v1/vehicles",
+      "/api/v1/orchestration/priority-queue",
+      "/api/v1/service-requests",
+      "/api/v1/intelligence",
+      "/api/v1/forensics/cohorts",
+      "/api/v1/forensics/anomalies",
+      "/api/v1/forensics/patterns"
+    ])("rejects unauthenticated access to %s", async (path) => {
+      const response = await request.get(path)
+
+      expect(response.status).toBe(401)
+      expect(response.body).toEqual({ error: "Authentication required" })
+    })
+
+    it("returns the dashboard payload with a valid JWT", async () => {
+      const response = await request.get("/api/v1/dashboard").set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          vehicles: expect.any(Array),
+          serviceRequests: expect.any(Array),
+          generatedAt: expect.any(String)
+        })
+      )
+    })
+
+    it("returns vehicles with a valid JWT", async () => {
+      const response = await request.get("/api/v1/vehicles").set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)
+      expect(Array.isArray(response.body)).toBe(true)
+      expect(response.body.length).toBeGreaterThan(0)
+    })
+
+    it("returns the priority queue with a valid JWT", async () => {
+      const response = await request
+        .get("/api/v1/orchestration/priority-queue")
+        .set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)
+      expect(Array.isArray(response.body)).toBe(true)
+    })
+
+    it("returns service requests with a valid JWT", async () => {
+      const response = await request.get("/api/v1/service-requests").set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)

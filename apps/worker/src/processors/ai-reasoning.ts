@@ -89,3 +89,94 @@ export const processAiReasoning = async (job: Job<QueuePayloadMap[typeof queueNa
   const vehicle = state.vehicles.find((item) => item.id === vehicleId)
   const signal = state.signals[vehicleId]
   const health = healthByVehicle[vehicleId]
+  const faults = state.faults[vehicleId] ?? []
+  const serviceHistory = state.serviceHistory.filter((record) => record.vehicleId === vehicleId)
+
+  if (!vehicle || !signal || !health) {
+    return { decisionType, vehicleId, skipped: true }
+  }
+
+  if (decisionType === "priority") {
+    const heuristic = await priorityHeuristic(vehicleId)
+    if (!heuristic) {
+      return { decisionType, vehicleId, skipped: true }
+    }
+
+    const aiAssessment = await runPriorityReasoning({
+      vehicle,
+      signal,
+      health,
+      faults,
+      heuristic,
+      serviceHistory
+    })
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType,
+        heuristicOutput: toJsonValue(heuristic),
+        aiOutput: aiAssessment ? toJsonValue(aiAssessment) : undefined,
+        finalDecision: aiAssessment
+          ? toJsonValue({
+              adjustedScore: aiAssessment.adjustedScore,
+              urgency: aiAssessment.urgency,
+              shouldEscalate: aiAssessment.shouldEscalate
+            })
+          : undefined,
+        modelName: aiAssessment?.model ?? null,
+        latencyMs: aiAssessment?.latencyMs ?? null
+      }
+    })
+
+    if (aiAssessment) {
+      await enqueueJob(queueNames.notifications, {
+        type: "priority_change",
+        vehicleId,
+        payload: {
+          aiAssessment,
+          source: "ai-reasoning"
+        },
+        timestamp
+      })
+    }
+
+    return { decisionType, vehicleId, aiApplied: Boolean(aiAssessment) }
+  }
+
+  if (decisionType === "depot") {
+    const heuristicRecommendations = recommendDepots(vehicle, state, health.weakestSubsystem)
+    const aiAssessment = await runDepotReasoning({
+      vehicle,
+      health,
+      faults,
+      heuristicRecommendations,
+      serviceHistory
+    })
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType,
+        heuristicOutput: toJsonValue(heuristicRecommendations),
+        aiOutput: aiAssessment ? toJsonValue(aiAssessment) : undefined,
+        finalDecision: aiAssessment ? toJsonValue({ recommendedDepotId: aiAssessment.recommendedDepotId }) : undefined,
+        modelName: aiAssessment?.model ?? null,
+        latencyMs: aiAssessment?.latencyMs ?? null
+      }
+    })
+
+    if (aiAssessment) {
+      const merged = heuristicRecommendations.map((recommendation) =>
+        recommendation.depotId === aiAssessment.recommendedDepotId
+          ? { ...recommendation, aiAssessment }
+          : recommendation
+      )
+      await cacheRepository.setVehicleDepotMatch(vehicleId, merged)
+    }
+
+    return { decisionType, vehicleId, aiApplied: Boolean(aiAssessment) }
+  }
+
+  return { decisionType, vehicleId, skipped: true }
+}

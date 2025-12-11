@@ -88,3 +88,92 @@ export function DispatchPlanCard({ plan }: Props) {
         </div>
 
         {plan.partsToStage.length > 0 && (
+          <div className="px-5 py-4">
+            <SectionHeader
+              icon={<Wrench size={13} className="text-ai" />}
+              label="Parts to Stage"
+            />
+            <ul className="space-y-1.5">
+              {plan.partsToStage.map((part) => (
+                <li
+                  key={part}
+                  className="flex items-center gap-2 text-sm text-foreground"
+                >
+                  <CheckCircle2 size={13} className="text-healthy flex-shrink-0" />
+                  {part}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="px-5 py-4">
+          <SectionHeader
+            icon={<Clock size={13} className="text-ai" />}
+            label="Estimated"
+          />
+          <div className="flex gap-8">
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5">
+                Repair hours
+              </div>
+              <div className="font-semibold text-sm text-foreground">
+                {plan.estimatedRepairHours}h
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-0.5">
+                Total cost
+              </div>
+              <div className="font-semibold text-sm text-foreground">
+                ${plan.estimatedTotalCost.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {plan.watchPoints.length > 0 && (
+          <div className="px-5 py-4">
+            <SectionHeader
+              icon={<AlertTriangle size={13} className="text-watch" />}
+              label="Watch Points"
+            />
+            <ul className="space-y-2">
+              {plan.watchPoints.map((point) => (
+                <li
+                  key={point}
+                  className="flex items-start gap-2 text-sm text-muted-foreground"
+                >
+                  <span className="text-watch mt-0.5 flex-shrink-0">•</span>
+                  {point}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {plan.alternativePlan && (
+          <div className="px-5 py-4 bg-glass">
+            <SectionHeader
+              icon={<Copy size={13} className="text-muted-foreground" />}
+              label="Alternative Plan"
+            />
+            <div className="grid grid-cols-2 gap-4 mb-2">
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">
+                  Depot
+                </div>
+                <div className="font-medium text-sm text-foreground">
+                  {plan.alternativePlan.depotId}
+                </div>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {plan.alternativePlan.reasoning}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

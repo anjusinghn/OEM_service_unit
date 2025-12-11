@@ -116,3 +116,120 @@ Current AI behavior:
 - fallback behavior is preserved when AI is disabled or unavailable
 
 Key API surfaces added by this phase:
+
+- `/api/v1/orchestration/vehicles/:vehicleId/dispatch-plan`
+- `/api/v1/orchestration/escalations`
+
+---
+
+## Phase 4 - Reinforcement Learning Feedback Loop
+
+Phase 4 is the decision quality and learning loop built from completed service outcomes.
+
+Implemented pieces:
+
+- richer decision audit fields in `ai_decision_logs`:
+  - `decision_subtype`
+  - `human_override`
+  - `override_reason`
+- reward storage in `reward_signals`
+- enhanced completion input accepted by the API for:
+  - actual fault
+  - diagnosis correctness
+  - parts used
+  - repair duration
+  - technician notes
+  - first-time-fix
+  - depot / technician / priority ratings
+- reward computation engine in `packages/ai/src/reward.ts`
+- reward worker processor in `apps/worker/src/processors/reward-compute.ts`
+- decision intelligence analytics in `apps/api/src/repository-store.ts`
+- intelligence API endpoints:
+  - `/api/v1/intelligence`
+  - `/api/v1/intelligence/decisions`
+- dashboard review section for:
+  - quality trend
+  - override rate
+  - best decisions
+  - worst decisions
+- self-improvement support in `packages/ai/`:
+  - few-shot examples
+  - weight adjustment proposals
+  - learned patterns
+  - confidence calibration data
+
+What this means now:
+
+- completed service outcomes generate reward signals
+- decisions can be reviewed historically
+- the system exposes review-oriented intelligence instead of only operational status
+- dispatch reasoning can consume historical few-shot context
+
+---
+
+## Phase 5 - Enterprise Dashboard (shadcn/ui + Tailwind)
+
+Phase 5 is the complete redesign of the dashboard from a 674-line single-file demo into a full enterprise command center.
+
+Implemented pieces:
+
+- Tailwind CSS v4 with custom theme (light/dark mode, fleet semantic colors, AI accent palette)
+- Zustand store for real-time SSE-driven state management
+- TanStack Query client configured for caching and background refetch
+- SSE hook with exponential backoff reconnection
+- Dark mode toggle with localStorage persistence
+
+Dashboard pages (all under Next.js App Router route groups):
+
+- `/` Fleet Command Center — metric cards, health donut (Recharts PieChart), priority queue preview (top 10), AI escalation cards, alert list, live activity feed
+- `/triage` Triage Queue — sortable/filterable priority table, expandable rows with subsystem radar chart (Recharts RadarChart), heuristic breakdown bars, AI reasoning panel with purple accent styling
+- `/dispatch` AI Dispatch Agent — vehicle selector, AI dispatch plan fetching, animated agent trace display, dispatch plan card with depot/parts/cost details, accept/modify/cancel actions
+- `/workflow` Service Workflow Kanban — 8-column kanban board by service status, per-request cards with advance/complete buttons, completion form for structured outcome recording (feeds RL loop)
+- `/depots` Depot Network — responsive grid of depot cards with bay utilization gauges and specialty tags
+- `/technicians` Technician Roster — table with name, depot, certifications, workload progress bars, first-time-fix rates
+- `/intelligence` Decision Intelligence — quality trend line chart (AI vs heuristic), metric cards, best/worst decision lists, weight adjustment proposals, learned patterns
+- `/alerts` Alerts & Escalations — full alert list with severity coloring, AI escalation cards
+- `/settings` Settings — organization info, priority weights display, AI configuration, Phase 6 placeholders
+
+Layout and shared infrastructure:
+
+- collapsible dark sidebar with 9 navigation routes and active state indicator
+- top bar with SSE connection pulse, notification bell, theme toggle, Cmd+K search hint
+- Cmd+K command palette (cmdk) for keyboard-driven navigation
+- error boundary with retry button
+- section card, status badge, status dot, AI badge, loading skeleton shared components
+- API client (apiFetch/apiPost/apiPatch), format utilities, cn (clsx + tailwind-merge)
+
+Technology used:
+
+- Tailwind CSS v4 with @tailwindcss/postcss
+- Recharts (PieChart, RadarChart, LineChart)
+- Framer Motion (AnimatePresence for expandable rows)
+- Zustand (global dashboard state store)
+- TanStack Query (query client, configured for background refetch)
+- Sonner (toast notifications)
+- cmdk (command palette)
+- Lucide React (icons)
+- @radix-ui primitives (dialog, select, dropdown-menu, etc.)
+
+---
+
+## Architecture Through Phase 4
+
+### Runtime topology
+
+1. `apps/simulator` generates telemetry and fault changes
+2. BullMQ queues carry operational and learning jobs
+3. `apps/worker` processes telemetry, health, priority, AI reasoning, matching, notification, and reward jobs
+4. PostgreSQL/TimescaleDB stores durable operational, AI, and reward history
+5. Redis stores hot-path cache and publishes dashboard events
+6. `apps/api` serves repository-backed REST + SSE endpoints
+7. `apps/web` renders operational, forensic, AI, and decision-intelligence surfaces
+
+### Internal packages in active use
+
+- `@kaz/db`
+- `@kaz/shared`
+- `@kaz/signal-trust`
+- `@kaz/orchestration`
+- `@kaz/forensics`

@@ -31,3 +31,36 @@ export function HealthDonut({ healthy, watch, critical }: HealthDonutProps) {
               paddingAngle={2}
               dataKey="value"
               isAnimationActive
+              animationBegin={0}
+              animationDuration={600}
+            >
+              {data.map((entry) => (
+                <Cell key={entry.name} fill={entry.fill} stroke="none" />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-bold tracking-tight text-foreground">{total}</span>
+          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">vehicles</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-center gap-6">
+        <LegendItem status="healthy" count={healthy} label="Healthy" />
+        <LegendItem status="watch" count={watch} label="Watch" />
+        <LegendItem status="critical" count={critical} label="Critical" />
+      </div>
+    </div>
+  )
+}
+
+function LegendItem({ status, count, label }: { status: "healthy" | "watch" | "critical"; count: number; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <StatusDot status={status} />
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-semibold text-foreground">{count}</span>
+    </div>
+  )
+}

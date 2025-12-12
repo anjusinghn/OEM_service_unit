@@ -64,3 +64,68 @@ function DispatchPageContent() {
                 "bg-background px-3 py-2 text-sm text-foreground",
                 "focus:outline-none focus:ring-2 focus:ring-ring"
               )}
+            >
+              <Select.Value placeholder="Select a vehicle&hellip;" />
+              <Select.Icon>
+                <ChevronDown size={14} className="text-muted-foreground" />
+              </Select.Icon>
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content className="z-50 max-h-72 overflow-y-auto rounded-md glass-popover border border-glass-border shadow-lg">
+                <Select.Viewport className="p-1">
+                  {sortedVehicles.map((v) => {
+                    const priority = priorityQueue.find(
+                      (p) => p.vehicleId === v.id
+                    )
+                    return (
+                      <Select.Item
+                        key={v.id}
+                        value={v.id}
+                        className={cn(
+                          "relative flex cursor-pointer select-none items-center justify-between",
+                          "rounded px-3 py-2 text-sm text-foreground outline-none",
+                          "hover:bg-accent focus:bg-accent",
+                          "data-[state=checked]:bg-ai-muted data-[state=checked]:text-ai"
+                        )}
+                      >
+                        <div>
+                          <Select.ItemText>{v.vin}</Select.ItemText>
+                          <div className="text-xs text-muted-foreground">
+                            {v.year} {v.make} {v.model} &middot; {v.region}
+                          </div>
+                        </div>
+                        {priority && (
+                          <span className="text-xs text-muted-foreground ml-4 tabular-nums">
+                            #{priority.score}
+                          </span>
+                        )}
+                      </Select.Item>
+                    )
+                  })}
+                </Select.Viewport>
+              </Select.Content>
+            </Select.Portal>
+          </Select.Root>
+        )}
+      </div>
+
+      {selectedId && (
+        <DispatchAgent key={selectedId} vehicleId={selectedId} />
+      )}
+    </div>
+  )
+}
+
+export default function DispatchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
+          <span>Loading dispatch&hellip;</span>
+        </div>
+      }
+    >
+      <DispatchPageContent />
+    </Suspense>
+  )
+}

@@ -82,3 +82,86 @@ export function DispatchAgent({ vehicleId }: Props) {
       }
 
       setPlan(result)
+      setDone(true)
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch dispatch plan"
+      )
+    } finally {
+      setIsRunning(false)
+    }
+  }
+
+  const handleReset = () => {
+    setPlan(null)
+    setTraceSteps([])
+    setDone(false)
+    setError(null)
+  }
+
+  const healthColors: Record<string, string> = {
+    healthy: "text-healthy",
+    watch: "text-watch",
+    critical: "text-critical",
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {vehicle ? (
+        <div className="glass-card rounded-xl px-5 py-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-secondary">
+                <Car size={17} className="text-muted-foreground" />
+              </div>
+              <div>
+                <div className="font-semibold text-sm text-foreground">
+                  {vehicle.vin}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {vehicle.year} {vehicle.make} {vehicle.model} &middot;{" "}
+                  {vehicle.routeName}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-5 text-xs">
+              <div>
+                <div className="text-muted-foreground mb-0.5">Health</div>
+                <div
+                  className={cn(
+                    "font-semibold tabular-nums",
+                    healthColors[vehicle.health.status]
+                  )}
+                >
+                  {vehicle.health.overall}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground mb-0.5">Status</div>
+                <div
+                  className={cn(
+                    "font-semibold capitalize",
+                    healthColors[vehicle.health.status]
+                  )}
+                >
+                  {vehicle.health.status}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground mb-0.5">Trend</div>
+                <div className="font-medium text-foreground flex items-center gap-1 capitalize">
+                  {vehicle.health.trend === "improving" ? (
+                    <TrendingUp size={12} className="text-healthy" />
+                  ) : vehicle.health.trend === "degrading" ? (
+                    <TrendingDown size={12} className="text-critical" />
+                  ) : (
+                    <Minus size={12} className="text-muted-foreground" />
+                  )}
+                  {vehicle.health.trend}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {vehicle.faults.length > 0 && (

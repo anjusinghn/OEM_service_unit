@@ -41,3 +41,45 @@ export const processRewardCompute = async (job: Job<QueuePayloadMap[typeof queue
     completion: {
       actualFault: serviceHistory.actualFault,
       diagnosisCorrect: serviceHistory.diagnosisCorrect,
+      partsUsed: Array.isArray(serviceHistory.partsUsed) ? serviceHistory.partsUsed.filter((value): value is string => typeof value === "string") : [],
+      repairDuration: serviceHistory.repairDuration,
+      technicianNotes: serviceHistory.technicianNotes,
+      firstTimeFix: serviceHistory.firstTimeFix,
+      depotRating: depotRating ?? null,
+      technicianRating: technicianRating ?? null,
+      priorityRating: priorityRating ?? null
+    },
+    priorityDecision: priorityDecision ? { confidence: getConfidence(priorityDecision.aiOutput) } : null,
+    depotDecision: depotDecision ? { confidence: getConfidence(depotDecision.aiOutput) } : null,
+    technicianDecision: technicianDecision ? { confidence: getConfidence(technicianDecision.aiOutput) } : null
+  })
+
+  if (priorityDecision) {
+    await rewardSignalRepository.create({
+      aiDecisionLogId: priorityDecision.id,
+      rewardType: "priority",
+      rewardScore: rewards.priority.rewardScore,
+      rewardBreakdown: rewards.priority.rewardBreakdown
+    })
+  }
+
+  if (depotDecision) {
+    await rewardSignalRepository.create({
+      aiDecisionLogId: depotDecision.id,
+      rewardType: "depot",
+      rewardScore: rewards.depot.rewardScore,
+      rewardBreakdown: rewards.depot.rewardBreakdown
+    })
+  }
+
+  if (technicianDecision) {
+    await rewardSignalRepository.create({
+      aiDecisionLogId: technicianDecision.id,
+      rewardType: "technician",
+      rewardScore: rewards.technician.rewardScore,
+      rewardBreakdown: rewards.technician.rewardBreakdown
+    })
+  }
+
+  return { serviceRequestId, vehicleId, rewards }
+}

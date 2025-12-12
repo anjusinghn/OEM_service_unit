@@ -34,3 +34,39 @@ export const processHealthRecompute = async (job: Job<QueuePayloadMap[typeof que
       coolantTemp: signal.coolantTemp,
       oilPressure: signal.oilPressure,
       batteryVoltage: signal.batteryVoltage,
+      turboBoost: signal.turboBoost,
+      brakeWear: signal.brakeWear,
+      exhaustTemp: signal.exhaustTemp,
+      fuelLevel: signal.fuelLevel,
+      speed: signal.speed,
+      mileage: signal.mileage
+    },
+    mappedFaults
+  )
+
+  await healthRepository.insertSnapshot({
+    vehicleId,
+    timestamp: new Date(timestamp),
+    healthScore: health.overall,
+    riskLevel: health.status,
+    subsystemScores: health.subsystems,
+    faultBreakdown: {
+      activeFaultCount: mappedFaults.length,
+      dtcCodes: mappedFaults.map((fault) => fault.dtcCode)
+    },
+    signalBreakdown: {
+      signalQuality: health.signalQuality,
+      trend: health.trend,
+      weakestSubsystem: health.weakestSubsystem
+    }
+  })
+
+  await cacheRepository.setVehicleHealth(vehicleId, health)
+  await enqueueJob(queueNames.priorityRerank, {
+    vehicleId,
+    statusChanged: previous ? previous.riskLevel !== health.status : true,
+    timestamp
+  })
+
+  return { vehicleId, status: health.status }
+}

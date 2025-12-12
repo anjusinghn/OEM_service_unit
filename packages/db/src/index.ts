@@ -41,3 +41,45 @@ export {
   apiKeyRepository,
   cacheRepository,
   depotRepository,
+  faultRepository,
+  healthRepository,
+  partsRepository,
+  priorityRepository,
+  rewardSignalRepository,
+  serviceHistoryRepository,
+  serviceRequestRepository,
+  signalRepository,
+  technicianRepository,
+  userRepository,
+  vehicleRepository
+} from "./repositories"
+
+export type {
+  AssignDepotAndTechnicianInput,
+  CompleteServiceRequestInput,
+  CreateServiceRequestInput,
+  HealthSnapshotCreateInput,
+  HealthTrendOptions,
+  OutcomeStatsFilter,
+  PriorityEntryUpsertInput,
+  PriorityQueueOptions,
+  PrioritySnapshotCreateInput,
+  ReservePartInput,
+  ServiceHistoryOutcomeStats,
+  SignalRangeOptions,
+  SignalSnapshotCreateInput,
+  UpdateServiceStatusInput,
+  UpsertActiveFaultInput
+} from "./repositories"
+export type {
+  AiReasoningJob,
+  DepotMatchJob,
+  FaultEventJob,
+  HealthRecomputeJob,
+  NotificationJob,
+  PriorityRerankJob,
+  RewardComputeJob,
+  QueueName,
+  QueuePayloadMap,
+  TelemetryIngestJob
+} from "./queues"

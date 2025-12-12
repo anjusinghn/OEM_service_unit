@@ -121,3 +121,125 @@ const createVehicles = (rng: () => number, depots: Depot[]): Vehicle[] => {
       },
       depotAffinityId: depot.id
     }
+  })
+}
+
+const createSignalSnapshot = (vehicle: Vehicle, rng: () => number, faultBias = 0): VehicleSignalSnapshot => ({
+  vehicleId: vehicle.id,
+  timestamp: new Date().toISOString(),
+  coolantTemp: shift(87 + faultBias * 6, 8, rng),
+  oilPressure: shift(48 - faultBias * 8, 9, rng),
+  batteryVoltage: shift(13.4 - faultBias * 0.7, 0.8, rng),
+  turboBoost: shift(1.7 - faultBias * 0.45, 0.35, rng),
+  brakeWear: shift(32 + faultBias * 24, 16, rng),
+  exhaustTemp: shift(365 + faultBias * 95, 44, rng),
+  fuelLevel: shift(62, 28, rng),
+  speed: shift(56, 22, rng),
+  mileage: 40000 + Math.round(rng() * 185000)
+})
+
+const createFault = (vehicleId: string, subsystem: SubsystemKey, rng: () => number, critical = false): VehicleFault => {
+  const profile = subsystemFaultProfiles[subsystem]
+  return {
+    id: `${vehicleId}-${profile.code}`,
+    vehicleId,
+    dtcCode: profile.code,
+    subsystem,
+    severity: critical ? "critical" : rng() > 0.7 ? "safety" : "warning",
+    title: profile.title,
+    description: profile.description,
+    occurredAt: addHours(new Date().toISOString(), -1 * (1 + Math.round(rng() * 24))),
+    occurrences: 1 + Math.round(rng() * 5)
+  }
+}
+
+const createParts = (): Part[] =>
+  Object.entries(PARTS_BY_SUBSYSTEM).flatMap(([subsystem, partItems]) =>
+    partItems.map((part, index) => ({
+      partNumber: part.partNumber,
+      name: part.name,
+      subsystem: subsystem as SubsystemKey,
+      leadDays: 1 + (index % 3),
+      price: 2800 + index * 1700
+    }))
+  )
+
+const createInventory = (depots: Depot[], parts: Part[], rng: () => number): InventoryItem[] =>
+  depots.flatMap((depot) =>
+    parts.map((part) => ({
+      depotId: depot.id,
+      partNumber: part.partNumber,
+      quantity: 1 + Math.round(rng() * 8),
+      reorderPoint: 2
+    }))
+  )
+
+const createTechnicians = (depots: Depot[], rng: () => number): Technician[] => {
+  const firstNames = ["Rajesh", "Mira", "Ayaan", "Divya", "Kiran", "Pranav", "Ishita", "Naveen"]
+  const lastNames = ["K", "Rao", "Singh", "Patil", "Mehta", "Das", "Jain", "Verma"]
+  return depots.flatMap((depot, depotIndex) =>
+    Array.from({ length: 5 }, (_, index) => ({
+      id: createId(`tech-${depotIndex + 1}`, index + 1),
+      depotId: depot.id,
+      name: `${firstNames[(depotIndex + index) % firstNames.length]} ${lastNames[(depotIndex * 2 + index) % lastNames.length]}`,
+      certifications: [depot.specialties[index % depot.specialties.length], pickSubsystem(rng)],
+      currentLoad: Math.round(rng() * 3),
+      maxLoad: 5,
+      firstTimeFixRate: 0.72 + rng() * 0.24
+    }))
+  )
+}
+
+const createServiceHistory = (vehicles: Vehicle[], depots: Depot[], technicians: Technician[], rng: () => number): ServiceHistoryRecord[] =>
+  Array.from({ length: 28 }, (_, index) => {
+    const vehicle = vehicles[index * 3]
+    const depot = depots[index % depots.length]
+    const technician = technicians.find((item) => item.depotId === depot.id) ?? technicians[0]
+    const subsystem = pickSubsystem(rng)
+    return {
+      id: createId("srvhist", index + 1),
+      vehicleId: vehicle.id,
+      depotId: depot.id,
+      technicianId: technician.id,
+      subsystem,
+      outcome: `Resolved ${subsystemFaultProfiles[subsystem].title.toLowerCase()}`,
+      resolvedAt: addHours(new Date().toISOString(), -1 * (48 + index * 5)),
+      firstTimeFix: rng() > 0.16
+    }
+  })
+
+const createLivePulse = (): LivePulse[] => [
+  {
+    id: "pulse-001",
+    kind: "tick",
+    message: "Service orchestration demo ready. Live telemetry pulses every 12 seconds.",
+    at: new Date().toISOString()
+  }
+]
+
+const createSuppliers = (): SupplierInfo[] => [
+  {
+    id: createId("supplier", 1),
+    name: "Precision Components Ltd",
+    componentTypes: ["turbocharger", "exhaust_sensor"],
+    activeBatches: ["BATCH-4471", "BATCH-4472", "BATCH-4476"]
+  },
+  {
+    id: createId("supplier", 2),
+    name: "Bharath Auto Parts",
+    componentTypes: ["coolant_sensor", "coolant_pump"],
+    activeBatches: ["BATCH-4521", "BATCH-4522"]
+  },
+  {
+    id: createId("supplier", 3),
+    name: "TechDrive Electronics",
+    componentTypes: ["alternator", "battery_module"],
+    activeBatches: ["BATCH-4630", "BATCH-4631", "BATCH-4634", "BATCH-4638"]
+  },
+  {
+    id: createId("supplier", 4),
+    name: "SafeStop Brakes",
+    componentTypes: ["brake_pad", "brake_line"],
+    activeBatches: ["BATCH-4710", "BATCH-4711", "BATCH-4714"]
+  },
+  {

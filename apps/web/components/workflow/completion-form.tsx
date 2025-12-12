@@ -105,3 +105,109 @@ export function CompletionForm({ requestId, onClose, onComplete }: CompletionFor
           </div>
 
           <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-xs font-medium text-foreground">Diagnosis correct?</legend>
+            <div className="flex gap-2">
+              {([true, false] as const).map((val) => (
+                <button
+                  key={String(val)}
+                  type="button"
+                  onClick={() => setDiagnosisCorrect(val)}
+                  className={cn(
+                    "flex-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+                    diagnosisCorrect === val
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {val ? "Yes" : "No"}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="cf-repair-duration" className="text-xs font-medium text-foreground">Actual repair hours</label>
+            <input
+              id="cf-repair-duration"
+              type="number"
+              min="0"
+              step="0.5"
+              value={repairDuration}
+              onChange={(e) => setRepairDuration(e.target.value)}
+              placeholder="e.g. 2.5"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none ring-ring focus:ring-2"
+            />
+          </div>
+
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-xs font-medium text-foreground">First-time fix?</legend>
+            <div className="flex gap-2">
+              {([true, false] as const).map((val) => (
+                <button
+                  key={String(val)}
+                  type="button"
+                  onClick={() => setFirstTimeFix(val)}
+                  className={cn(
+                    "flex-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+                    firstTimeFix === val
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {val ? "Yes" : "No"}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-xs font-medium text-foreground">Depot rating</legend>
+            <StarRating value={depotRating} onChange={setDepotRating} />
+          </fieldset>
+
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-xs font-medium text-foreground">Technician rating</legend>
+            <StarRating value={technicianRating} onChange={setTechnicianRating} />
+          </fieldset>
+
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-xs font-medium text-foreground">Priority rating</legend>
+            <StarRating value={priorityRating} onChange={setPriorityRating} />
+          </fieldset>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="cf-tech-notes" className="text-xs font-medium text-foreground">Technician notes</label>
+            <textarea
+              id="cf-tech-notes"
+              value={technicianNotes}
+              onChange={(e) => setTechnicianNotes(e.target.value)}
+              placeholder="Any additional notes..."
+              rows={3}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus:ring-2 resize-none"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className={cn(
+                "flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors",
+                submitting && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              {submitting ? "Submitting…" : "Submit"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

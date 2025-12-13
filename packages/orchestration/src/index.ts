@@ -99,3 +99,103 @@ export const recommendDepots = (
         partsReady ? "all priority parts are in stock" : "one or more parts need transfer",
         `${capacityOpen}/${depot.totalBays} bays open`,
         `${distance} km from vehicle`]
+
+      return {
+        depotId: depot.id,
+        score,
+        etaHours: round(distance / 38, 1),
+        distanceKm: distance,
+        capacityOpen,
+        specialtyMatch,
+        partsReady,
+        reasons,
+        requiredParts
+      }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+}
+
+export const buildOverview = (state: DemoState, healthByVehicle: Record<string, HealthScore>): FleetOverview => {
+  const healthValues = Object.values(healthByVehicle)
+  const healthyVehicles = healthValues.filter((item) => item.status === "healthy").length
+  const watchVehicles = healthValues.filter((item) => item.status === "watch").length
+  const criticalVehicles = healthValues.filter((item) => item.status === "critical").length
+  const openServiceRequests = state.serviceRequests.filter((request) => request.status !== "CLOSED").length
+  const avgTurnaroundHours = round(7.5 + openServiceRequests * 0.35, 1)
+  const firstTimeFixRate = round(
+    average(state.serviceHistory.map((record) => (record.firstTimeFix ? 100 : 0))),
+    1
+  )
+  const bayUtilization = round(
+    average(state.depots.map((depot) => (depot.occupiedBays / depot.totalBays) * 100)),
+    1
+  )
+
+  return {
+    totalVehicles: state.vehicles.length,
+    healthyVehicles,
+    watchVehicles,
+    criticalVehicles,
+    openServiceRequests,
+    avgTurnaroundHours,
+    firstTimeFixRate,
+    bayUtilization
+  }
+}
+
+export const buildSnapshot = (
+  state: DemoState,
+  healthByVehicle: Record<string, HealthScore>,
+  alerts: DashboardSnapshot["alerts"]
+): DashboardSnapshot => {
+  const priorityQueue = buildPriorityQueue(state, healthByVehicle)
+  const depotRecommendations = Object.fromEntries(
+    priorityQueue.slice(0, 16).map((entry) => {
+      const vehicle = state.vehicles.find((item) => item.id === entry.vehicleId)!
+      return [vehicle.id, recommendDepots(vehicle, state, healthByVehicle[vehicle.id].weakestSubsystem)]
+    })
+  )
+  return {
+    overview: buildOverview(state, healthByVehicle),
+    healthByVehicle,
+    alerts,
+    priorityQueue,
+    depotRecommendations,
+    livePulse: state.livePulse
+  }
+}
+
+export const createServiceRequest = (
+  state: DemoState,
+  vehicleId: string,
+  priorityScore: number,
+  weakestSubsystem: SubsystemKey,
+  depotId: string,
+  technicianId: string | null,
+  requiredPartNumbers: string[]
+): ServiceRequest => {
+  const createdAt = new Date().toISOString()
+  return {
+    id: createId("req", state.serviceRequests.length + 1),
+    vehicleId,
+    priorityScore,
+    weakestSubsystem,
+    depotId,
+    technicianId,
+    requiredPartNumbers,
+    status: "DEPOT_ASSIGNED",
+    createdAt,
+    scheduledFor: null,
+    timeline: [
+      { status: "DETECTED", at: createdAt, note: "Signal Trust flagged the vehicle for intervention." },
+      { status: "PRIORITIZED", at: createdAt, note: `Vehicle ranked at priority score ${priorityScore}.` },
+      { status: "DEPOT_ASSIGNED", at: createdAt, note: `Assigned to depot ${depotId}.` }
+    ]
+  }
+}
+
+export const getNextServiceStatus = (status: ServiceRequestStatus): ServiceRequestStatus => {
+  const currentIndex = SERVICE_FLOW.indexOf(status)
+  return SERVICE_FLOW[Math.min(currentIndex + 1, SERVICE_FLOW.length - 1)]
+}

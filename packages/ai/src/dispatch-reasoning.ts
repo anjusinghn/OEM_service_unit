@@ -63,3 +63,67 @@ const heuristicDispatchFallback = (input: DispatchReasoningInput): AiDispatchPla
     model: null,
     latencyMs: null
   }
+}
+
+export const runDispatchReasoning = async (input: DispatchReasoningInput): Promise<AiDispatchPlan> => {
+  if (!canUseAi()) {
+    return heuristicDispatchFallback(input)
+  }
+
+  const startedAt = Date.now()
+  const tools = createDispatchTools(input)
+  const toolMap = new Map(tools.map((toolItem) => [toolItem.name, toolItem]))
+  const agentTrace: string[] = []
+
+  try {
+    const planningModel = createOpenRouterClient().bindTools(tools)
+    const formattedPrompt = await planningPrompt.formatMessages({ vehicleId: input.vehicle.id })
+    const messages: Array<HumanMessage | AIMessage | ToolMessage> = [...formattedPrompt.filter((message): message is HumanMessage | AIMessage | ToolMessage => Boolean(message))]
+
+    for (let step = 0; step < aiConfig.maxToolSteps; step += 1) {
+      const response = await planningModel.invoke(messages)
+      messages.push(response)
+
+      if (!response.tool_calls?.length) {
+        break
+      }
+
+      for (const toolCall of response.tool_calls) {
+        const toolItem = toolMap.get(toolCall.name)
+        if (!toolItem) continue
+        const result = await toolItem.invoke(toolCall.args ?? {})
+        agentTrace.push(toolCall.name)
+        messages.push(
+          new ToolMessage({
+            tool_call_id: toolCall.id ?? toolCall.name,
+            content: typeof result === "string" ? result : JSON.stringify(result)
+          })
+        )
+      }
+    }
+
+    const summaryModel = createOpenRouterClient().withStructuredOutput(dispatchPlanSchema)
+    const summaryChain = summarizationPrompt.pipe(summaryModel)
+    const result = await summaryChain.invoke({
+      dispatchContext: JSON.stringify({
+        vehicle: input.vehicle,
+        health: input.health,
+        faults: input.faults,
+        depotRecommendations: input.depotRecommendations,
+        serviceHistory: input.serviceHistory.slice(0, 10),
+        partsToStage: input.partsToStage
+      }),
+      agentTrace: JSON.stringify(agentTrace),
+      fewShotExamples: input.fewShotExamples ?? ""
+    })
+
+    return {
+      ...result,
+      agentTrace,
+      model: aiConfig.model,
+      latencyMs: Date.now() - startedAt
+    }
+  } catch {
+    return heuristicDispatchFallback(input)
+  }
+}

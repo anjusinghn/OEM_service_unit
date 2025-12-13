@@ -132,3 +132,136 @@ const createDemoFixture = (): { state: DemoState; healthByVehicle: Record<string
     return {
       id: `veh-${String(index + 1).padStart(3, "0")}`,
       vin: `KAZ26${String(index + 1).padStart(11, "0")}`,
+      make: index % 5 === 0 ? "VW" : "kazindustries-demo",
+      model: models[index % models.length],
+      year: 2022 + (index % 4),
+      region: depot.region,
+      routeName: `${depot.city} Corridor ${1 + (index % 4)}`,
+      buildBatch: `BATCH-24Q${1 + (index % 4)}`,
+      softwareVersion: `v3.${index % 5}.${index % 3}`,
+      cargoPriority: 45 + (index % 50),
+      routeCriticality: 40 + (index % 55),
+      downtimeCostPerHour: 900 + index * 18,
+      nextStopHours: 2 + (index % 12) * 0.8,
+      coordinates: {
+        lat: depot.coordinates.lat + (index % 4) * 0.08,
+        lng: depot.coordinates.lng + (index % 4) * 0.07
+      },
+      depotAffinityId: depot.id
+    } satisfies Vehicle
+  })
+
+  const signals = Object.fromEntries(
+    vehicles.map((vehicle, index) => {
+      const subsystemOffset = index % SUBSYSTEMS.length
+      return [
+        vehicle.id,
+        createSnapshot(vehicle.id, {
+          coolantTemp: 88 + subsystemOffset * 0.7,
+          oilPressure: 49 - subsystemOffset * 0.6,
+          batteryVoltage: 13.4 - subsystemOffset * 0.05,
+          turboBoost: 1.7 - subsystemOffset * 0.04,
+          brakeWear: 32 + subsystemOffset * 2,
+          exhaustTemp: 368 + subsystemOffset * 8,
+          fuelLevel: 62 - subsystemOffset * 2,
+          speed: 56 - subsystemOffset * 1.5,
+          mileage: 120000 + index * 900
+        })
+      ]
+    })
+  )
+
+  const faults = Object.fromEntries(
+    vehicles.map((vehicle, index) => {
+      if (index % 12 === 0) {
+        return [vehicle.id, [createFault(vehicle.id, "brakes", "critical")]]
+      }
+
+      if (index % 7 === 0) {
+        return [vehicle.id, [createFault(vehicle.id, "turbo", "warning")]]
+      }
+
+      return [vehicle.id, []]
+    })
+  ) as Record<string, VehicleFault[]>
+
+  const serviceRequests: ServiceRequest[] = [
+    {
+      id: "req-001",
+      vehicleId: vehicles[0].id,
+      priorityScore: 91.2,
+      weakestSubsystem: "brakes",
+      depotId: depots[0].id,
+      technicianId: technicians[0].id,
+      requiredPartNumbers: PARTS_BY_SUBSYSTEM.brakes.map((part) => part.partNumber),
+      status: "IN_PROGRESS",
+      createdAt: "2026-03-18T04:00:00.000Z",
+      scheduledFor: "2026-03-18T10:00:00.000Z",
+      timeline: [
+        { status: "DETECTED", at: "2026-03-18T04:00:00.000Z", note: "Detected" },
+        { status: "IN_PROGRESS", at: "2026-03-18T09:30:00.000Z", note: "In progress" }
+      ]
+    },
+    {
+      id: "req-002",
+      vehicleId: vehicles[1].id,
+      priorityScore: 42.5,
+      weakestSubsystem: "cooling",
+      depotId: depots[1].id,
+      technicianId: technicians[5].id,
+      requiredPartNumbers: PARTS_BY_SUBSYSTEM.cooling.map((part) => part.partNumber),
+      status: "CLOSED",
+      createdAt: "2026-03-17T02:00:00.000Z",
+      scheduledFor: null,
+      timeline: [{ status: "CLOSED", at: "2026-03-17T12:00:00.000Z", note: "Closed" }]
+    }
+  ]
+
+  const serviceHistory: ServiceHistoryRecord[] = [
+    {
+      id: "srvhist-001",
+      vehicleId: vehicles[2].id,
+      depotId: depots[0].id,
+      technicianId: technicians[0].id,
+      subsystem: "engine",
+      outcome: "Resolved engine issue",
+      resolvedAt: "2026-03-17T12:00:00.000Z",
+      firstTimeFix: true
+    },
+    {
+      id: "srvhist-002",
+      vehicleId: vehicles[3].id,
+      depotId: depots[1].id,
+      technicianId: technicians[5].id,
+      subsystem: "turbo",
+      outcome: "Resolved turbo issue",
+      resolvedAt: "2026-03-17T16:00:00.000Z",
+      firstTimeFix: false
+    },
+    {
+      id: "srvhist-003",
+      vehicleId: vehicles[4].id,
+      depotId: depots[2].id,
+      technicianId: technicians[10].id,
+      subsystem: "brakes",
+      outcome: "Resolved brake issue",
+      resolvedAt: "2026-03-17T18:00:00.000Z",
+      firstTimeFix: true
+    }
+  ]
+
+  const state: DemoState = {
+    vehicles,
+    signals,
+    faults,
+    depots,
+    parts,
+    inventory,
+    technicians,
+    serviceRequests,
+    serviceHistory,
+    livePulse: [{ id: "pulse-001", kind: "tick", message: "System synced", at: "2026-03-18T09:00:00.000Z" }],
+    suppliers: [],
+    forensics: createForensicsSnapshot()
+  }
+

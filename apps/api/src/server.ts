@@ -117,3 +117,122 @@ export const createServer = (): express.Express => {
 
   app.get("/api/v1/vehicles", requireAuth, async (_req, res) => {
     res.json(await store.getVehicles())
+  })
+
+  app.get("/api/v1/vehicles/:vehicleId", requireAuth, async (req, res) => {
+    const vehicle = await store.getVehicle(param(req.params.vehicleId))
+    if (!vehicle) {
+      res.status(404).json({ error: "Vehicle not found" })
+      return
+    }
+    res.json(vehicle)
+  })
+
+  app.get("/api/v1/orchestration/priority-queue", requireAuth, async (_req, res) => {
+    res.json(await store.getPriorityQueue())
+  })
+
+  app.get("/api/v1/orchestration/vehicles/:vehicleId/priority", requireAuth, async (req, res) => {
+    const priority = await store.getPriority(param(req.params.vehicleId))
+    if (!priority) {
+      res.status(404).json({ error: "Priority entry not found" })
+      return
+    }
+    res.json(priority)
+  })
+
+  app.get("/api/v1/orchestration/vehicles/:vehicleId/depot-match", requireAuth, async (req, res) => {
+    res.json(await store.getDepotRecommendations(param(req.params.vehicleId)))
+  })
+
+  app.get("/api/v1/orchestration/vehicles/:vehicleId/dispatch-plan", requireAuth, async (req, res) => {
+    const plan = await repositoryStore.getDispatchPlan(param(req.params.vehicleId))
+    if (!plan) {
+      res.status(404).json({ error: "Unable to build dispatch plan" })
+      return
+    }
+    res.json(plan)
+  })
+
+  app.get("/api/v1/orchestration/escalations", requireAuth, async (_req, res) => {
+    const dashboard = await store.getDashboardPayload()
+    res.json(dashboard.aiEscalations ?? [])
+  })
+
+  app.get("/api/v1/intelligence", requireAuth, async (_req, res) => {
+    res.json(await store.getIntelligenceSnapshot())
+  })
+
+  app.get("/api/v1/intelligence/decisions", requireAuth, async (req, res) => {
+    const vehicleId = typeof req.query.vehicleId === "string" ? req.query.vehicleId : undefined
+    res.json(await store.getDecisionAuditTrail(vehicleId))
+  })
+
+  app.get("/api/v1/depots", requireAuth, async (_req, res) => {
+    res.json((await store.getDashboardPayload()).depots)
+  })
+
+  app.get("/api/v1/service-requests", requireAuth, async (_req, res) => {
+    res.json(await store.getServiceRequests())
+  })
+
+  app.post("/api/v1/orchestration/vehicles/:vehicleId/dispatch", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN", "DEPOT_MANAGER"), async (req, res) => {
+    const overrides = req.body && typeof req.body === "object" ? req.body : {}
+    const depotId = typeof overrides.depotId === "string" ? overrides.depotId : undefined
+    const result = await store.dispatchVehicle(param(req.params.vehicleId), depotId)
+    if (!result) {
+      res.status(404).json({ error: "Unable to dispatch vehicle" })
+      return
+    }
+    res.json(result)
+  })
+
+  app.patch("/api/v1/service-requests/:requestId/status", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN", "DEPOT_MANAGER", "TECHNICIAN"), async (req, res) => {
+    const parsed = statusSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() })
+      return
+    }
+    const result = await store.advanceRequest(param(req.params.requestId), parsed.data.status)
+    if (!result) {
+      res.status(404).json({ error: "Unable to advance service request" })
+      return
+    }
+    res.json(result)
+  })
+
+  app.post("/api/v1/service-requests/:requestId/complete", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN", "DEPOT_MANAGER", "TECHNICIAN"), async (req, res) => {
+    const parsed = completionSchema.safeParse(req.body ?? {})
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() })
+      return
+    }
+
+    const result = useDemoStore
+      ? await store.completeRequest(param(req.params.requestId))
+      : await repositoryStore.completeRequest(param(req.params.requestId), parsed.data)
+    if (!result) {
+      res.status(404).json({ error: "Unable to complete service request" })
+      return
+    }
+    res.json(result)
+  })
+
+  app.post("/api/v1/demo/reset", requireAuth, requireRole("PLATFORM_ADMIN"), async (_req, res) => {
+    res.json(await store.reset())
+  })
+
+  app.get("/api/v1/forensics/cohorts", requireAuth, async (_req, res) => {
+    res.json(await store.getCohorts())
+  })
+
+  app.get("/api/v1/forensics/cohorts/:cohortId", requireAuth, async (req, res) => {
+    const cohort = await store.getCohort(param(req.params.cohortId))
+    if (!cohort) {
+      res.status(404).json({ error: "Cohort not found" })
+      return
+    }
+    res.json(cohort)
+  })
+
+  app.get("/api/v1/forensics/cohorts/:cohortId/compare", requireAuth, async (req, res) => {

@@ -63,3 +63,68 @@ const input: PriorityReasoningInput = {
       downtimeCost: 4, serviceWindow: 3, reasons: ["brake wear"]
     }
   },
+  serviceHistory: []
+}
+
+describe("runPriorityReasoning", () => {
+  beforeEach(() => {
+    clientMocks.canUseAi.mockReturnValue(false)
+    clientMocks.withStructuredOutput.mockReset()
+    clientMocks.createOpenRouterClient.mockClear()
+    promptMocks.pipe.mockClear()
+  })
+
+  it("returns null when AI is disabled", async () => {
+    expect(await runPriorityReasoning(input)).toBeNull()
+  })
+
+  it("returns a structured assessment when AI is enabled", async () => {
+    clientMocks.canUseAi.mockReturnValue(true)
+
+    const invoke = vi.fn().mockResolvedValue({
+      adjustedScore: 88,
+      adjustment: 16,
+      urgency: "urgent",
+      riskFactors: ["repeated cooling fault"],
+      recommendation: "Dispatch within the next stop window.",
+      confidence: 0.82,
+      shouldEscalate: true
+    })
+
+    clientMocks.withStructuredOutput.mockReturnValue({ invoke })
+
+    const result = await runPriorityReasoning(input)
+
+    expect(clientMocks.createOpenRouterClient).toHaveBeenCalledTimes(1)
+    expect(clientMocks.withStructuredOutput).toHaveBeenCalledTimes(1)
+    expect(promptMocks.pipe).toHaveBeenCalledTimes(1)
+    expect(invoke).toHaveBeenCalledWith({
+      vehicle: JSON.stringify(input.vehicle),
+      signal: JSON.stringify(input.signal),
+      health: JSON.stringify(input.health),
+      faults: JSON.stringify(input.faults),
+      heuristic: JSON.stringify(input.heuristic),
+      serviceHistory: JSON.stringify(input.serviceHistory.slice(0, 10))
+    })
+    expect(result).toMatchObject({
+      adjustedScore: 88,
+      adjustment: 16,
+      urgency: "urgent",
+      riskFactors: ["repeated cooling fault"],
+      recommendation: "Dispatch within the next stop window.",
+      confidence: 0.82,
+      shouldEscalate: true,
+      model: "test-model"
+    })
+    expect(result?.latencyMs).toEqual(expect.any(Number))
+  })
+
+  it("returns null when the AI call fails", async () => {
+    clientMocks.canUseAi.mockReturnValue(true)
+    clientMocks.withStructuredOutput.mockReturnValue({
+      invoke: vi.fn().mockRejectedValue(new Error("boom"))
+    })
+
+    await expect(runPriorityReasoning(input)).resolves.toBeNull()
+  })
+})

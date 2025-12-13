@@ -88,3 +88,93 @@ describe("buildWeightAdjustmentProposals", () => {
     const result = buildWeightAdjustmentProposals([makeDecision({ decisionType: "unknown_type" })])
     expect(result[0].currentWeight).toBe(1)
   })
+
+  it("groups multiple items of same type for averaging", () => {
+    const decisions = [
+      makeDecision({ decisionType: "priority", rewardScore: 0.2 }),
+      makeDecision({ decisionType: "priority", rewardScore: 0.8 })
+    ]
+    const result = buildWeightAdjustmentProposals(decisions)
+    expect(result).toHaveLength(1)
+  })
+
+  it("boundary: avgReward exactly 0.65 triggers outperforming message", () => {
+    const decisions = [makeDecision({ decisionType: "priority", rewardScore: 0.65 })]
+    const result = buildWeightAdjustmentProposals(decisions)
+    expect(result[0].reason).toContain("outperforming baseline")
+  })
+})
+
+describe("buildLearnedPatterns", () => {
+  it("counts patterns by subsystem:actualFault", () => {
+    const history = [
+      makeHistory({ subsystem: "engine", actualFault: "oil_leak" }),
+      makeHistory({ subsystem: "engine", actualFault: "oil_leak" }),
+      makeHistory({ subsystem: "brakes", actualFault: "pad_wear" }),
+      makeHistory({ subsystem: "brakes", actualFault: "pad_wear" })
+    ]
+    const result = buildLearnedPatterns(history)
+    expect(result).toHaveLength(2)
+  })
+
+  it("filters out patterns with count < 2", () => {
+    const history = [
+      makeHistory({ subsystem: "engine", actualFault: "oil_leak" }),
+      makeHistory({ subsystem: "brakes", actualFault: "pad_wear" })
+    ]
+    expect(buildLearnedPatterns(history)).toHaveLength(0)
+  })
+
+  it("skips records without actualFault", () => {
+    const history = [
+      makeHistory({ actualFault: null }),
+      makeHistory({ actualFault: undefined }),
+      makeHistory({ subsystem: "engine", actualFault: "oil_leak" }),
+      makeHistory({ subsystem: "engine", actualFault: "oil_leak" })
+    ]
+    const result = buildLearnedPatterns(history)
+    expect(result).toHaveLength(1)
+    expect(result[0].pattern).toBe("engine:oil_leak")
+  })
+
+  it("returns empty array for empty history", () => {
+    expect(buildLearnedPatterns([])).toEqual([])
+  })
+
+  it("sorts by count descending", () => {
+    const history = [
+      ...Array.from({ length: 2 }, () => makeHistory({ subsystem: "engine", actualFault: "a" })),
+      ...Array.from({ length: 5 }, () => makeHistory({ subsystem: "brakes", actualFault: "b" }))
+    ]
+    const result = buildLearnedPatterns(history)
+    expect(result[0].pattern).toBe("brakes:b")
+    expect(result[1].pattern).toBe("engine:a")
+  })
+
+  it("limits to 10 patterns", () => {
+    const history: ServiceHistoryRecord[] = []
+    for (let i = 0; i < 15; i++) {
+      history.push(makeHistory({ subsystem: "engine", actualFault: `fault_${i}` }))
+      history.push(makeHistory({ subsystem: "engine", actualFault: `fault_${i}` }))
+    }
+    expect(buildLearnedPatterns(history)).toHaveLength(10)
+  })
+
+  it("computes confidence correctly: 0.4 + count * 0.08", () => {
+    const history = Array.from({ length: 4 }, () => makeHistory({ subsystem: "engine", actualFault: "x" }))
+    const result = buildLearnedPatterns(history)
+    expect(result[0].confidence).toBeCloseTo(0.72)
+  })
+
+  it("caps confidence at 0.95", () => {
+    const history = Array.from({ length: 20 }, () => makeHistory({ subsystem: "engine", actualFault: "x" }))
+    const result = buildLearnedPatterns(history)
+    expect(result[0].confidence).toBe(0.95)
+  })
+
+  it("returns supportingCount", () => {
+    const history = Array.from({ length: 3 }, () => makeHistory({ subsystem: "engine", actualFault: "x" }))
+    const result = buildLearnedPatterns(history)
+    expect(result[0].supportingCount).toBe(3)
+  })
+})

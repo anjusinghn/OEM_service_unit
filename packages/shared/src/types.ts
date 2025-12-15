@@ -116,3 +116,121 @@ export interface Technician {
   maxLoad: number
   firstTimeFixRate: number
 }
+
+export interface Alert {
+  id: string
+  vehicleId: string
+  severity: DtcSeverity
+  title: string
+  subsystem: SubsystemKey
+  occurredAt: string
+  count: number
+}
+
+export interface PriorityBreakdown {
+  safetyUrgency: number
+  failureProximity: number
+  businessImpact: number
+  downtimeCost: number
+  serviceWindow: number
+  reasons: string[]
+  aiAssessment?: AiPriorityAssessment | null
+}
+
+export interface AiPriorityAssessment {
+  adjustedScore: number
+  adjustment: number
+  urgency: "routine" | "elevated" | "urgent" | "emergency"
+  riskFactors: string[]
+  recommendation: string
+  confidence: number
+  shouldEscalate: boolean
+  model: string | null
+  latencyMs: number | null
+}
+
+export interface AiDepotAssessment {
+  recommendedDepotId: string
+  reasoning: string
+  confidence: number
+  partsRisk: string | null
+  logisticsNote: string | null
+  model: string | null
+  latencyMs: number | null
+}
+
+export interface AiDispatchPlan {
+  depotId: string
+  depotReasoning: string
+  partsToStage: string[]
+  estimatedRepairHours: number
+  estimatedTotalCost: number
+  urgencyLevel: "routine" | "elevated" | "urgent" | "emergency"
+  watchPoints: string[]
+  alternativePlan: {
+    depotId: string
+    reasoning: string
+  } | null
+  confidence: number
+  agentTrace: string[]
+  model: string | null
+  latencyMs: number | null
+}
+
+export interface AiEscalation {
+  type: string
+  severity: "info" | "warning" | "critical"
+  title: string
+  description: string
+  affectedEntities: string[]
+  suggestedAction: string
+  model: string | null
+  latencyMs: number | null
+}
+
+export interface PriorityEntry {
+  vehicleId: string
+  score: number
+  status: FleetStatus
+  breakdown: PriorityBreakdown
+}
+
+export interface DepotRecommendation {
+  depotId: string
+  score: number
+  etaHours: number
+  distanceKm: number
+  capacityOpen: number
+  specialtyMatch: boolean
+  partsReady: boolean
+  reasons: string[]
+  requiredParts: Part[]
+  aiAssessment?: AiDepotAssessment | null
+}
+
+export interface ServiceTimelineEvent {
+  status: ServiceRequestStatus
+  at: string
+  note: string
+}
+
+export interface ServiceRequest {
+  id: string
+  vehicleId: string
+  priorityScore: number
+  weakestSubsystem: SubsystemKey
+  depotId: string | null
+  technicianId: string | null
+  requiredPartNumbers: string[]
+  status: ServiceRequestStatus
+  createdAt: string
+  scheduledFor: string | null
+  timeline: ServiceTimelineEvent[]
+}
+
+export interface ServiceHistoryRecord {
+  id: string
+  vehicleId: string
+  depotId: string
+  technicianId: string
+  subsystem: SubsystemKey

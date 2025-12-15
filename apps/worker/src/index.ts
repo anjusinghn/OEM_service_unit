@@ -49,3 +49,53 @@ const workers = [
     concurrency: queueConcurrency[queueNames.rewardCompute]
   }),
   new Worker<QueuePayloadMap[typeof queueNames.depotMatch]>(queueNames.depotMatch, processDepotMatch, {
+    connection,
+    concurrency: queueConcurrency[queueNames.depotMatch]
+  }),
+  new Worker<QueuePayloadMap[typeof queueNames.notifications]>(queueNames.notifications, processNotification, {
+    connection,
+    concurrency: queueConcurrency[queueNames.notifications]
+  })
+]
+
+const ESCALATION_SCAN_INTERVAL_MS = Number(process.env.AI_ESCALATION_INTERVAL_MS ?? 300000)
+const WORKER_LOG_COMPLETED = process.env.WORKER_LOG_COMPLETED === "true"
+const escalationTimer = setInterval(() => {
+  void enqueueJob(queueNames.aiReasoning, {
+    decisionType: "escalation",
+    timestamp: new Date().toISOString()
+  })
+}, ESCALATION_SCAN_INTERVAL_MS)
+
+for (const worker of workers) {
+  if (WORKER_LOG_COMPLETED) {
+    worker.on("completed", (job: Job<unknown>) => {
+      console.log(`[worker] completed queue=${worker.name} job=${job.id}`)
+    })
+  }
+
+  worker.on("failed", (job: Job<unknown> | undefined, error: Error) => {
+    console.error(`[worker] failed queue=${worker.name} job=${job?.id ?? "unknown"}`, error)
+  })
+}
+
+const shutdown = async (signal: string) => {
+  console.log(`[worker] shutting down on ${signal}`)
+  clearInterval(escalationTimer)
+  await Promise.all(workers.map((worker) => worker.close()))
+  await closeQueues()
+  process.exit(0)
+}
+
+console.log("[worker] BullMQ worker cluster ready")
+console.log(`[worker] queues=${workers.map((worker) => worker.name).join(",")}`)
+console.log(`[worker] escalationIntervalMs=${ESCALATION_SCAN_INTERVAL_MS}`)
+console.log(`[worker] logCompleted=${WORKER_LOG_COMPLETED}`)
+
+process.on("SIGINT", () => {
+  void shutdown("SIGINT")
+})
+
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM")
+})

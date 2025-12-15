@@ -32,3 +32,37 @@ export function useAuth(): AuthState {
     }
   }, [])
 
+  const login = useCallback(
+    async ({ email, password }: LoginCredentials) => {
+      setIsLoading(true)
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error((data as { message?: string }).message ?? "Invalid credentials")
+        }
+        const data = (await res.json()) as { token: string; user: unknown }
+        setToken(data.token)
+        setTokenState(data.token)
+        setUser(parseToken(data.token))
+        router.push("/")
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [router],
+  )
+
+  const logout = useCallback(() => {
+    clearToken()
+    setTokenState(null)
+    setUser(null)
+    router.push("/login")
+  }, [router])
+
+  return { user, token, isLoading, login, logout }
+}

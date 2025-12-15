@@ -34,3 +34,38 @@ export const serviceHistoryRepository = {
       where: { vehicleId },
       orderBy: { resolvedAt: "desc" }
     })
+  },
+
+  findRecent(limit = 20): Promise<ServiceHistory[]> {
+    return prisma.serviceHistory.findMany({
+      orderBy: { resolvedAt: "desc" },
+      take: limit
+    })
+  },
+
+  async getOutcomeStats(filter: OutcomeStatsFilter = {}): Promise<ServiceHistoryOutcomeStats> {
+    const where = buildWhere(filter)
+
+    const [totalRecords, firstTimeFixCount, aggregate] = await Promise.all([
+      prisma.serviceHistory.count({ where }),
+      prisma.serviceHistory.count({
+        where: {
+          ...where,
+          firstTimeFix: true
+        }
+      }),
+      prisma.serviceHistory.aggregate({
+        where,
+        _avg: {
+          repairDuration: true
+        }
+      })
+    ])
+
+    return {
+      totalRecords,
+      firstTimeFixRate: totalRecords ? firstTimeFixCount / totalRecords : 0,
+      avgRepairDurationHours: aggregate._avg.repairDuration ?? null
+    }
+  }
+}

@@ -36,3 +36,40 @@ export const priorityRepository = {
 
   getQueue(options: PriorityQueueOptions = {}): Promise<PriorityEntry[]> {
     const { limit = 50, offset = 0 } = options
+
+    return prisma.priorityEntry.findMany({
+      orderBy: [{ score: "desc" }, { updatedAt: "desc" }],
+      take: limit,
+      skip: offset
+    })
+  },
+
+  async getVehicleRank(vehicleId: string): Promise<number | null> {
+    const entry = await prisma.priorityEntry.findUnique({
+      where: { vehicleId },
+      select: { score: true, updatedAt: true }
+    })
+
+    if (!entry) return null
+
+    const ahead = await prisma.priorityEntry.count({
+      where: {
+        OR: [
+          { score: { gt: entry.score } },
+          {
+            score: entry.score,
+            updatedAt: { gt: entry.updatedAt }
+          }
+        ]
+      }
+    })
+
+    return ahead + 1
+  },
+
+  getByVehicle(vehicleId: string): Promise<PriorityEntry | null> {
+    return prisma.priorityEntry.findUnique({
+      where: { vehicleId }
+    })
+  }
+}

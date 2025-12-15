@@ -139,3 +139,143 @@ CREATE TABLE "vehicle_signals" (
 );
 
 -- CreateTable
+CREATE TABLE "vehicle_health_snapshots" (
+    "vehicle_id" TEXT NOT NULL,
+    "timestamp" TIMESTAMPTZ NOT NULL,
+    "health_score" DOUBLE PRECISION NOT NULL,
+    "risk_level" TEXT NOT NULL,
+    "subsystem_scores" JSONB NOT NULL DEFAULT '{}',
+    "fault_breakdown" JSONB NOT NULL DEFAULT '{}',
+    "signal_breakdown" JSONB,
+
+    CONSTRAINT "vehicle_health_snapshots_pkey" PRIMARY KEY ("vehicle_id","timestamp")
+);
+
+-- CreateTable
+CREATE TABLE "priority_snapshots" (
+    "vehicle_id" TEXT NOT NULL,
+    "timestamp" TIMESTAMPTZ NOT NULL,
+    "score" DOUBLE PRECISION NOT NULL,
+    "status" TEXT NOT NULL,
+    "score_breakdown" JSONB NOT NULL DEFAULT '{}',
+    "reasons" JSONB NOT NULL DEFAULT '[]',
+    "override_breakdown" JSONB,
+
+    CONSTRAINT "priority_snapshots_pkey" PRIMARY KEY ("vehicle_id","timestamp")
+);
+
+-- CreateTable
+CREATE TABLE "vehicle_events" (
+    "id" TEXT NOT NULL,
+    "vehicle_id" TEXT NOT NULL,
+    "event_type" TEXT NOT NULL,
+    "dtc_code" TEXT,
+    "severity" "DtcSeverity" NOT NULL DEFAULT 'INFO',
+    "payload" JSONB NOT NULL DEFAULT '{}',
+    "timestamp" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "vehicle_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "dtc_codes" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "system" TEXT NOT NULL,
+    "subsystem" "Subsystem" NOT NULL,
+    "severity" "DtcSeverity" NOT NULL DEFAULT 'INFO',
+    "description" TEXT NOT NULL,
+    "known_causes" TEXT[],
+    "remedies" TEXT[],
+    "related_codes" TEXT[],
+
+    CONSTRAINT "dtc_codes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "vehicle_faults" (
+    "id" TEXT NOT NULL,
+    "vehicle_id" TEXT NOT NULL,
+    "dtc_code" TEXT NOT NULL,
+    "subsystem" TEXT NOT NULL,
+    "severity" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "occurred_at" TIMESTAMPTZ NOT NULL,
+    "resolved_at" TIMESTAMPTZ,
+    "occurrences" INTEGER NOT NULL DEFAULT 1,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "vehicle_faults_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "alerts" (
+    "id" TEXT NOT NULL,
+    "vehicle_id" TEXT NOT NULL,
+    "severity" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "subsystem" TEXT NOT NULL,
+    "occurred_at" TIMESTAMPTZ NOT NULL,
+    "count" INTEGER NOT NULL DEFAULT 1,
+    "status" "AlertStatus" NOT NULL DEFAULT 'NEW',
+    "acknowledged_at" TIMESTAMPTZ,
+    "resolved_at" TIMESTAMPTZ,
+
+    CONSTRAINT "alerts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "depots" (
+    "id" TEXT NOT NULL,
+    "organization_id" TEXT,
+    "name" TEXT NOT NULL,
+    "city" TEXT NOT NULL,
+    "region" TEXT NOT NULL,
+    "latitude" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "longitude" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "specialties" JSONB NOT NULL DEFAULT '[]',
+    "total_bays" INTEGER NOT NULL,
+    "occupied_bays" INTEGER NOT NULL DEFAULT 0,
+    "operating_hours" JSONB,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "depots_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "bays" (
+    "id" TEXT NOT NULL,
+    "depot_id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "type" "BayType" NOT NULL DEFAULT 'GENERAL',
+    "status" "BayStatus" NOT NULL DEFAULT 'AVAILABLE',
+    "updated_at" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "bays_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "parts" (
+    "part_number" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "subsystem" TEXT NOT NULL,
+    "lead_days" INTEGER NOT NULL DEFAULT 1,
+    "price" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "criticality" TEXT NOT NULL DEFAULT 'operational',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "parts_pkey" PRIMARY KEY ("part_number")
+);
+
+-- CreateTable
+CREATE TABLE "part_substitutes" (
+    "id" TEXT NOT NULL,
+    "original_part_number" TEXT NOT NULL,
+    "substitute_part_number" TEXT NOT NULL,
+
+    CONSTRAINT "part_substitutes_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "inventory_items" (

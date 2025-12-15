@@ -58,3 +58,63 @@ export default function TechniciansPage() {
                   <th className="pb-3 pr-4">Workload</th>
                   <th className="pb-3">FTF Rate</th>
                 </tr>
+              </thead>
+              <tbody>
+                {technicians.map((tech) => {
+                  const loadPct = tech.maxLoad > 0 ? (tech.currentLoad / tech.maxLoad) * 100 : 0
+                  return (
+                    <tr key={tech.id} className="border-b border-border last:border-0">
+                      <td className="py-3 pr-4">
+                        <p className="font-medium text-foreground">{tech.name}</p>
+                        <p className="font-mono text-[10px] text-muted-foreground">{tech.id}</p>
+                      </td>
+                      <td className="py-3 pr-4 text-muted-foreground">{tech.depotId}</td>
+                      <td className="py-3 pr-4">
+                        <div className="flex flex-wrap gap-1">
+                          {tech.certifications.map((c) => (
+                            <span key={c} className="rounded-md bg-glass px-1.5 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className={cn(
+                                "h-full rounded-full",
+                                loadPct > 80 ? "bg-critical" : loadPct > 50 ? "bg-watch" : "bg-healthy",
+                              )}
+                              style={{ width: `${loadPct}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-[11px] text-muted-foreground">
+                            {tech.currentLoad}/{tech.maxLoad}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3">
+                        <span className={cn(
+                          "font-mono text-xs font-semibold",
+                          tech.firstTimeFixRate >= 0.9 ? "text-healthy" : tech.firstTimeFixRate >= 0.7 ? "text-watch" : "text-critical",
+                        )}>
+                          {Math.round(tech.firstTimeFixRate * 100)}%
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      ) : (
+        <div className="flex flex-col items-center justify-center glass-card rounded-lg border-dashed py-16 text-muted-foreground">
+          <Users className="mb-3 h-8 w-8 text-watch/40" />
+          <p className="text-sm">No technician data available. Connect to a running API.</p>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -68,3 +68,73 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 Production
               </span>
             </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-hover lg:hidden"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <nav className="flex flex-1 flex-col gap-0.5 px-3">
+          {navItems.map(({ href, label, icon: Icon, color }) => {
+            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={onClose}
+                className={cn(
+                  "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] font-medium",
+                  "transition-all duration-200",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-active font-semibold"
+                    : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active"
+                )}
+              >
+                {isActive && (
+                  <span className="absolute -left-3 top-1/2 h-5 w-[4px] -translate-y-1/2 rounded-full bg-primary" />
+                )}
+                <Icon
+                  size={17}
+                  className={cn("flex-shrink-0", isActive ? "text-sidebar-active" : color)}
+                />
+                {label}
+              </Link>
+            )
+          })}
+
+          <div className="my-2 h-px bg-sidebar-border" />
+
+          {footerItems.map(({ href, label, icon: Icon, color }) => {
+            const isActive = pathname.startsWith(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={onClose}
+                className={cn(
+                  "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] font-medium",
+                  "transition-all duration-200",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-active font-semibold"
+                    : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active"
+                )}
+              >
+                {isActive && (
+                  <span className="absolute -left-3 top-1/2 h-5 w-[4px] -translate-y-1/2 rounded-full bg-primary" />
+                )}
+                <Icon
+                  size={17}
+                  className={cn("flex-shrink-0", isActive ? "text-sidebar-active" : color)}
+                />
+                {label}
+              </Link>
+            )
+          })}
+        </nav>
+      </aside>
+    </>
+  )
+}

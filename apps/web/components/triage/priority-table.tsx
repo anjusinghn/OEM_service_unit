@@ -96,3 +96,100 @@ export function PriorityTable({ vehicles, priorityQueue }: PriorityTableProps) {
 
   function SortIcon({ col }: { col: SortKey }) {
     if (sortKey !== col)
+      return <ArrowUpDown size={12} className="text-muted-foreground/40" />
+    if (sortDir === "asc") return <ArrowUp size={12} className="text-primary" />
+    return <ArrowDown size={12} className="text-primary" />
+  }
+
+  return (
+    <div className="overflow-x-auto glass-card rounded-xl overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border bg-glass/50">
+            <th className="px-4 py-3 text-left">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => handleSort("rank")}
+              >
+                # <SortIcon col="rank" />
+              </button>
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Vehicle
+            </th>
+            <th className="px-4 py-3 text-left">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => handleSort("health")}
+              >
+                Health <SortIcon col="health" />
+              </button>
+            </th>
+            <th className="px-4 py-3 text-left">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => handleSort("score")}
+              >
+                Priority <SortIcon col="score" />
+              </button>
+            </th>
+            <th className="px-4 py-3 text-left">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => handleSort("status")}
+              >
+                Status <SortIcon col="status" />
+              </button>
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              AI Assessment
+            </th>
+            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Action
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row, idx) => {
+            const isExpanded = expandedId === row.vehicle.id
+            const isSelected = selectedIdx === idx
+            const ai = row.entry.breakdown.aiAssessment
+
+            return (
+              <Fragment key={row.vehicle.id}>
+                <tr
+                  className={cn(
+                    "cursor-pointer select-none border-b border-border transition-colors",
+                    isExpanded
+                      ? "bg-glass/30"
+                      : isSelected
+                        ? "bg-primary/8 ring-1 ring-inset ring-primary/20"
+                        : "hover:bg-glass-hover/30"
+                  )}
+                  onClick={() => {
+                    setSelectedIdx(idx)
+                    toggleExpand(row.vehicle.id)
+                  }}
+                >
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                    {row.rank + 1}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono text-xs font-semibold text-foreground">
+                        {row.vehicle.id}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {row.vehicle.model} · {row.vehicle.region}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "text-sm font-bold tabular-nums",

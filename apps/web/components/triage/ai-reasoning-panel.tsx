@@ -46,3 +46,51 @@ export function AiReasoningPanel({ aiAssessment }: AiReasoningPanelProps) {
                 aiAssessment.adjustment > 0
                   ? "text-critical"
                   : aiAssessment.adjustment < 0
+                    ? "text-healthy"
+                    : "text-muted-foreground"
+              )}
+            >
+              {aiAssessment.adjustment > 0 ? "+" : ""}
+              {aiAssessment.adjustment}
+            </p>
+          </div>
+          {aiAssessment.shouldEscalate && (
+            <span className="ml-auto rounded-full border border-critical/20 bg-critical-muted px-2 py-0.5 text-xs font-medium text-critical">
+              ⚠ Escalate
+            </span>
+          )}
+        </div>
+
+        {aiAssessment.riskFactors.length > 0 && (
+          <div className="mb-3">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Risk Factors
+            </p>
+            <ul className="space-y-1">
+              {aiAssessment.riskFactors.map((factor) => (
+                <li key={factor} className="flex items-start gap-2 text-sm text-foreground">
+                  <span className="mt-0.5 text-ai">•</span>
+                  {factor}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <p className="mb-3 text-sm text-foreground/80">{aiAssessment.recommendation}</p>
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            Confidence:{" "}
+            <span className="font-semibold text-ai">
+              {Math.round(aiAssessment.confidence * 100)}%
+            </span>
+          </span>
+          {aiAssessment.latencyMs !== null && (
+            <span>Latency: {aiAssessment.latencyMs}ms</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

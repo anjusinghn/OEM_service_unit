@@ -130,3 +130,135 @@ const PARTS_BY_SUBSYSTEM: Record<
     { partNumber: "COOL-SENS-15", name: "Coolant temperature sensor" },
     { partNumber: "COOL-PUMP-04", name: "Coolant circulation pump" },
   ],
+  brakes: [
+    { partNumber: "BRK-PAD-09", name: "Front brake pad kit" },
+    { partNumber: "BRK-LINE-17", name: "Hydraulic line service kit" },
+  ],
+  electrical: [
+    { partNumber: "ELE-ALT-31", name: "Alternator assembly" },
+    { partNumber: "ELE-BATT-12", name: "Battery control module" },
+  ],
+  exhaust: [
+    { partNumber: "EXH-SENS-42", name: "NOx sensor kit" },
+    { partNumber: "EXH-DPF-07", name: "DPF regeneration cartridge" },
+  ],
+  turbo: [
+    { partNumber: "TRB-KIT-88", name: "Turbocharger repair kit" },
+    { partNumber: "TRB-HOSE-14", name: "Boost hose replacement set" },
+  ],
+  fuel: [
+    { partNumber: "FUEL-PUMP-03", name: "Fuel pump assembly" },
+    { partNumber: "FUEL-FLTR-29", name: "Heavy-duty fuel filter" },
+  ],
+  transmission: [
+    { partNumber: "TRN-VALVE-52", name: "Valve body service kit" },
+    { partNumber: "TRN-OIL-60", name: "Transmission oil pack" },
+  ],
+};
+
+const FIRST_NAMES = [
+  "Rajesh",
+  "Mira",
+  "Ayaan",
+  "Divya",
+  "Kiran",
+  "Pranav",
+  "Ishita",
+  "Naveen",
+  "Sneha",
+  "Vikram",
+  "Ananya",
+  "Rohit",
+  "Priya",
+  "Arjun",
+  "Kavita",
+  "Suresh",
+  "Meera",
+  "Aditya",
+  "Pooja",
+  "Deepak",
+];
+
+const LAST_NAMES = [
+  "K",
+  "Rao",
+  "Singh",
+  "Patil",
+  "Mehta",
+  "Das",
+  "Jain",
+  "Verma",
+  "Sharma",
+  "Gupta",
+  "Kumar",
+  "Reddy",
+];
+
+const BAY_TYPES = [
+  "GENERAL",
+  "ENGINE",
+  "ELECTRICAL",
+  "BODY",
+  "INSPECTION",
+] as const;
+
+// ── Seed Function ───────────────────────────────────────────
+
+export async function resetDatabase(db: PrismaClient = prisma) {
+  await db.partReservation.deleteMany();
+  await db.slaTracking.deleteMany();
+  await db.serviceTimeline.deleteMany();
+  await db.serviceRequest.deleteMany();
+  await db.priorityEntry.deleteMany();
+  await db.prioritySnapshot.deleteMany();
+  await db.vehicleHealthSnapshot.deleteMany();
+  await db.serviceHistory.deleteMany();
+  await db.alert.deleteMany();
+  await db.vehicleFault.deleteMany();
+  await db.vehicleEvent.deleteMany();
+  await db.vehicleSignal.deleteMany();
+  await db.inventoryItem.deleteMany();
+  await db.partSubstitute.deleteMany();
+  await db.part.deleteMany();
+  await db.bay.deleteMany();
+  await db.technician.deleteMany();
+  await db.webhook.deleteMany();
+  await db.notificationPreference.deleteMany();
+  await db.cohortMember.deleteMany();
+  await db.cohortComparison.deleteMany();
+  await db.cohortAnomaly.deleteMany();
+  await db.forensicsInvestigationEvent.deleteMany();
+  await db.forensicsInvestigation.deleteMany();
+  await db.forensicsPattern.deleteMany();
+  await db.forensicsCohort.deleteMany();
+  await db.supplierScorecard.deleteMany();
+  await db.supplierInfo.deleteMany();
+  await db.signalDefinition.deleteMany();
+  await db.dtcCode.deleteMany();
+  await db.vehicle.deleteMany();
+  await db.depot.deleteMany();
+  await db.oemConnection.deleteMany();
+  await db.apiKey.deleteMany();
+  await db.user.deleteMany();
+  await db.organization.deleteMany();
+}
+
+export async function seedDatabase(db: PrismaClient = prisma) {
+  const prisma = db;
+  console.log("🌱 Seeding kazindustries database...\n");
+
+  // ── 1. Organization ─────────────────────────────────────
+  console.log("  → Creating organization...");
+  const org = await prisma.organization.create({
+    data: {
+      id: "org-kazindustries-demo",
+      name: "kazindustries Demo Fleet",
+    },
+  });
+
+  // ── 2. Users ────────────────────────────────────────────
+  console.log("  → Creating users...");
+  const defaultPasswordHash = await bcrypt.hash("kazadmin123", 12);
+  const users = [
+    {
+      id: "user-admin-001",

@@ -44,3 +44,48 @@ export async function cacheSetJson<T>(
 
   return redis.set(key, payload);
 }
+
+export async function cacheGetJson<T>(key: string): Promise<T | null> {
+  const raw = await redis.get(key);
+  if (raw === null) {
+    return null;
+  }
+
+  return JSON.parse(raw) as T;
+}
+
+export async function cacheDelete(key: string): Promise<number> {
+  return redis.del(key);
+}
+
+export type RedisMessageHandler = (
+  message: string,
+  channel: string,
+) => void | Promise<void>;
+
+export async function publish(channel: string, message: string): Promise<number> {
+  return redisPub.publish(channel, message);
+}
+
+export async function subscribe(
+  channels: string | string[],
+  handler: RedisMessageHandler,
+): Promise<() => Promise<void>> {
+  const channelList = Array.isArray(channels) ? channels : [channels];
+
+  const listener = (channel: string, message: string): void => {
+    void handler(message, channel);
+  };
+
+  redisSub.on("message", listener);
+  await redisSub.subscribe(...channelList);
+
+  return async () => {
+    redisSub.off("message", listener);
+    await redisSub.unsubscribe(...channelList);
+  };
+}
+
+export async function disconnectRedis(): Promise<void> {
+  await Promise.allSettled([redis.quit(), redisPub.quit(), redisSub.quit()]);
+}

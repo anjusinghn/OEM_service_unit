@@ -34,3 +34,39 @@ export const computeHealthScore = (snapshot: VehicleSignalSnapshot, faults: Vehi
     turbo: clamp(100 - Math.max(0, 1.45 - snapshot.turboBoost) * 54, 8, 99),
     fuel: clamp(100 - Math.max(0, 22 - snapshot.fuelLevel) * 0.8, 28, 99),
     transmission: clamp(100 - Math.max(0, snapshot.speed < 20 ? 4 : 0) * 2, 35, 99)
+  } satisfies Record<SubsystemKey, number>
+
+  for (const subsystem of SUBSYSTEMS) {
+    subsystems[subsystem] = clamp(applyFaultPenalty(subsystems[subsystem], faults, subsystem), 5, 99)
+  }
+
+  const weakestSubsystem = SUBSYSTEMS.reduce((weakest, current) => (subsystems[current] < subsystems[weakest] ? current : weakest), "engine")
+  const overall = round(SUBSYSTEMS.reduce((sum, subsystem) => sum + subsystems[subsystem], 0) / SUBSYSTEMS.length, 1)
+  const signalQuality = scoreSignalQuality(snapshot)
+  const status = overall < 55 ? "critical" : overall < 78 ? "watch" : "healthy"
+  const trend = overall < 60 || faults.length > 0 ? "degrading" : overall > 88 ? "improving" : "stable"
+
+  return {
+    overall,
+    signalQuality,
+    trend,
+    status,
+    weakestSubsystem,
+    subsystems: Object.fromEntries(SUBSYSTEMS.map((subsystem) => [subsystem, round(subsystems[subsystem], 1)])) as Record<SubsystemKey, number>
+  }
+}
+
+export const dedupeAlerts = (faultsByVehicle: Record<string, VehicleFault[]>): Alert[] => {
+  return Object.values(faultsByVehicle)
+    .flat()
+    .map((fault) => ({
+      id: fault.id,
+      vehicleId: fault.vehicleId,
+      severity: fault.severity,
+      title: fault.title,
+      subsystem: fault.subsystem,
+      occurredAt: fault.occurredAt,
+      count: fault.occurrences
+    }))
+    .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+}

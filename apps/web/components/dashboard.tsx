@@ -136,3 +136,140 @@ export function Dashboard() {
 
   const fetchDispatchPlan = async (vehicleId: string) => {
     setBusyKey(`p:${vehicleId}`)
+    try {
+      const response = await fetch(`${apiBase}/api/v1/orchestration/vehicles/${vehicleId}/dispatch-plan`, { cache: "no-store" })
+      if (!response.ok) throw new Error("dispatch plan fetch failed")
+      setDispatchPlan((await response.json()) as AiDispatchPlan)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const dispatch = async (vehicleId: string) => {
+    setBusyKey(`d:${vehicleId}`)
+    await api(`/api/v1/orchestration/vehicles/${vehicleId}/dispatch`)
+    setBusyKey(null)
+    await load()
+  }
+
+  const advance = async (requestId: string) => {
+    setBusyKey(`a:${requestId}`)
+    await api(`/api/v1/service-requests/${requestId}/status`, "PATCH", {})
+    setBusyKey(null)
+    await load()
+  }
+
+  const complete = async (requestId: string) => {
+    setBusyKey(`c:${requestId}`)
+    await api(`/api/v1/service-requests/${requestId}/complete`)
+    setBusyKey(null)
+    await load()
+  }
+
+  const reset = async () => {
+    setBusyKey("reset")
+    await api("/api/v1/demo/reset")
+    setBusyKey(null)
+    await load()
+  }
+
+  /* ── Loading state ── */
+  if (!payload) {
+    return (
+      <div className="loading-screen">
+        <LoaderCircle size={28} className="loading-screen__spinner" />
+        <span className="loading-screen__text">{error ?? "Connecting to orchestration layer..."}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="app">
+      {/* ── Sidebar ── */}
+      <aside className={`sidebar${sidebarOpen ? " sidebar--open" : ""}`}>
+        <div className="sidebar__brand">
+          <div className="sidebar__logo">K</div>
+          <div className="sidebar__brand-text">
+            <span className="sidebar__name">kazindustries</span>
+            <span className="sidebar__env">Phase 1 Demo</span>
+          </div>
+        </div>
+
+        <div className="sidebar__section">
+          <span className="sidebar__section-label">Platform</span>
+          <nav className="sidebar__nav">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`sidebar__item${activeNav === item.id ? " sidebar__item--active" : ""}`}
+                onClick={() => { setActiveNav(item.id); setSidebarOpen(false) }}
+              >
+                <item.icon size={18} />
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <div className="sidebar__divider" />
+
+        <div className="sidebar__footer">
+          {NAV_FOOTER.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="sidebar__item"
+              onClick={() => { setActiveNav(item.id); setSidebarOpen(false) }}
+            >
+              <item.icon size={18} />
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      {/* ── Main Content ── */}
+      <div className="content">
+        <div className="content__inner">
+          {/* Mobile header */}
+          <div className="mobile-header">
+            <div className="mobile-header__brand">
+              <div className="mobile-header__logo">K</div>
+              <span className="mobile-header__name">kazindustries</span>
+            </div>
+            <button type="button" className="mobile-menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
+              {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          </div>
+
+          {/* Page header */}
+          <div className="page-header fade-in fade-in-1">
+            <div className="page-header__left">
+              <h1>Service Orchestration</h1>
+              <p>
+                Real-time fleet triage, depot matching, and service workflow management.
+                Every decision is explainable and auditable.
+              </p>
+            </div>
+            <div className="page-header__actions">
+              <div className="live-indicator">Live</div>
+              <button type="button" className="button" onClick={reset} disabled={busyKey === "reset"}>
+                Reset demo
+              </button>
+            </div>
+          </div>
+
+          {/* Metrics row */}
+          <div className="metric-grid fade-in fade-in-2">
+            <MetricCard
+              label="Healthy vehicles"
+              value={payload.overview.healthyVehicles}
+              detail={`of ${payload.overview.totalVehicles} total`}
+              tone="success"
+            />
+            <MetricCard
+              label="Needs attention"
+              value={payload.overview.watchVehicles + payload.overview.criticalVehicles}
+              detail="watch + critical"
+              tone={payload.overview.criticalVehicles > 0 ? "critical" : "watch"}

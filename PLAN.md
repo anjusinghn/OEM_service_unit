@@ -154,3 +154,159 @@
 │  │  └─ Publish event → Redis pub/sub channel                                │   │
 │  │                                                                          │   │
 │  │  DepotMatchProcessor                                                     │   │
+│  │  ├─ Run recommendDepots() (existing heuristic logic)                     │   │
+│  │  ├─ Optionally augment with AI depot reasoning chain                     │   │
+│  │  └─ Cache in Redis (vehicle:depot-match:{id}, TTL 120s)                  │   │
+│  │                                                                          │   │
+│  │  NotificationProcessor                                                   │   │
+│  │  ├─ Build SSE payload → publish to Redis pub/sub (channel:dashboard)     │   │
+│  │  ├─ Send webhook to registered endpoints                                 │   │
+│  │  └─ Store in notification_log table                                      │   │
+│  │                                                                          │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────┬───────────────────────────────────────────────────────────┘
+                      │
+        ┌─────────────┴─────────────┐
+        ▼                           ▼
+┌───────────────────┐    ┌──────────────────────┐
+│  PostgreSQL 16    │    │  Redis 7             │
+│  + TimescaleDB    │    │                      │
+│                   │    │  • Priority sorted   │
+│  • vehicles       │    │    set               │
+│  • depots         │    │  • Health cache      │
+│  • technicians    │    │  • Signal cache      │
+│  • parts_catalog  │    │  • AI response cache │
+│  • depot_inventory│    │  • Session store     │
+│  • service_reqs   │    │  • BullMQ backing    │
+│  • service_history│    │  • Pub/sub channels  │
+│  • decision_logs  │    │  • Dispatch locks    │
+│  • vehicle_faults │    │  • Rate limit        │
+│  • reward_signals │    │    counters          │
+│                   │    │                      │
+│  HYPERTABLES:     │    └──────────────────────┘
+│  • vehicle_signals│
+│  • health_snapshots│
+│  • priority_snaps │
+└───────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          API SERVER (apps/api)                                   │
+│                                                                                 │
+│  ┌────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ Auth       │  │ REST Routes  │  │ SSE Stream   │  │ Bull Board           │  │
+│  │ Middleware │  │ (Express)    │  │ Engine       │  │ /admin/queues        │  │
+│  │            │  │              │  │              │  │                      │  │
+│  │ NextAuth   │  │ /vehicles    │  │ Subscribes   │  │ Job monitoring       │  │
+│  │ JWT verify │  │ /orchestr..  │  │ to Redis     │  │ dashboard            │  │
+│  │ RBAC check │  │ /depots      │  │ pub/sub      │  │                      │  │
+│  │ Org scope  │  │ /service-..  │  │ channels     │  │ (protected by        │  │
+│  │            │  │ /ai          │  │ and pushes   │  │  platform_admin      │  │
+│  │            │  │ /analytics   │  │ to connected │  │  role)               │  │
+│  │            │  │ /admin       │  │ SSE clients  │  │                      │  │
+│  └────────────┘  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│                                                                                 │
+│  HOT-PATH READS: Redis first → PostgreSQL fallback                             │
+│  WRITES: PostgreSQL (source of truth) → invalidate Redis cache                 │
+│  SSE: Redis pub/sub → fan-out to all connected browser clients                 │
+└────────────────────────────────┬────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                    ENTERPRISE DASHBOARD (apps/web)                               │
+│                                                                                 │
+│  Next.js 14 App Router + shadcn/ui + Tailwind CSS + Recharts + Framer Motion   │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐    │
+│  │                        PAGE ARCHITECTURE                                │    │
+│  │                                                                         │    │
+│  │  /login              → Auth page (NextAuth.js)                          │    │
+│  │  /                   → Fleet Command Center (overview)                  │    │
+│  │  /triage             → AI Priority Queue + Reasoning Panel              │    │
+│  │  /triage/[vehicleId] → Vehicle Deep Dive                                │    │
+│  │  /dispatch           → AI Dispatch Agent Interface                      │    │
+│  │  /workflow           → Service Request Kanban Board                     │    │
+│  │  /depots             → Depot Network Map + Capacity                     │    │
+│  │  /depots/[depotId]   → Depot Detail (bays, techs, inventory)            │    │
+│  │  /technicians        → Technician Roster + Workload                     │    │
+│  │  /intelligence       → Decision Intelligence + RL Dashboard             │    │
+│  │  /alerts             → Alert Feed + Escalations                         │    │
+│  │  /settings           → Org settings, weights, API keys, users           │    │
+│  │                                                                         │    │
+│  └─────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                 │
+│  REAL-TIME: SSE EventSource → Zustand store → React re-render                  │
+│  MUTATIONS: React Query useMutation → optimistic updates → SSE confirmation    │
+│  CHARTS: Recharts (line, area, bar, radar, pie) + custom gauges                │
+│  ANIMATIONS: Framer Motion for transitions, list reordering, modals            │
+│  MAPS: Leaflet or Mapbox GL JS for fleet/depot geographic views                │
+│  THEME: Dark/light mode toggle, persisted in localStorage                      │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Technology Stack (Locked)
+
+| Layer | Technology | Version | Rationale |
+|---|---|---|---|
+| **Language** | TypeScript | 5.x | Full-stack consistency |
+| **Runtime** | Node.js | 22 LTS | Stable, async-first |
+| **API** | Express.js | 4.x | Already in use, proven |
+| **Frontend** | Next.js (App Router) | 15.x | Already in use |
+| **UI Components** | **shadcn/ui** | latest | Radix primitives + Tailwind, fully customizable, not a dependency — you own the code |
+| **Styling** | **Tailwind CSS** | 3.x | Utility-first, works perfectly with shadcn/ui |
+| **Charts** | **Recharts** | 2.x | React-native charting, composable, supports animations |
+| **Animations** | **Framer Motion** | 11.x | Layout animations, list reordering, route transitions |
+| **Maps** | **Leaflet** + react-leaflet | 1.9 / 4.x | Free, no API key needed, perfect for fleet/depot visualization |
+| **State (client)** | **Zustand** | 5.x | Tiny, fast, SSE-friendly global state management |
+| **Data fetching** | **TanStack Query** (React Query) | 5.x | Caching, optimistic updates, retry, background refetch |
+| **Forms** | **React Hook Form** + Zod | 7.x | Performant forms with schema validation |
+| **Icons** | **Lucide React** | latest | Already in use, 1500+ icons |
+| **DB** | PostgreSQL 16 + TimescaleDB | 16 / 2.x | Relational + time-series in one engine |
+| **Cache** | Redis | 7.x | Hot path, pub/sub, BullMQ backing store, sessions |
+| **Job Queue** | BullMQ | 5.x | Reliable background processing with retry, DLQ, concurrency |
+| **ORM** | Prisma | 6.x | Schema-first, type-safe, migration management |
+| **AI Framework** | **LangChain.js** | 0.3.x | LLM orchestration, tool-calling agents, structured output |
+| **LLM** | **OpenRouter `z-ai/glm-4.5-air:free`** | latest | OpenAI-compatible API routing with a free model suitable for Phase 3 development |
+| **Auth** | **NextAuth.js** (Auth.js v5) | 5.x | Session management, JWT, provider extensibility |
+| **Monorepo** | Turborepo + pnpm | latest | Already in use |
+| **Container** | Docker + Docker Compose | latest | Local dev infra, production images |
+| **Cloud** | Microsoft Azure | — | AKS, Azure DB for PG, Azure Cache for Redis |
+| **IaC** | Terraform | 1.x | Azure infrastructure provisioning |
+| **CI/CD** | GitHub Actions | — | Automated lint, test, build, deploy |
+
+---
+
+## OEM Cloud Data Flow
+
+### How Telemetry Gets From a Vehicle to Our Dashboard
+
+This is the real-world data path. Every OEM telematics system follows the same general pattern, even though the specifics differ.
+
+```
+VEHICLE (on-road)
+│
+│  TCU (Telematics Control Unit) embedded in vehicle
+│  Collects: CAN bus signals, GPS, DTC codes, driver behavior
+│  Transmits: MQTT / cellular (4G/5G) every 10-60 seconds
+│
+▼
+OEM TELEMATICS CLOUD (their infrastructure, not ours)
+│
+│  Examples:
+│  • Tata Motors Fleet Edge (connected.tatamotors.com)
+│  • Ashok Leyland iAlert (ialert.ashokleyland.com)
+│  • Mahindra DiGiSENSE
+│  • Eicher LIVE (VECV)
+│  • BharatBenz Truckonnect (Daimler India)
+│  • Volvo Dynafleet
+│  • VW Rio/MAN (later)
+│
+│  What they store:
+│  • GPS position + speed + heading
+│  • Engine parameters (RPM, coolant temp, oil pressure, fuel level)
+│  • Diagnostic Trouble Codes (DTCs)
+│  • Trip summaries
+│  • Driver behavior events (harsh braking, speeding)
+│  • Vehicle health alerts
+│
+│  How they expose it (3 common patterns):

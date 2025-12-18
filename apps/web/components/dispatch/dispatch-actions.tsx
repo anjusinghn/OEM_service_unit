@@ -107,3 +107,111 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
               "w-full max-w-lg glass-card rounded-xl p-6 shadow-xl",
               "data-[state=open]:animate-in data-[state=closed]:animate-out",
               "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+              "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+              "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
+              "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]"
+            )}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <Dialog.Title className="text-base font-semibold text-foreground">
+                Modify Dispatch Plan
+              </Dialog.Title>
+              <Dialog.Close className="rounded-md p-1 text-muted-foreground hover:text-foreground transition-colors">
+                <X size={16} />
+              </Dialog.Close>
+            </div>
+
+            <Dialog.Description className="text-sm text-muted-foreground mb-6">
+              Override the recommended depot before dispatching.
+            </Dialog.Description>
+
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="modify-depot"
+                  className="block text-xs font-medium text-foreground mb-1.5"
+                >
+                  Override Depot
+                </label>
+                <Select.Root value={overrideDepotId} onValueChange={setOverrideDepotId}>
+                  <Select.Trigger
+                    id="modify-depot"
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-md border border-input",
+                      "bg-background px-3 py-2 text-sm text-foreground",
+                      "focus:outline-none focus:ring-2 focus:ring-ring"
+                    )}
+                  >
+                    <Select.Value placeholder="Keep AI recommendation" />
+                    <Select.Icon>
+                      <ChevronDown size={14} />
+                    </Select.Icon>
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Content className="z-[60] rounded-md border border-border bg-popover p-1 shadow-lg">
+                      <Select.Viewport>
+                        <Select.Item
+                          value="ai"
+                          className="relative flex cursor-pointer select-none items-center rounded px-3 py-1.5 text-sm text-foreground outline-none hover:bg-accent focus:bg-accent"
+                        >
+                          <Select.ItemText>
+                            Keep AI recommendation
+                          </Select.ItemText>
+                        </Select.Item>
+                        {depots.map((depot) => (
+                          <Select.Item
+                            key={depot.id}
+                            value={depot.id}
+                            className="relative flex cursor-pointer select-none items-center rounded px-3 py-1.5 text-sm text-foreground outline-none hover:bg-accent focus:bg-accent"
+                          >
+                            <Select.ItemText>
+                              {depot.name} — {depot.city}
+                            </Select.ItemText>
+                          </Select.Item>
+                        ))}
+                      </Select.Viewport>
+                    </Select.Content>
+                  </Select.Portal>
+                </Select.Root>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </Dialog.Close>
+              <button
+                type="button"
+                onClick={handleModifyDispatch}
+                disabled={loading}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold",
+                  "bg-primary text-primary-foreground hover:opacity-90 transition-opacity",
+                  "disabled:opacity-50 disabled:cursor-not-allowed"
+                )}
+              >
+                {loading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : null}
+                Dispatch
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <button
+        type="button"
+        onClick={onCancel}
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}

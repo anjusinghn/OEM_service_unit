@@ -48,3 +48,53 @@ describe("buildFewShotExamples", () => {
     const worst = [makeDecision({ vehicleId: "worst-v" })]
     const result = buildFewShotExamples(best, worst)
     expect(result[0].label).toBe("best")
+    expect(result[1].label).toBe("worst")
+  })
+
+  it("copies decisionType, rewardScore, and summary correctly", () => {
+    const decision = makeDecision({ decisionType: "depot", rewardScore: 0.42, summary: "Test summary" })
+    const result = buildFewShotExamples([decision], [])
+    expect(result[0].decisionType).toBe("depot")
+    expect(result[0].rewardScore).toBe(0.42)
+    expect(result[0].summary).toBe("Test summary")
+  })
+})
+
+describe("renderFewShotExamples", () => {
+  it("formats examples as pipe-delimited lines", () => {
+    const examples: FewShotExample[] = [
+      { label: "best", decisionType: "priority", vehicleId: "v-1", rewardScore: 0.85, summary: "Great" }
+    ]
+    const result = renderFewShotExamples(examples)
+    expect(result).toBe("BEST | priority | v-1 | reward=0.85 | Great")
+  })
+
+  it("joins multiple examples with newlines", () => {
+    const examples: FewShotExample[] = [
+      { label: "best", decisionType: "priority", vehicleId: "v-1", rewardScore: 0.9, summary: "A" },
+      { label: "worst", decisionType: "depot", vehicleId: "v-2", rewardScore: 0.1, summary: "B" }
+    ]
+    const lines = renderFewShotExamples(examples).split("\n")
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toContain("BEST")
+    expect(lines[1]).toContain("WORST")
+  })
+
+  it("returns empty string for empty array", () => {
+    expect(renderFewShotExamples([])).toBe("")
+  })
+
+  it("uppercases the label", () => {
+    const examples: FewShotExample[] = [
+      { label: "worst", decisionType: "dispatch", vehicleId: "v-3", rewardScore: 0.22, summary: "Bad" }
+    ]
+    expect(renderFewShotExamples(examples)).toContain("WORST")
+  })
+
+  it("formats rewardScore to 2 decimal places", () => {
+    const examples: FewShotExample[] = [
+      { label: "best", decisionType: "priority", vehicleId: "v-1", rewardScore: 0.1, summary: "X" }
+    ]
+    expect(renderFewShotExamples(examples)).toContain("reward=0.10")
+  })
+})

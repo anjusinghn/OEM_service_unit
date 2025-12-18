@@ -91,3 +91,96 @@
     --color-border: hsl(0 0% 100% / 0.08);
     --color-input: hsl(0 0% 100% / 0.08);
     --color-ring: hsl(249 76% 67%);
+    --color-sidebar-bg: hsl(224 35% 3% / 0.95);
+
+    --color-healthy-muted: hsl(160 50% 50% / 0.12);
+    --color-watch-muted: hsl(38 80% 55% / 0.12);
+    --color-critical-muted: hsl(346 70% 55% / 0.12);
+    --color-info-muted: hsl(217 85% 65% / 0.12);
+    --color-ai-muted: hsl(270 70% 65% / 0.1);
+
+    --color-glass: hsl(0 0% 100% / 0.05);
+    --color-glass-border: hsl(0 0% 100% / 0.1);
+    --color-glass-hover: hsl(0 0% 100% / 0.08);
+    --color-glass-highlight: hsl(0 0% 100% / 0.15);
+
+    --chart-1: hsl(160 50% 50%);
+    --chart-2: hsl(38 80% 55%);
+    --chart-3: hsl(346 70% 55%);
+    --chart-4: hsl(217 85% 65%);
+    --chart-5: hsl(270 70% 65%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+}
+
+/* ── Glass card utility ── */
+@layer utilities {
+  .glass-card {
+    background: var(--color-glass);
+    border: 1px solid var(--color-glass-border);
+    backdrop-filter: blur(16px) saturate(1.6);
+    -webkit-backdrop-filter: blur(16px) saturate(1.6);
+    box-shadow:
+      0 1px 3px hsl(0 0% 0% / 0.04),
+      0 0 0 1px hsl(0 0% 100% / 0.04) inset;
+  }
+
+  .glass-card-solid {
+    background: var(--color-card);
+    border: 1px solid var(--color-glass-border);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  }
+
+  .glass-sidebar {
+    background: var(--color-sidebar-bg);
+    backdrop-filter: blur(24px) saturate(1.8);
+    -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  }
+
+  .glass-topbar {
+    background: hsl(249 15% 98% / 0.7);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  }
+}
+
+.dark .glass-topbar {
+  background: hsl(224 25% 6% / 0.7);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
+
+/* ── Subtle gradient background ── */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 80% 60% at 5% 15%, hsl(249 76% 62% / 0.07), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 85% 75%, hsl(270 76% 60% / 0.05), transparent 45%),
+    radial-gradient(ellipse 60% 50% at 50% 100%, hsl(160 60% 40% / 0.04), transparent 50%);
+  pointer-events: none;
+}
+
+.dark body::before {
+  background:
+    radial-gradient(ellipse 80% 60% at 5% 15%, hsl(249 76% 67% / 0.1), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 85% 75%, hsl(270 70% 65% / 0.07), transparent 45%),
+    radial-gradient(ellipse 60% 50% at 50% 100%, hsl(160 50% 50% / 0.05), transparent 50%);
+}
+

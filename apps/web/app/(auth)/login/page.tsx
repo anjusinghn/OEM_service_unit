@@ -95,3 +95,100 @@ export default function LoginPage() {
                   fill="none"
                   className="mt-0.5 shrink-0"
                   aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.75" />
+                  <line
+                    x1="12"
+                    y1="8"
+                    x2="12"
+                    y2="12"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                  />
+                  <circle cx="12" cy="16" r="0.75" fill="currentColor" />
+                </svg>
+                {serverError}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="block text-[12px] font-medium text-sidebar-foreground">
+                Email address
+              </label>
+              <input
+                {...register("email")}
+                id="email"
+                type="email"
+                autoComplete="email"
+                spellCheck={false}
+                placeholder="fleet@kazindustries.com"
+                className={cn(
+                  "h-[38px] w-full rounded-lg border bg-white/[0.05] px-3.5 text-[13px] text-sidebar-active placeholder:text-sidebar-foreground/40",
+                  "transition-[border-color,box-shadow] duration-150",
+                  "focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50",
+                  errors.email
+                    ? "border-critical/50 focus:ring-critical/30 focus:border-critical/50"
+                    : "border-sidebar-border hover:border-white/20",
+                )}
+              />
+              {errors.email && (
+                <p className="text-[11px] text-critical">{errors.email.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="password"
+                className="block text-[12px] font-medium text-sidebar-foreground"
+              >
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  {...register("password")}
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className={cn(
+                    "h-[38px] w-full rounded-lg border bg-white/[0.05] px-3.5 pr-10 text-[13px] text-sidebar-active placeholder:text-sidebar-foreground/40",
+                    "transition-[border-color,box-shadow] duration-150",
+                    "focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50",
+                    errors.password
+                      ? "border-critical/50 focus:ring-critical/30 focus:border-critical/50"
+                      : "border-sidebar-border hover:border-white/20",
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sidebar-foreground/40 transition-colors hover:text-sidebar-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="text-[11px] text-critical">{errors.password.message}</p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="mt-1 flex h-[38px] w-full items-center justify-center gap-2 rounded-lg bg-primary text-[13px] font-medium text-white transition-opacity duration-150 hover:opacity-90 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoading && <Loader2 size={14} className="animate-spin" />}
+              {isLoading ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+        </div>
+
+        <p className="mt-6 text-center text-[11px] text-sidebar-foreground/30">
+          © 2026 kazindustries · Internal use only
+        </p>
+      </div>
+    </div>
+  )
+}

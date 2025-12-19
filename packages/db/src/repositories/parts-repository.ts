@@ -52,3 +52,57 @@ export const partsRepository = {
       await tx.inventoryItem.update({
         where: {
           depotId_partNumber: {
+            depotId,
+            partNumber
+          }
+        },
+        data: {
+          quantity: {
+            decrement: quantity
+          }
+        }
+      })
+
+      return tx.partReservation.create({
+        data: {
+          serviceRequestId,
+          depotId,
+          partNumber,
+          quantity,
+          expiresAt: expiresAt ?? new Date(Date.now() + 2 * 60 * 60 * 1000)
+        }
+      })
+    })
+  },
+
+  releaseReservation(reservationId: string): Promise<PartReservation> {
+    return prisma.$transaction(async (tx) => {
+      const reservation = await tx.partReservation.findUniqueOrThrow({
+        where: { id: reservationId }
+      })
+
+      if (reservation.status !== "HELD") {
+        return reservation
+      }
+
+      await tx.inventoryItem.update({
+        where: {
+          depotId_partNumber: {
+            depotId: reservation.depotId,
+            partNumber: reservation.partNumber
+          }
+        },
+        data: {
+          quantity: {
+            increment: reservation.quantity
+          }
+        }
+      })
+
+      return tx.partReservation.update({
+        where: { id: reservationId },
+        data: { status: "RELEASED" }
+      })
+    })
+  }
+}

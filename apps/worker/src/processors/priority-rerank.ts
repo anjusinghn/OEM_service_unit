@@ -38,3 +38,43 @@ export const processPriorityRerank = async (job: Job<QueuePayloadMap[typeof queu
       failureProximity: entry.breakdown.failureProximity,
       businessImpact: entry.breakdown.businessImpact,
       downtimeCost: entry.breakdown.downtimeCost,
+      serviceWindow: entry.breakdown.serviceWindow,
+      reasons: [...entry.breakdown.reasons]
+    },
+    reasons: entry.breakdown.reasons,
+    overrideBreakdown: undefined
+  })
+
+  await cacheRepository.setVehiclePriority(vehicleId, entry)
+
+  const rank = queue.findIndex((item) => item.vehicleId === vehicleId) + 1
+  if (rank > 0 && rank <= 20) {
+    await enqueueJob(queueNames.aiReasoning, {
+      decisionType: "priority",
+      vehicleId,
+      timestamp
+    })
+  }
+
+  const health = healthByVehicle[vehicleId]
+
+  await enqueueJob(queueNames.depotMatch, {
+    vehicleId,
+    weakestSubsystem: health.weakestSubsystem,
+    timestamp
+  })
+
+  await enqueueJob(queueNames.notifications, {
+    type: "priority_change",
+    vehicleId,
+    payload: {
+      score: entry.score,
+      status: entry.status,
+      statusChanged,
+      breakdown: entry.breakdown
+    },
+    timestamp
+  })
+
+  return { vehicleId, score: entry.score }
+}

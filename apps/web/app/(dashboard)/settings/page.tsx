@@ -59,3 +59,64 @@ export default function SettingsPage() {
               </div>
             </div>
           ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="AI Configuration" description="OpenRouter model and behavior settings">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Status
+            </span>
+            <p className="mt-1 flex items-center gap-2 text-sm font-medium text-foreground">
+              <span className="inline-block h-2 w-2 rounded-full bg-healthy" />
+              Enabled
+            </p>
+          </div>
+          <div>
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Model
+            </span>
+            <p className="mt-1 font-mono text-sm text-foreground">z-ai/glm-4.5-air:free</p>
+          </div>
+          <div>
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Provider
+            </span>
+            <p className="mt-1 text-sm text-foreground">OpenRouter</p>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="API Keys"
+        action={
+          <span className="flex items-center gap-1.5 rounded-full bg-glass px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+            <Lock className="h-3 w-3" /> Phase 6
+          </span>
+        }
+      >
+        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+          <Shield className="mb-3 h-8 w-8 opacity-40" />
+          <p className="text-sm">API key management will be available in Phase 6.</p>
+          <p className="mt-1 text-xs">Includes per-organization keys, rate limits, and expiration policies.</p>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="User Management"
+        action={
+          <span className="flex items-center gap-1.5 rounded-full bg-glass px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+            <Lock className="h-3 w-3" /> Phase 6
+          </span>
+        }
+      >
+        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+          <Users className="mb-3 h-8 w-8 opacity-40" />
+          <p className="text-sm">User management and RBAC will be available in Phase 6.</p>
+          <p className="mt-1 text-xs">Roles: platform_admin, fleet_manager, depot_manager, technician, viewer.</p>
+        </div>
+      </SectionCard>
+    </div>
+  )
+}

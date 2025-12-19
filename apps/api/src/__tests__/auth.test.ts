@@ -96,3 +96,100 @@ describe("auth - role types", () => {
   const roles = ["PLATFORM_ADMIN", "OEM_ADMIN", "DEPOT_MANAGER", "TECHNICIAN", "VIEWER"] as const
 
   it.each(roles)("signs a token with role %s", (role) => {
+    const payload: AuthPayload = { ...testPayload, role }
+    const token = signToken(payload)
+    const decoded = verifyToken(token)
+    expect(decoded!.role).toBe(role)
+  })
+})
+
+describe("auth - middleware", () => {
+  it("requireAuth rejects authorization headers without a Bearer prefix", async () => {
+    const request = createTestApp()
+    const token = signToken(testPayload)
+
+    const response = await request.get("/require-auth").set("Authorization", token)
+
+    expect(response.status).toBe(401)
+    expect(response.body).toEqual({ error: "Authentication required" })
+  })
+
+  it("requireAuth rejects expired tokens", async () => {
+    const request = createTestApp()
+    const expiredToken = jwt.sign(
+      testPayload,
+      process.env.JWT_SECRET ?? process.env.NEXTAUTH_SECRET ?? "dev-secret-change-in-production",
+      { expiresIn: -1 }
+    )
+
+    const response = await request.get("/require-auth").set("Authorization", `Bearer ${expiredToken}`)
+
+    expect(response.status).toBe(401)
+    expect(response.body).toEqual({ error: "Invalid or expired token" })
+  })
+
+  it("requireRole passes with a matching role", async () => {
+    const request = createTestApp()
+    const token = signToken(testPayload)
+
+    const response = await request
+      .get("/require-auth-and-role")
+      .set("Authorization", `Bearer ${token}`)
+
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({ role: "PLATFORM_ADMIN" })
+  })
+
+  it("requireRole rejects non-matching roles", async () => {
+    const request = createTestApp()
+    const token = signToken({ ...testPayload, role: "VIEWER" })
+
+    const response = await request
+      .get("/require-auth-and-role")
+      .set("Authorization", `Bearer ${token}`)
+
+    expect(response.status).toBe(403)
+    expect(response.body).toEqual({ error: "Insufficient permissions" })
+  })
+
+  it("requireRole rejects unauthenticated requests", async () => {
+    const request = createTestApp()
+
+    const response = await request.get("/require-role")
+
+    expect(response.status).toBe(401)
+    expect(response.body).toEqual({ error: "Authentication required" })
+  })
+
+  it("requireAuthOrApiKey accepts JWT bearer tokens without touching API key verification", async () => {
+    const request = createTestApp()
+    const token = signToken(testPayload)
+
+    const response = await request
+      .get("/require-auth-or-api-key")
+      .set("Authorization", `Bearer ${token}`)
+
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({
+      auth: expect.objectContaining({
+        userId: testPayload.userId,
+        email: testPayload.email,
+        role: testPayload.role,
+        organizationId: testPayload.organizationId
+      })
+    })
+    expect(apiKeyVerifyMock).not.toHaveBeenCalled()
+  })
+
+  it("requireAuthOrApiKey detects API key prefixes and rejects invalid keys", async () => {
+    const request = createTestApp()
+
+    const response = await request
+      .get("/require-auth-or-api-key")
+      .set("Authorization", "Bearer kaz_live_invalid")
+
+    expect(response.status).toBe(401)
+    expect(response.body).toEqual({ error: "Invalid or expired API key" })
+    expect(apiKeyVerifyMock).toHaveBeenCalledWith("kaz_live_invalid")
+  })
+})

@@ -62,3 +62,66 @@ const enqueueFaultChanges = async (state: typeof currentState) => {
         timestamp: fault.occurredAt,
         source: SOURCE_ID
       })
+    )
+  })
+
+  await Promise.all(jobs)
+  previousFaultIds = faultIdsForState(state)
+}
+
+const runTick = async (initial = false) => {
+  if (isTickRunning || isShuttingDown) return
+  isTickRunning = true
+
+  try {
+    if (!initial) {
+      currentState = applyMockTick(currentState)
+    }
+
+    await enqueueTelemetry(currentState)
+    await enqueueFaultChanges(currentState)
+
+    console.log(
+      `[simulator] tick=${initial ? "bootstrap" : "update"} vehicles=${currentState.vehicles.length} activeFaults=${Object.values(currentState.faults).flat().length}`
+    )
+  } catch (error) {
+    console.error("[simulator] tick failed", error)
+  } finally {
+    isTickRunning = false
+  }
+}
+
+const shutdown = async (signal: string) => {
+  if (isShuttingDown) return
+  isShuttingDown = true
+
+  console.log(`[simulator] shutting down on ${signal}`)
+  if (tickHandle) {
+    clearInterval(tickHandle)
+    tickHandle = null
+  }
+
+  await closeQueues()
+  process.exit(0)
+}
+
+console.log("[simulator] continuous simulator ready")
+console.log(`[simulator] vehicles=${currentState.vehicles.length} depots=${currentState.depots.length} technicians=${currentState.technicians.length}`)
+console.log(`[simulator] intervalMs=${TICK_INTERVAL_MS} source=${SOURCE_ID}`)
+console.log(`[simulator] startupDelayMs=${SIMULATOR_STARTUP_DELAY_MS}`)
+
+setTimeout(() => {
+  void runTick(true)
+}, SIMULATOR_STARTUP_DELAY_MS)
+
+tickHandle = setInterval(() => {
+  void runTick(false)
+}, TICK_INTERVAL_MS)
+
+process.on("SIGINT", () => {
+  void shutdown("SIGINT")
+})
+
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM")
+})

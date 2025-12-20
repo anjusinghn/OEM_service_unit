@@ -95,3 +95,99 @@ describe("runEscalationReasoning — heuristic escalations", () => {
   describe("sla_risk", () => {
     it("triggers when service requests >= 5", async () => {
       const serviceRequests = Array.from({ length: 5 }, (_, i) => makeServiceRequest(`sr-${i}`))
+      const result = await runEscalationReasoning(makeInput({ serviceRequests }))
+      const sla = result.filter((e) => e.type === "sla_risk")
+      expect(sla).toHaveLength(1)
+      expect(sla[0].severity).toBe("warning")
+      expect(sla[0].description).toContain("5")
+    })
+
+    it("does not trigger when service requests < 5", async () => {
+      const serviceRequests = Array.from({ length: 4 }, (_, i) => makeServiceRequest(`sr-${i}`))
+      const result = await runEscalationReasoning(makeInput({ serviceRequests }))
+      expect(result.filter((e) => e.type === "sla_risk")).toHaveLength(0)
+    })
+
+    it("slices affectedEntities to max 10", async () => {
+      const serviceRequests = Array.from({ length: 15 }, (_, i) => makeServiceRequest(`sr-${i}`))
+      const result = await runEscalationReasoning(makeInput({ serviceRequests }))
+      const sla = result.find((e) => e.type === "sla_risk")!
+      expect(sla.affectedEntities).toHaveLength(10)
+    })
+  })
+
+  describe("rapid_degradation", () => {
+    it("triggers when >= 3 vehicles are critical", async () => {
+      const vehicles = Array.from({ length: 3 }, (_, i) => makeVehicle(`v-${i}`))
+      const healthByVehicle: Record<string, HealthScore> = {}
+      for (const v of vehicles) healthByVehicle[v.id] = criticalHealth
+
+      const result = await runEscalationReasoning(makeInput({ vehicles, healthByVehicle }))
+      const deg = result.filter((e) => e.type === "rapid_degradation")
+      expect(deg).toHaveLength(1)
+      expect(deg[0].severity).toBe("critical")
+      expect(deg[0].affectedEntities).toHaveLength(3)
+    })
+
+    it("does not trigger when < 3 vehicles are critical", async () => {
+      const vehicles = Array.from({ length: 2 }, (_, i) => makeVehicle(`v-${i}`))
+      const healthByVehicle: Record<string, HealthScore> = {}
+      for (const v of vehicles) healthByVehicle[v.id] = criticalHealth
+
+      const result = await runEscalationReasoning(makeInput({ vehicles, healthByVehicle }))
+      expect(result.filter((e) => e.type === "rapid_degradation")).toHaveLength(0)
+    })
+
+    it("only counts vehicles with critical status", async () => {
+      const vehicles = Array.from({ length: 5 }, (_, i) => makeVehicle(`v-${i}`))
+      const healthByVehicle: Record<string, HealthScore> = {}
+      healthByVehicle["v-0"] = criticalHealth
+      healthByVehicle["v-1"] = criticalHealth
+      healthByVehicle["v-2"] = { ...criticalHealth, status: "watch" }
+      healthByVehicle["v-3"] = { ...criticalHealth, status: "healthy" }
+      healthByVehicle["v-4"] = criticalHealth
+
+      const result = await runEscalationReasoning(makeInput({ vehicles, healthByVehicle }))
+      expect(result.filter((e) => e.type === "rapid_degradation")).toHaveLength(1)
+      const deg = result.find((e) => e.type === "rapid_degradation")!
+      expect(deg.affectedEntities).toHaveLength(3)
+    })
+
+    it("slices affectedEntities to max 10", async () => {
+      const vehicles = Array.from({ length: 15 }, (_, i) => makeVehicle(`v-${i}`))
+      const healthByVehicle: Record<string, HealthScore> = {}
+      for (const v of vehicles) healthByVehicle[v.id] = criticalHealth
+
+      const result = await runEscalationReasoning(makeInput({ vehicles, healthByVehicle }))
+      const deg = result.find((e) => e.type === "rapid_degradation")!
+      expect(deg.affectedEntities).toHaveLength(10)
+    })
+  })
+
+  it("triggers all 3 escalation types simultaneously", async () => {
+    const vehicles = Array.from({ length: 3 }, (_, i) => makeVehicle(`v-${i}`))
+    const healthByVehicle: Record<string, HealthScore> = {}
+    for (const v of vehicles) healthByVehicle[v.id] = criticalHealth
+
+    const result = await runEscalationReasoning(makeInput({
+      vehicles,
+      healthByVehicle,
+      serviceRequests: Array.from({ length: 5 }, (_, i) => makeServiceRequest(`sr-${i}`)),
+      depots: [makeDepot("d-1", 4, 4)]
+    }))
+    const types = result.map((e) => e.type)
+    expect(types).toContain("capacity_crunch")
+    expect(types).toContain("sla_risk")
+    expect(types).toContain("rapid_degradation")
+  })
+
+  it("sets model and latencyMs to null for all heuristic escalations", async () => {
+    const result = await runEscalationReasoning(makeInput({
+      serviceRequests: Array.from({ length: 5 }, (_, i) => makeServiceRequest(`sr-${i}`))
+    }))
+    for (const escalation of result) {
+      expect(escalation.model).toBeNull()
+      expect(escalation.latencyMs).toBeNull()
+    }
+  })
+})

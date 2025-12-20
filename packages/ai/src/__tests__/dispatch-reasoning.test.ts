@@ -110,3 +110,114 @@ describe("runDispatchReasoning — heuristic fallback", () => {
     promptMocks.planningFormatMessages.mockClear()
     promptMocks.planningPipe.mockClear()
     promptMocks.summaryPipe.mockClear()
+  })
+
+  it("returns heuristic plan when AI is disabled", async () => {
+    const result = await runDispatchReasoning(makeInput())
+    expect(result.depotId).toBe("d-1")
+    expect(result.model).toBeNull()
+    expect(result.latencyMs).toBeNull()
+    expect(result.confidence).toBe(0.5)
+  })
+
+  it("joins depot reasons as depotReasoning", async () => {
+    const result = await runDispatchReasoning(makeInput())
+    expect(result.depotReasoning).toBe("Close proximity Parts ready")
+  })
+
+  it("sets urgencyLevel to 'urgent' for critical health", async () => {
+    const result = await runDispatchReasoning(makeInput({
+      health: {
+        overall: 30, signalQuality: 0.9, trend: "degrading", status: "critical",
+        weakestSubsystem: "brakes",
+        subsystems: { engine: 30, cooling: 30, brakes: 20, electrical: 30, exhaust: 30, turbo: 30, fuel: 30, transmission: 30 }
+      }
+    }))
+    expect(result.urgencyLevel).toBe("urgent")
+  })
+
+  it("sets urgencyLevel to 'elevated' for watch health", async () => {
+    const result = await runDispatchReasoning(makeInput())
+    expect(result.urgencyLevel).toBe("elevated")
+  })
+
+  it("sets urgencyLevel to 'routine' for healthy status", async () => {
+    const result = await runDispatchReasoning(makeInput({
+      health: {
+        overall: 90, signalQuality: 0.95, trend: "stable", status: "healthy",
+        weakestSubsystem: "engine",
+        subsystems: { engine: 80, cooling: 85, brakes: 90, electrical: 85, exhaust: 80, turbo: 85, fuel: 95, transmission: 90 }
+      }
+    }))
+    expect(result.urgencyLevel).toBe("routine")
+  })
+
+  it("includes fault titles as watchPoints (max 3)", async () => {
+    const faults = Array.from({ length: 5 }, (_, i) => ({
+      id: `f-${i}`, vehicleId: "v-1", dtcCode: `P000${i}`, subsystem: "engine" as const,
+      severity: "warning" as const, title: `Fault ${i}`, description: "desc",
+      occurredAt: "2024-01-01", occurrences: 1
+    }))
+    const result = await runDispatchReasoning(makeInput({ faults }))
+    expect(result.watchPoints).toHaveLength(3)
+    expect(result.watchPoints).toEqual(["Fault 0", "Fault 1", "Fault 2"])
+  })
+
+  it("includes alternativePlan when second depot exists", async () => {
+    const result = await runDispatchReasoning(makeInput({
+      depotRecommendations: [
+        {
+          depotId: "d-1", score: 85, etaHours: 2, distanceKm: 50, capacityOpen: 3,
+          specialtyMatch: true, partsReady: true, reasons: ["Primary"], requiredParts: []
+        },
+        {
+          depotId: "d-2", score: 70, etaHours: 4, distanceKm: 100, capacityOpen: 1,
+          specialtyMatch: false, partsReady: false, reasons: ["Backup option"], requiredParts: []
+        }
+      ]
+    }))
+    expect(result.alternativePlan).not.toBeNull()
+    expect(result.alternativePlan!.depotId).toBe("d-2")
+    expect(result.alternativePlan!.reasoning).toBe("Backup option")
+  })
+
+  it("sets alternativePlan to null when only one depot", async () => {
+    const result = await runDispatchReasoning(makeInput())
+    expect(result.alternativePlan).toBeNull()
+  })
+
+  it("calculates estimatedTotalCost based on parts count", async () => {
+    const result = await runDispatchReasoning(makeInput({ partsToStage: ["p1", "p2", "p3"] }))
+    expect(result.estimatedTotalCost).toBe(3 * 2500)
+  })
+
+  it("uses minimum 1 for cost calculation with empty parts", async () => {
+    const result = await runDispatchReasoning(makeInput({ partsToStage: [] }))
+    expect(result.estimatedTotalCost).toBe(2500)
+  })
+
+  it("includes partsToStage in result", async () => {
+    const result = await runDispatchReasoning(makeInput({ partsToStage: ["brake_pad", "rotor"] }))
+    expect(result.partsToStage).toEqual(["brake_pad", "rotor"])
+  })
+
+  it("includes agentTrace with fallback marker", async () => {
+    const result = await runDispatchReasoning(makeInput())
+    expect(result.agentTrace).toContain("fallback: heuristic dispatch used")
+    expect(result.agentTrace).toContain("vehicle_lookup")
+  })
+
+  it("has estimatedRepairHours of 4", async () => {
+    const result = await runDispatchReasoning(makeInput())
+    expect(result.estimatedRepairHours).toBe(4)
+  })
+
+  it("handles empty recommendations gracefully", async () => {
+    const result = await runDispatchReasoning(makeInput({
+      depotRecommendations: []
+    }))
+    expect(result.depotId).toBe("")
+    expect(result.depotReasoning).toBe("No depot recommendation available.")
+    expect(result.alternativePlan).toBeNull()
+  })
+

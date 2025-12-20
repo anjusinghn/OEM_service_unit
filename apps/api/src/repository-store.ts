@@ -141,3 +141,146 @@ const mapDepot = (depot: Awaited<ReturnType<typeof depotRepository.findAll>>[num
   specialties: toSubsystemArray(depot.specialties),
   totalBays: depot.totalBays,
   occupiedBays: depot.occupiedBays
+})
+
+const mapTechnician = (technician: Awaited<ReturnType<typeof technicianRepository.findAll>>[number]): Technician => ({
+  id: technician.id,
+  name: technician.name,
+  depotId: technician.depotId,
+  certifications: toSubsystemArray(technician.certifications),
+  currentLoad: technician.currentLoad,
+  maxLoad: technician.maxLoad,
+  firstTimeFixRate: technician.firstTimeFixRate
+})
+
+const mapPart = (part: Awaited<ReturnType<typeof partsRepository.getCatalog>>[number]): Part => ({
+  partNumber: part.partNumber,
+  name: part.name,
+  subsystem: isSubsystemKey(part.subsystem) ? part.subsystem : "engine",
+  leadDays: part.leadDays,
+  price: part.price
+})
+
+const mapInventory = (item: Awaited<ReturnType<typeof partsRepository.getInventory>>[number]): InventoryItem => ({
+  depotId: item.depotId,
+  partNumber: item.partNumber,
+  quantity: item.quantity,
+  reorderPoint: item.reorderPoint
+})
+
+const mapFault = (fault: Awaited<ReturnType<typeof faultRepository.findByVehicle>>[number]): VehicleFault => ({
+  id: fault.id,
+  vehicleId: fault.vehicleId,
+  dtcCode: fault.dtcCode,
+  subsystem: isSubsystemKey(fault.subsystem) ? fault.subsystem : "engine",
+  severity: fault.severity as VehicleFault["severity"],
+  title: fault.title,
+  description: fault.description,
+  occurredAt: fault.occurredAt.toISOString(),
+  occurrences: fault.occurrences
+})
+
+const mapServiceHistory = (record: Awaited<ReturnType<typeof serviceHistoryRepository.findRecent>>[number]): ServiceHistoryRecord => ({
+  id: record.id,
+  vehicleId: record.vehicleId,
+  depotId: record.depotId,
+  technicianId: record.technicianId,
+  subsystem: isSubsystemKey(record.subsystem) ? record.subsystem : "engine",
+  outcome: record.outcome,
+  resolvedAt: record.resolvedAt.toISOString(),
+  firstTimeFix: record.firstTimeFix
+})
+
+const mapServiceRequest = (request: Awaited<ReturnType<typeof serviceRequestRepository.findAll>>[number]): ServiceRequest => ({
+  id: request.id,
+  vehicleId: request.vehicleId,
+  priorityScore: request.priorityScore,
+  weakestSubsystem: isSubsystemKey(request.weakestSubsystem) ? request.weakestSubsystem : "engine",
+  depotId: request.depotId,
+  technicianId: request.technicianId,
+  requiredPartNumbers: toStringArray(request.requiredPartNumbers),
+  status: request.status as ServiceRequestStatus,
+  createdAt: request.createdAt.toISOString(),
+  scheduledFor: request.scheduledFor?.toISOString() ?? null,
+  timeline: request.timeline.map((event) => ({
+    status: event.status as ServiceRequestStatus,
+    at: event.at.toISOString(),
+    note: event.note
+  }))
+})
+
+type LatestSignalRow = {
+  vehicleId: string
+  timestamp: Date
+  coolantTemp: number
+  oilPressure: number
+  batteryVoltage: number
+  turboBoost: number
+  brakeWear: number
+  exhaustTemp: number
+  fuelLevel: number
+  speed: number
+  mileage: number
+}
+
+const loadLatestSignals = async (): Promise<Record<string, VehicleSignalSnapshot>> => {
+  const rows = await prisma.$queryRaw<LatestSignalRow[]>`
+    SELECT DISTINCT ON (vehicle_id)
+      vehicle_id AS "vehicleId",
+      timestamp,
+      coolant_temp AS "coolantTemp",
+      oil_pressure AS "oilPressure",
+      battery_voltage AS "batteryVoltage",
+      turbo_boost AS "turboBoost",
+      brake_wear AS "brakeWear",
+      exhaust_temp AS "exhaustTemp",
+      fuel_level AS "fuelLevel",
+      speed,
+      mileage
+    FROM vehicle_signals
+    ORDER BY vehicle_id, timestamp DESC
+  `
+
+  return Object.fromEntries(
+    rows.map((row) => [
+      row.vehicleId,
+      {
+        vehicleId: row.vehicleId,
+        timestamp: row.timestamp.toISOString(),
+        coolantTemp: row.coolantTemp,
+        oilPressure: row.oilPressure,
+        batteryVoltage: row.batteryVoltage,
+        turboBoost: row.turboBoost,
+        brakeWear: row.brakeWear,
+        exhaustTemp: row.exhaustTemp,
+        fuelLevel: row.fuelLevel,
+        speed: row.speed,
+        mileage: row.mileage
+      }
+    ])
+  )
+}
+
+type ForensicsOverlay = {
+  patternStatuses: Map<string, PatternStatus>
+  investigations: Investigation[]
+}
+
+class RepositoryStore {
+  private readonly emitter = new EventEmitter()
+  private readonly timer: NodeJS.Timeout
+  private readonly overlay: ForensicsOverlay = {
+    patternStatuses: new Map(),
+    investigations: []
+  }
+
+  constructor() {
+    this.timer = setInterval(() => {
+      this.emitter.emit("change")
+    }, 12_000)
+  }
+
+  dispose() {
+    clearInterval(this.timer)
+  }
+

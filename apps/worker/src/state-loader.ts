@@ -81,3 +81,86 @@ const loadLatestSignals = async (): Promise<Record<string, VehicleSignalSnapshot
 
   return Object.fromEntries(
     rows.map((row) => [
+      row.vehicleId,
+      {
+        vehicleId: row.vehicleId,
+        timestamp: row.timestamp.toISOString(),
+        coolantTemp: row.coolantTemp,
+        oilPressure: row.oilPressure,
+        batteryVoltage: row.batteryVoltage,
+        turboBoost: row.turboBoost,
+        brakeWear: row.brakeWear,
+        exhaustTemp: row.exhaustTemp,
+        fuelLevel: row.fuelLevel,
+        speed: row.speed,
+        mileage: row.mileage
+      }
+    ])
+  )
+}
+
+const mapVehicle = (vehicle: Awaited<ReturnType<typeof vehicleRepository.findAll>>[number]): Vehicle => ({
+  id: vehicle.id,
+  vin: vehicle.vin,
+  make: vehicle.make,
+  model: vehicle.model,
+  year: vehicle.year,
+  region: vehicle.region,
+  routeName: vehicle.routeName,
+  buildBatch: vehicle.buildBatch,
+  softwareVersion: vehicle.softwareVersion,
+  cargoPriority: vehicle.cargoPriority,
+  routeCriticality: vehicle.routeCriticality,
+  downtimeCostPerHour: vehicle.downtimeCostPerHour,
+  nextStopHours: vehicle.nextStopHours,
+  coordinates: { lat: vehicle.latitude, lng: vehicle.longitude },
+  depotAffinityId: vehicle.depotAffinityId ?? ""
+})
+
+const mapDepot = (depot: Awaited<ReturnType<typeof depotRepository.findAll>>[number]): Depot => ({
+  id: depot.id,
+  name: depot.name,
+  city: depot.city,
+  region: depot.region,
+  coordinates: { lat: depot.latitude, lng: depot.longitude },
+  specialties: toSubsystemArray(depot.specialties),
+  totalBays: depot.totalBays,
+  occupiedBays: depot.occupiedBays
+})
+
+const mapTechnician = (technician: Awaited<ReturnType<typeof technicianRepository.findAll>>[number]): Technician => ({
+  id: technician.id,
+  name: technician.name,
+  depotId: technician.depotId,
+  certifications: toSubsystemArray(technician.certifications),
+  currentLoad: technician.currentLoad,
+  maxLoad: technician.maxLoad,
+  firstTimeFixRate: technician.firstTimeFixRate
+})
+
+const mapPart = (part: Awaited<ReturnType<typeof partsRepository.getCatalog>>[number]): Part => ({
+  partNumber: part.partNumber,
+  name: part.name,
+  subsystem: isSubsystemKey(part.subsystem) ? part.subsystem : "engine",
+  leadDays: part.leadDays,
+  price: part.price
+})
+
+const mapInventory = (item: Awaited<ReturnType<typeof partsRepository.getInventory>>[number]): InventoryItem => ({
+  depotId: item.depotId,
+  partNumber: item.partNumber,
+  quantity: item.quantity,
+  reorderPoint: item.reorderPoint
+})
+
+const mapFault = (fault: Awaited<ReturnType<typeof prisma.vehicleFault.findMany>>[number]): VehicleFault => ({
+  id: fault.id,
+  vehicleId: fault.vehicleId,
+  dtcCode: fault.dtcCode,
+  subsystem: isSubsystemKey(fault.subsystem) ? fault.subsystem : "engine",
+  severity: fault.severity as VehicleFault["severity"],
+  title: fault.title,
+  description: fault.description,
+  occurredAt: fault.occurredAt.toISOString(),
+  occurrences: fault.occurrences
+})

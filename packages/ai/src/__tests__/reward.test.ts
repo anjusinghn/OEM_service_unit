@@ -97,3 +97,101 @@ describe("computeRewardSignals", () => {
       ...baseInput,
       completion: { ...baseCompletion, priorityRating: 4, depotRating: 5, technicianRating: 3 }
     }
+    const result = computeRewardSignals(input)
+    expect(result.priority.rewardBreakdown.rating).toBe(0.8)
+    expect(result.depot.rewardBreakdown.rating).toBe(1)
+    expect(result.technician.rewardBreakdown.rating).toBe(0.6)
+  })
+
+  it("handles all ratings null → averageScore returns null → normalized to 0.5", () => {
+    const result = computeRewardSignals(baseInput)
+    expect(result.priority.rewardBreakdown.rating).toBe(0.5)
+  })
+
+  it("depot falls back to normalizedRating when depotRating is null", () => {
+    const input: RewardComputationInput = {
+      ...baseInput,
+      completion: { ...baseCompletion, priorityRating: 3, technicianRating: 3 }
+    }
+    const result = computeRewardSignals(input)
+    expect(result.depot.rewardBreakdown.rating).toBe(0.6)
+  })
+
+  it("technician falls back to normalizedRating when technicianRating is null", () => {
+    const input: RewardComputationInput = {
+      ...baseInput,
+      completion: { ...baseCompletion, priorityRating: 4, depotRating: 4 }
+    }
+    const result = computeRewardSignals(input)
+    expect(result.technician.rewardBreakdown.rating).toBe(0.8)
+  })
+
+  it("uses confidence from decision objects", () => {
+    const input: RewardComputationInput = {
+      ...baseInput,
+      priorityDecision: { confidence: 0.9, urgency: "urgent" },
+      depotDecision: { confidence: 0.8 },
+      technicianDecision: { confidence: 0.7 }
+    }
+    const result = computeRewardSignals(input)
+    expect(result.priority.rewardBreakdown.confidence).toBe(0.9)
+    expect(result.depot.rewardBreakdown.confidence).toBe(0.8)
+    expect(result.technician.rewardBreakdown.confidence).toBe(0.7)
+  })
+
+  it("defaults confidence to 0 when decisions are null", () => {
+    const result = computeRewardSignals(baseInput)
+    expect(result.priority.rewardBreakdown.confidence).toBe(0)
+    expect(result.depot.rewardBreakdown.confidence).toBe(0)
+    expect(result.technician.rewardBreakdown.confidence).toBe(0)
+  })
+
+  it("computes perfect priority rewardScore = 1 with best inputs", () => {
+    const input: RewardComputationInput = {
+      ...baseInput,
+      completion: {
+        ...baseCompletion,
+        diagnosisCorrect: true,
+        firstTimeFix: true,
+        repairDuration: 0,
+        priorityRating: 5,
+        depotRating: 5,
+        technicianRating: 5
+      }
+    }
+    const result = computeRewardSignals(input)
+    expect(result.priority.rewardScore).toBe(1)
+  })
+
+  it("clamps all scores between 0 and 1 with worst inputs", () => {
+    const input: RewardComputationInput = {
+      ...baseInput,
+      completion: {
+        ...baseCompletion,
+        diagnosisCorrect: false,
+        firstTimeFix: false,
+        repairDuration: 100,
+        priorityRating: 0,
+        depotRating: 0,
+        technicianRating: 0
+      }
+    }
+    const result = computeRewardSignals(input)
+    expect(result.priority.rewardScore).toBeGreaterThanOrEqual(0)
+    expect(result.depot.rewardScore).toBeGreaterThanOrEqual(0)
+    expect(result.technician.rewardScore).toBeGreaterThanOrEqual(0)
+  })
+
+  it("handles decision objects with null confidence", () => {
+    const input: RewardComputationInput = {
+      ...baseInput,
+      priorityDecision: { confidence: null, urgency: null },
+      depotDecision: { confidence: null },
+      technicianDecision: { confidence: null }
+    }
+    const result = computeRewardSignals(input)
+    expect(result.priority.rewardBreakdown.confidence).toBe(0)
+    expect(result.depot.rewardBreakdown.confidence).toBe(0)
+    expect(result.technician.rewardBreakdown.confidence).toBe(0)
+  })
+})

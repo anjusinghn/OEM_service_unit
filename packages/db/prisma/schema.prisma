@@ -142,3 +142,147 @@ model Vehicle {
 
 // ═══════════════════════════════════════════════════════════════
 // SIGNAL TRUST LAYER — TELEMETRY
+// ═══════════════════════════════════════════════════════════════
+
+model SignalDefinition {
+  id            String  @id @default(cuid())
+  name          String  @unique
+  unit          String
+  minValue      Float?  @map("min_value")
+  maxValue      Float?  @map("max_value")
+  sourceSystem  String? @map("source_system")
+  normalization Json?
+
+  @@map("signal_definitions")
+}
+
+model VehicleSignal {
+  vehicleId      String   @map("vehicle_id")
+  timestamp      DateTime @db.Timestamptz
+  coolantTemp    Float    @map("coolant_temp")
+  oilPressure    Float    @map("oil_pressure")
+  batteryVoltage Float    @map("battery_voltage")
+  turboBoost     Float    @map("turbo_boost")
+  brakeWear      Float    @map("brake_wear")
+  exhaustTemp    Float    @map("exhaust_temp")
+  fuelLevel      Float    @map("fuel_level")
+  speed          Float
+  mileage        Float
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, timestamp])
+  @@index([vehicleId, timestamp(sort: Desc)])
+  @@index([timestamp])
+  @@map("vehicle_signals")
+}
+
+model VehicleHealthSnapshot {
+  vehicleId        String   @map("vehicle_id")
+  timestamp        DateTime @db.Timestamptz
+  healthScore      Float    @map("health_score")
+  riskLevel        String   @map("risk_level")
+  subsystemScores  Json     @default("{}") @map("subsystem_scores")
+  faultBreakdown   Json     @default("{}") @map("fault_breakdown")
+  signalBreakdown  Json?    @map("signal_breakdown")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, timestamp])
+  @@index([vehicleId, timestamp(sort: Desc)])
+  @@index([timestamp])
+  @@map("vehicle_health_snapshots")
+}
+
+model PrioritySnapshot {
+  vehicleId         String   @map("vehicle_id")
+  timestamp         DateTime @db.Timestamptz
+  score             Float
+  status            String
+  scoreBreakdown    Json     @default("{}") @map("score_breakdown")
+  reasons           Json     @default("[]")
+  overrideBreakdown Json?    @map("override_breakdown")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, timestamp])
+  @@index([vehicleId, timestamp(sort: Desc)])
+  @@index([timestamp])
+  @@map("priority_snapshots")
+}
+
+model VehicleEvent {
+  id        String      @id @default(cuid())
+  vehicleId String      @map("vehicle_id")
+  eventType String      @map("event_type")
+  dtcCode   String?     @map("dtc_code")
+  severity  DtcSeverity @default(INFO)
+  payload   Json        @default("{}")
+  timestamp DateTime    @db.Timestamptz
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, timestamp])
+  @@index([dtcCode])
+  @@map("vehicle_events")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DTC REGISTRY
+// ═══════════════════════════════════════════════════════════════
+
+model DtcCode {
+  id           String      @id @default(cuid())
+  code         String      @unique
+  system       String
+  subsystem    Subsystem
+  severity     DtcSeverity @default(INFO)
+  description  String
+  knownCauses  String[]    @map("known_causes")
+  remedies     String[]
+  relatedCodes String[]    @map("related_codes")
+
+  @@index([subsystem])
+  @@map("dtc_codes")
+}
+
+enum DtcSeverity {
+  INFO
+  WARNING
+  CRITICAL
+  SAFETY
+}
+
+enum Subsystem {
+  ENGINE
+  COOLING
+  BRAKES
+  ELECTRICAL
+  EXHAUST
+  TURBO
+  FUEL
+  TRANSMISSION
+  STEERING
+  SUSPENSION
+  BODY
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VEHICLE FAULTS (active / resolved)
+// ═══════════════════════════════════════════════════════════════
+
+model VehicleFault {
+  id          String    @id @default(cuid())
+  vehicleId   String    @map("vehicle_id")
+  dtcCode     String    @map("dtc_code")
+  subsystem   String
+  severity    String
+  title       String
+  description String
+  occurredAt  DateTime  @map("occurred_at") @db.Timestamptz
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz
+  occurrences Int       @default(1)
+  isActive    Boolean   @default(true) @map("is_active")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+

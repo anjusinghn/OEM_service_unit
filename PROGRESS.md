@@ -233,3 +233,120 @@ Technology used:
 - `@kaz/signal-trust`
 - `@kaz/orchestration`
 - `@kaz/forensics`
+- `@kaz/ai`
+- `@kaz/oem-adapters-mock`
+- `@kaz/ui`
+
+### Phase 5 dashboard technology
+
+- Tailwind CSS v4
+- Zustand 5.x
+- TanStack Query 5.x
+- Recharts 2.x
+- Framer Motion 11.x
+- cmdk 1.x
+- Sonner
+- Lucide React
+- @radix-ui primitives
+
+---
+
+## What You Can Review Right Now
+
+### Phase 1 operational review
+
+- persistent vehicle / depot / technician / workflow state
+- DB-backed dashboard and service workflow endpoints
+
+### Phase 2 runtime review
+
+- continuous simulator
+- worker queue execution
+- cohort / anomaly / pattern / investigation / supplier / heatmap endpoints
+
+### Phase 3 AI review
+
+- AI-enriched vehicle priority data
+- depot AI reasoning
+- dispatch plan endpoint
+- escalation endpoint
+
+### Phase 4 intelligence review
+
+- intelligence snapshot endpoint
+- decision audit trail endpoint
+- reward signals in persistence
+- dashboard intelligence summary
+
+---
+
+## Phase 6 - Auth, RBAC, Multi-Tenancy, Test Coverage
+
+Phase 6 adds authentication, authorization, multi-tenancy foundations, and comprehensive test coverage.
+
+Implemented pieces:
+
+### 6.1 Authentication
+- Custom JWT auth with bcryptjs + jsonwebtoken in `apps/api/src/auth.ts`
+- `signToken`, `verifyToken`, `requireAuth` middleware, `requireRole` middleware, `requireAuthOrApiKey` middleware
+- Login handler (`POST /api/v1/auth/login`) and me handler (`GET /api/v1/auth/me`) in the Express API
+- All API endpoints protected with `requireAuth` (except `/health`, `/api/v1/events`)
+- Write-sensitive endpoints additionally gated with `requireRole` (dispatch, status advance, completion, demo reset, pattern management, investigation management)
+- Seed users get bcrypt-hashed passwords (`kazadmin123`)
+- `JWT_SECRET` configured in `.env.example`
+
+### 6.2 Multi-Tenancy
+- User, API key, vehicle, depot, and OEM connection models already scoped by `organizationId` in the Prisma schema
+- `findByOrganization` methods added to vehicle, depot, and service request repositories
+- API key authentication (`kaz_live_*` prefix) scopes to the key's organization
+- User repository with `findByEmail`, `findById`, `findByOrganization`, `createWithPassword`, `verifyPassword`
+- API key repository with `create` (returns raw key), `verify` (validates + updates lastUsedAt), `findByOrganization`, `revoke`
+
+### 6.3 Web App Auth
+- Login page at `/login` with form validation (react-hook-form + Zod)
+- Next.js middleware (`apps/web/middleware.ts`) redirects unauthenticated users to `/login`
+- Auth token stored in localStorage + cookie (for middleware access)
+- `useAuth` hook for login, logout, and token management
+- `useRbac` hook with role hierarchy and permission checks
+- `RoleGate` and `MinRoleGate` components for declarative role-based UI visibility
+- API client injects `Authorization: Bearer` header automatically
+- Top bar shows user avatar, role badge, and logout dropdown
+- Dispatch buttons hidden for VIEWER and TECHNICIAN roles
+
+### 6.4 Test Coverage
+- Vitest 4.x workspace configuration at root (`vitest.workspace.ts`)
+- `turbo.json` test task, root `pnpm test` script
+- **signal-trust**: 100% statements, 90.9% branches, 100% functions, 100% lines
+- **orchestration**: 100% statements, 96.15% branches, 100% functions, 100% lines
+- **ai**: unit tests for reward computation, few-shot bank, improvement patterns, output schemas, reasoning fallback paths, and dispatch tools
+- **api**: JWT token tests, Supertest integration tests for auth + core + forensics endpoints, RBAC enforcement tests
+
+What this means now:
+
+- the API is no longer publicly accessible; every request requires a valid JWT or API key
+- roles control what each user can do (dispatch, manage patterns, reset demo, etc.)
+- the web app redirects unauthenticated users to a login page
+- core packages have 80%+ test coverage with enforced thresholds
+- the platform is ready for multi-organization deployment with org-scoped queries
+
+---
+
+## What Is Still Not Implemented
+
+- Phase 7 CI/CD and cloud deployment
+- real OEM adapters beyond the mock adapter
+
+---
+
+## Bottom Line
+
+The repository now implements a working production-style local platform through Phase 6.
+
+- Phase 1 provides durable data and repository-backed operations.
+- Phase 2 provides the live async runtime.
+- Phase 3 provides AI-assisted orchestration.
+- Phase 4 provides reward-driven review and learning surfaces.
+- Phase 5 provides the enterprise dashboard with Tailwind CSS, shadcn/ui patterns, Recharts, Framer Motion, and Zustand.
+- Phase 6 provides authentication, role-based access control, multi-tenancy foundations, and comprehensive test coverage.
+
+That means the current system is a persisted, asynchronous, AI-assisted, reviewable, visually complete, authenticated, and tested fleet service platform through six planned phases.

@@ -165,3 +165,86 @@ export function DispatchAgent({ vehicleId }: Props) {
           </div>
 
           {vehicle.faults.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-border">
+              <div className="flex items-center gap-1.5 mb-2">
+                <AlertTriangle size={12} className="text-watch" />
+                <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Active Faults
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {vehicle.faults.slice(0, 5).map((f) => (
+                  <span
+                    key={f.id}
+                    className={cn(
+                      "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+                      f.severity === "critical" || f.severity === "safety"
+                        ? "bg-critical-muted text-critical"
+                        : "bg-watch-muted text-watch"
+                    )}
+                  >
+                    {f.dtcCode}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="glass-card rounded-xl px-5 py-4 text-sm text-muted-foreground">
+          Vehicle data not yet loaded. Ensure the dashboard SSE connection is
+          active.
+        </div>
+      )}
+
+      {!isRunning && !done && (
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+          <button
+            type="button"
+            onClick={runDispatch}
+            className={cn(
+              "flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-semibold",
+              "bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+            )}
+          >
+            <Cpu size={15} />
+            Run AI Dispatch
+          </button>
+        </motion.div>
+      )}
+
+      {error && (
+        <div className="glass-card rounded-xl border-critical/30 px-4 py-3 text-sm text-critical">
+          {error}
+        </div>
+      )}
+
+      {(isRunning || traceSteps.length > 0) && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <AgentTrace steps={traceSteps} isRunning={isRunning} />
+        </motion.div>
+      )}
+
+      {plan && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <DispatchPlanCard plan={plan} />
+        </motion.div>
+      )}
+
+      {plan && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="pt-1"
+        >
+          <DispatchActions vehicleId={vehicleId} onCancel={handleReset} />
+        </motion.div>
+      )}
+    </div>
+  )
+}

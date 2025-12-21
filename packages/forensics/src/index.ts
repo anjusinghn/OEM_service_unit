@@ -282,3 +282,145 @@ export const detectAnomalousCohorts = (
   return anomalies.sort((left, right) => anomalySeverityRank(right.severity) - anomalySeverityRank(left.severity) || right.rateRatio - left.rateRatio)
 }
 
+export const detectCrossSystemCorrelations = (
+  state: DemoState,
+  healthByVehicle: Record<string, HealthScore>
+): PatternCorrelation[] => {
+  const correlations: PatternCorrelation[] = []
+
+  for (let leftIndex = 0; leftIndex < SUBSYSTEMS.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < SUBSYSTEMS.length; rightIndex += 1) {
+      const leftSubsystem = SUBSYSTEMS[leftIndex]
+      const rightSubsystem = SUBSYSTEMS[rightIndex]
+      const leftValues = state.vehicles.map((vehicle) => healthByVehicle[vehicle.id]?.subsystems[leftSubsystem] ?? 0)
+      const rightValues = state.vehicles.map((vehicle) => healthByVehicle[vehicle.id]?.subsystems[rightSubsystem] ?? 0)
+      const leftMean = average(leftValues)
+      const rightMean = average(rightValues)
+      const covariance = average(leftValues.map((value, index) => (value - leftMean) * (rightValues[index] - rightMean)))
+      const leftVariance = average(leftValues.map((value) => (value - leftMean) ** 2))
+      const rightVariance = average(rightValues.map((value) => (value - rightMean) ** 2))
+      const denominator = Math.sqrt(leftVariance * rightVariance)
+      const strength = denominator > 0 ? covariance / denominator : 0
+
+      if (Math.abs(strength) < 0.35) continue
+
+      correlations.push({
+        factorA: leftSubsystem,
+        factorB: rightSubsystem,
+        correlationType: "cross_system",
+        strength: round(strength, 2),
+        description: `${leftSubsystem} and ${rightSubsystem} health move ${strength > 0 ? "together" : "in opposite directions"} across the fleet`
+      })
+    }
+  }
+
+  return correlations.sort((left, right) => Math.abs(right.strength) - Math.abs(left.strength))
+}
+
+export const detectDtcSequences = (state: DemoState): FailurePattern[] => {
+  const groups = new Map<string, { vehicleIds: string[]; faults: VehicleFault[] }>()
+
+  for (const vehicle of state.vehicles) {
+    const faults = [...(state.faults[vehicle.id] ?? [])].sort(
+      (left, right) => new Date(left.occurredAt).getTime() - new Date(right.occurredAt).getTime()
+    )
+    if (!faults.length) continue
+    const sequenceKey = faults.map((fault) => fault.dtcCode).join("->")
+    const current = groups.get(sequenceKey) ?? { vehicleIds: [], faults }
+    current.vehicleIds.push(vehicle.id)
+    groups.set(sequenceKey, current)
+  }
+
+  const patterns = [...groups.entries()]
+    .map(([sequenceKey, group], index) => {
+      const steps: DtcSequenceStep[] = group.faults.map((fault, stepIndex) => ({
+        dtcCode: fault.dtcCode,
+        subsystem: fault.subsystem,
+        severity: fault.severity,
+        medianDaysFromStart: stepIndex * 7 + 3
+      }))
+      const supportCount = group.vehicleIds.length
+      const supportRate = supportCount / Math.max(1, state.vehicles.length)
+      const affectedSubsystems = [...new Set(group.faults.map((fault) => fault.subsystem))]
+      const affectedRegions = [
+        ...new Set(
+          group.vehicleIds
+            .map((vehicleId) => state.vehicles.find((vehicle) => vehicle.id === vehicleId)?.region)
+            .filter((region): region is string => Boolean(region))
+        )
+      ]
+
+      return {
+        id: createId("pattern", index + 1),
+        name: steps.map((step) => step.dtcCode).join(" -> "),
+        type: "dtc_sequence" as const,
+        status: "DETECTED" as const,
+        confidence: round(clamp(0.42 + supportRate * 1.8 + affectedSubsystems.length * 0.05, 0.4, 0.96), 2),
+        supportCount,
+        totalVehicles: state.vehicles.length,
+        supportRate: round(supportRate, 2),
+        sequence: steps,
+        affectedSubsystems,
+        affectedRegions,
+        correlations: [],
+        detectedAt: nowIso(),
+        summary: `${sequenceKey.replace(/->/g, " -> ")} chain appears in ${round(supportRate * 100, 0)}% of flagged vehicles`
+      }
+    })
+    .filter((pattern) => pattern.supportCount >= 2)
+
+  return patterns.sort((left, right) => right.confidence - left.confidence || right.supportCount - left.supportCount)
+}
+
+export const buildGeographicHeatmap = (state: DemoState): GeographicHeatmapPoint[] => {
+  const grouped = new Map<string, GeographicHeatmapPoint>()
+
+  for (const vehicle of state.vehicles) {
+    const faults = state.faults[vehicle.id] ?? []
+    if (!faults.length) continue
+    const primaryFault = faults.sort((left, right) => severityRank(right.severity) - severityRank(left.severity))[0]
+    const key = `${vehicle.region}:${primaryFault.dtcCode}`
+    const existing = grouped.get(key)
+
+    if (existing) {
+      existing.vehicleCount += 1
+      existing.intensity = round(existing.intensity + faults.length * 0.4, 1)
+      continue
+    }
+
+    grouped.set(key, {
+      lat: vehicle.coordinates.lat,
+      lng: vehicle.coordinates.lng,
+      intensity: round(1 + faults.length * 0.8, 1),
+      dtcCode: primaryFault.dtcCode,
+      vehicleCount: 1,
+      region: vehicle.region
+    })
+  }
+
+  return [...grouped.values()].sort((left, right) => right.intensity - left.intensity)
+}
+
+export const createInvestigation = (
+  anomaly: CohortAnomaly | null,
+  pattern: FailurePattern | null,
+  affectedVehicleIds: string[]
+): Investigation => {
+  const createdAt = nowIso()
+  const title = anomaly
+    ? `Investigate ${anomaly.cohortName}`
+    : pattern
+      ? `Investigate ${pattern.name}`
+      : "Investigate fleet anomaly"
+
+  return {
+    id: createId("inv", Math.max(1, affectedVehicleIds.length)),
+    patternId: pattern?.id ?? null,
+    anomalyId: anomaly?.id ?? null,
+    title,
+    status: "INVESTIGATION_OPENED",
+    rootCause: null,
+    affectedVehicleIds,
+    affectedVehicleCount: affectedVehicleIds.length,
+    containment: null,
+    timeline: [{ status: "INVESTIGATION_OPENED", at: createdAt, note: `${title} opened for evidence collection.` }],

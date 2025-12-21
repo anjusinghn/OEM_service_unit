@@ -186,3 +186,96 @@ describe("api integration", () => {
       const response = await request.get("/api/v1/service-requests").set(authHeader(adminToken))
 
       expect(response.status).toBe(200)
+      expect(Array.isArray(response.body)).toBe(true)
+    })
+
+    it("returns intelligence data with a valid JWT", async () => {
+      const response = await request.get("/api/v1/intelligence").set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          rewardSignals: expect.any(Array),
+          overrideRate: expect.any(Number)
+        })
+      )
+    })
+
+    it("returns forensics cohorts with a valid JWT", async () => {
+      const response = await request.get("/api/v1/forensics/cohorts").set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)
+      expect(Array.isArray(response.body)).toBe(true)
+    })
+
+    it("returns forensics anomalies with a valid JWT", async () => {
+      const response = await request.get("/api/v1/forensics/anomalies").set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)
+      expect(Array.isArray(response.body)).toBe(true)
+    })
+
+    it("returns forensics patterns with a valid JWT", async () => {
+      const response = await request.get("/api/v1/forensics/patterns").set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)
+      expect(Array.isArray(response.body)).toBe(true)
+    })
+  })
+
+  describe("rbac endpoints", () => {
+    it("rejects demo reset for viewer tokens", async () => {
+      const response = await request.post("/api/v1/demo/reset").set(authHeader(viewerToken))
+
+      expect(response.status).toBe(403)
+      expect(response.body).toEqual({ error: "Insufficient permissions" })
+    })
+
+    it("allows demo reset for platform admin tokens", async () => {
+      const response = await request.post("/api/v1/demo/reset").set(authHeader(adminToken))
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          vehicles: expect.any(Array),
+          generatedAt: expect.any(String)
+        })
+      )
+    })
+
+    it("rejects dispatch for viewer tokens", async () => {
+      const response = await request
+        .post(`/api/v1/orchestration/vehicles/${getDispatchableVehicleId()}/dispatch`)
+        .set(authHeader(viewerToken))
+        .send({})
+
+      expect(response.status).toBe(403)
+      expect(response.body).toEqual({ error: "Insufficient permissions" })
+    })
+
+    it("allows dispatch for depot manager tokens", async () => {
+      const vehicleId = getDispatchableVehicleId()
+      const response = await request
+        .post(`/api/v1/orchestration/vehicles/${vehicleId}/dispatch`)
+        .set(authHeader(managerToken))
+        .send({})
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          request: expect.objectContaining({ vehicleId }),
+          livePulse: expect.any(Object)
+        })
+      )
+    })
+  })
+
+  describe("public endpoints", () => {
+    it("returns a health response without auth", async () => {
+      const response = await request.get("/health")
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ status: "ok", name: "kazindustries-api", phase: "phase-6" })
+    })
+  })
+})

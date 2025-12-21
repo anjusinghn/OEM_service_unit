@@ -199,3 +199,104 @@ export class DemoStore {
     this.emitChange()
     return { investigation: updated, livePulse }
   }
+
+  getEvidencePackage(investigationId: string) {
+    const investigation = this.getInvestigation(investigationId)
+    if (!investigation) return null
+    return buildEvidenceEngine(investigation, this.state, this.snapshot.healthByVehicle)
+  }
+
+  getSupplierScorecards() {
+    return this.state.forensics.supplierScorecards
+  }
+
+  getHeatmapData() {
+    return this.state.forensics.heatmapData
+  }
+
+  dispatchVehicle(vehicleId: string, overrideDepotId?: string): ServiceActionResult | null {
+    const existing = this.state.serviceRequests.find(
+      (request) => request.vehicleId === vehicleId && request.status !== "CLOSED"
+    )
+    if (existing) {
+      return {
+        request: existing,
+        livePulse: this.addLivePulse("dispatch", `Vehicle ${vehicleId} already has an active service request.`)
+      }
+    }
+
+    const priority = this.getPriority(vehicleId)
+    const health = this.snapshot.healthByVehicle[vehicleId]
+    const depotRec = this.getDepotRecommendations(vehicleId)[0]
+    const selectedDepotId = overrideDepotId ?? depotRec?.depotId
+    if (!priority || !selectedDepotId) return null
+
+    const request = createServiceRequest(
+      this.state,
+      vehicleId,
+      priority.score,
+      health.weakestSubsystem,
+      selectedDepotId,
+      null,
+      depotRec?.requiredParts.map((part) => part.partNumber) ?? []
+    )
+
+    this.state.serviceRequests = [request, ...this.state.serviceRequests]
+    this.adjustDepotCapacity(request.depotId, 1)
+    const livePulse = this.addLivePulse(
+      "dispatch",
+      `Vehicle ${vehicleId} dispatched to ${selectedDepotId}.`
+    )
+    this.recompute()
+    return { request, livePulse }
+  }
+
+  advanceRequest(requestId: string, status?: ServiceRequestStatus): ServiceActionResult | null {
+    const request = this.state.serviceRequests.find((item) => item.id === requestId)
+    if (!request) return null
+
+    const nextStatus = status ?? getNextServiceStatus(request.status)
+    if (nextStatus === request.status) return null
+
+    request.status = nextStatus
+    const note = this.noteForStatus(nextStatus, request)
+    request.timeline = [...request.timeline, { status: nextStatus, at: nowIso(), note }]
+    if (nextStatus === "SCHEDULED") {
+      request.scheduledFor = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
+    }
+    if (nextStatus === "CLOSED") {
+      this.adjustDepotCapacity(request.depotId, -1)
+    }
+
+    const livePulse = this.addLivePulse("progress", `Service request ${request.id} moved to ${nextStatus}.`)
+    this.recompute()
+    return { request, livePulse }
+  }
+
+  completeRequest(requestId: string): ServiceActionResult | null {
+    const request = this.state.serviceRequests.find((item) => item.id === requestId)
+    if (!request) return null
+
+    request.status = "COMPLETED"
+    request.timeline = [
+      ...request.timeline,
+      {
+        status: "COMPLETED",
+        at: nowIso(),
+        note: `Technician ${request.technicianId ?? "unassigned"} confirmed fix and cleared active faults.`
+      }
+    ]
+
+    this.state.faults[request.vehicleId] = []
+    const signal = this.state.signals[request.vehicleId]
+    this.state.signals[request.vehicleId] = {
+      ...signal,
+      coolantTemp: Math.max(86, signal.coolantTemp - 6),
+      oilPressure: signal.oilPressure + 6,
+      batteryVoltage: signal.batteryVoltage + 0.3,
+      turboBoost: signal.turboBoost + 0.2,
+      brakeWear: Math.max(32, signal.brakeWear - 10),
+      exhaustTemp: Math.max(360, signal.exhaustTemp - 28)
+    }
+
+    const historyRecord: ServiceHistoryRecord = {

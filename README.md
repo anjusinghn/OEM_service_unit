@@ -106,3 +106,110 @@ Track how well your service decisions perform over time. The reinforcement learn
 ### 🗺️ Fleet Command Center
 
 A live operational dashboard that fleet managers actually want to use.
+
+**Visualizations:**
+- Interactive fleet map with health-colored vehicle pins
+- Real-time priority queue with AI reasoning panels
+- Kanban board tracking service requests through the full lifecycle
+- Depot network view with capacity gauges and inventory levels
+- Live activity feed showing health changes, dispatches, and completions
+
+### 🔌 OEM Integration Ready
+
+Connect to major Indian commercial vehicle OEMs with standardized adapters.
+
+**Supported patterns:**
+- **REST API polling** — for Tata Fleet Edge, Ashok Leyland iAlert, and others
+- **MQTT streaming** — for real-time telemetry feeds
+- **Webhook receivers** — for event-driven fault notifications
+- **Mock simulator** — for development and testing with a 96-vehicle synthetic fleet
+
+---
+
+## How It Works
+
+### The Decision Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. INGEST                                                      │
+│     OEM telematics → Adapter → Normalized signals → Queue       │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  2. SCORE                                                       │
+│     Compute health across 8 subsystems → Detect status changes   │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  3. PRIORITIZE                                                  │
+│     5-factor weighted scoring → Rank queue → Trigger AI review  │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  4. REASON (AI Layer - Optional)                                │
+│     LangChain agent evaluates top candidates → Detect patterns  │
+│     → Surface risk factors → Adjust scores with explanations    │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  5. MATCH                                                       │
+│     Score depots (specialty, parts, capacity, distance)         │
+│     Score technicians (skills, FTF rate, workload, history)     │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  6. DISPATCH                                                    │
+│     Fleet manager approves → Service request created → Tracked  │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  7. LEARN                                                       │
+│     Record actual outcome → Compute reward signal → Improve AI  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Service Workflow
+
+Track every service request through its full lifecycle:
+
+```
+DETECTED → PRIORITIZED → DEPOT_ASSIGNED → TECH_ASSIGNED
+    → PARTS_CONFIRMED → SCHEDULED → IN_PROGRESS
+        → COMPLETED → CLOSED
+```
+
+Each transition is timestamped for SLA tracking. The completion form captures what actually went wrong, whether the diagnosis was correct, which parts were used, and how long the repair took — all feeding the learning loop.
+
+---
+
+## AI Decision Engine
+
+The AI layer runs on **LangChain.js** and **OpenRouter**, using the `z-ai/glm-4.5-air:free` model. It operates asynchronously — heuristics provide the fast path, AI adds intelligence without blocking operations.
+
+### Reasoning Capabilities
+
+| Capability | What It Does |
+|------------|--------------|
+| **Priority Review** | Evaluates heuristic rankings, detects recurring failures, surfaces non-obvious risk factors with data-cited explanations |
+| **Depot Evaluation** | Assesses depot recommendations against performance history, supply chain risks, and logistical constraints |
+| **Technician Matching** | Considers DTC-specific experience, workload balance, and skill gaps beyond certification lists |
+| **Full Dispatch Planning** | Multi-step agent that calls tools to gather context and produces complete dispatch plans with alternatives |
+| **Escalation Detection** | Periodic scans for SLA risks, batch failure patterns, capacity crunches, and rapid degradation |
+
+### The Dispatch Agent in Action
+
+When you trigger an AI dispatch, the agent:
+
+1. **Fetches vehicle data** — current signals, health scores, active faults
+2. **Checks service history** — past repairs, recurring issues, prior technicians
+3. **Evaluates depots** — capacity, specialties, parts inventory, distance
+4. **Assesses technicians** — certifications, workload, DTC-specific history
+5. **Searches similar cases** — how were similar faults resolved historically
+6. **Generates a plan** — depot, technician, parts, timeline, cost, watch points

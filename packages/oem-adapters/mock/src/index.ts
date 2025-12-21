@@ -243,3 +243,125 @@ const createSuppliers = (): SupplierInfo[] => [
     activeBatches: ["BATCH-4710", "BATCH-4711", "BATCH-4714"]
   },
   {
+    id: createId("supplier", 5),
+    name: "FuelTech Systems",
+    componentTypes: ["fuel_pump", "fuel_filter"],
+    activeBatches: ["BATCH-4825", "BATCH-4826"]
+  },
+  {
+    id: createId("supplier", 6),
+    name: "TransMax India",
+    componentTypes: ["valve_body", "transmission_oil"],
+    activeBatches: ["BATCH-4950", "BATCH-4951", "BATCH-4952", "BATCH-4955"]
+  }
+]
+
+const createEmptyForensicsSnapshot = (): ForensicsSnapshot => ({
+  cohorts: [],
+  anomalies: [],
+  patterns: [],
+  investigations: [],
+  supplierScorecards: [],
+  heatmapData: []
+})
+
+export const createMockState = (seed = 42): DemoState => {
+  const rng = seeded(seed)
+  const depots = createDepots()
+  const vehicles = createVehicles(rng, depots)
+  const parts = createParts()
+  const inventory = createInventory(depots, parts, rng)
+  const technicians = createTechnicians(depots, rng)
+
+  const signals: Record<string, VehicleSignalSnapshot> = {}
+  const faults: Record<string, VehicleFault[]> = {}
+
+  for (const vehicle of vehicles) {
+    const faultBias = rng() > 0.84 ? 1.7 : rng() > 0.68 ? 0.7 : 0
+    signals[vehicle.id] = createSignalSnapshot(vehicle, rng, faultBias)
+    if (faultBias > 0) {
+      const subsystem = pickSubsystem(rng)
+      faults[vehicle.id] = [createFault(vehicle.id, subsystem, rng, faultBias > 1)]
+    } else {
+      faults[vehicle.id] = []
+    }
+  }
+
+  return {
+    vehicles,
+    signals,
+    faults,
+    depots,
+    parts,
+    inventory,
+    technicians,
+    serviceRequests: [],
+    serviceHistory: createServiceHistory(vehicles, depots, technicians, rng),
+    livePulse: createLivePulse(),
+    suppliers: createSuppliers(),
+    forensics: createEmptyForensicsSnapshot()
+  }
+}
+
+export const applyMockTick = (state: DemoState, seed = Date.now()): DemoState => {
+  const rng = seeded(seed)
+  const nextSignals = { ...state.signals }
+  const nextFaults = { ...state.faults }
+  const nextVehicles = state.vehicles.map((vehicle, index) => {
+    const snapshot = nextSignals[vehicle.id]
+    const shouldDegrade = index % 11 === Math.floor(rng() * 11)
+    const subsystem = shouldDegrade ? pickSubsystem(rng) : null
+
+    nextSignals[vehicle.id] = {
+      ...snapshot,
+      timestamp: new Date().toISOString(),
+      coolantTemp: shift(snapshot.coolantTemp + (subsystem === "cooling" ? 3.5 : 0.5), 4, rng),
+      oilPressure: shift(snapshot.oilPressure - (subsystem === "engine" ? 4 : 0.3), 3, rng),
+      batteryVoltage: shift(snapshot.batteryVoltage - (subsystem === "electrical" ? 0.3 : 0), 0.2, rng),
+      turboBoost: shift(snapshot.turboBoost - (subsystem === "turbo" ? 0.2 : 0), 0.12, rng),
+      brakeWear: shift(snapshot.brakeWear + (subsystem === "brakes" ? 4 : 0.4), 2, rng),
+      exhaustTemp: shift(snapshot.exhaustTemp + (subsystem === "exhaust" ? 18 : 2), 10, rng),
+      fuelLevel: Math.max(8, shift(snapshot.fuelLevel - 2, 5, rng)),
+      speed: Math.max(8, shift(snapshot.speed, 16, rng)),
+      mileage: snapshot.mileage + 18 + Math.round(rng() * 34)
+    }
+
+    if (shouldDegrade && subsystem) {
+      nextFaults[vehicle.id] = [createFault(vehicle.id, subsystem, rng, rng() > 0.74)]
+    } else if (rng() > 0.92) {
+      nextFaults[vehicle.id] = []
+    }
+
+    return {
+      ...vehicle,
+      nextStopHours: Math.max(1, vehicle.nextStopHours - 0.4 + rng() * 1.2),
+      coordinates: {
+        lat: shift(vehicle.coordinates.lat, 0.12, rng),
+        lng: shift(vehicle.coordinates.lng, 0.12, rng)
+      }
+    }
+  })
+
+  const nextPulse: LivePulse = {
+    id: createId("pulse", state.livePulse.length + 1),
+    kind: "tick",
+    message: "Telemetry pulse refreshed. Priority queue re-ranked from latest health drift.",
+    at: new Date().toISOString()
+  }
+
+  return {
+    ...state,
+    vehicles: nextVehicles,
+    signals: nextSignals,
+    faults: nextFaults,
+    suppliers: state.suppliers,
+    forensics: state.forensics,
+    livePulse: [nextPulse, ...state.livePulse].slice(0, 24)
+  }
+}
+
+export const mockAdapter: OEMAdapter = {
+  name: "mock-oem-demo",
+  create: () => createMockState(),
+  tick: (state) => applyMockTick(state)
+}

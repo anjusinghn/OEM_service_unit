@@ -279,3 +279,144 @@ CREATE TABLE "part_substitutes" (
 
 -- CreateTable
 CREATE TABLE "inventory_items" (
+    "id" TEXT NOT NULL,
+    "depot_id" TEXT NOT NULL,
+    "part_number" TEXT NOT NULL,
+    "quantity" INTEGER NOT NULL DEFAULT 0,
+    "reorder_point" INTEGER NOT NULL DEFAULT 2,
+    "updated_at" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "inventory_items_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "part_reservations" (
+    "id" TEXT NOT NULL,
+    "service_request_id" TEXT NOT NULL,
+    "part_number" TEXT NOT NULL,
+    "depot_id" TEXT NOT NULL,
+    "quantity" INTEGER NOT NULL DEFAULT 1,
+    "status" "ReservationStatus" NOT NULL DEFAULT 'HELD',
+    "expires_at" TIMESTAMPTZ NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "part_reservations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "technicians" (
+    "id" TEXT NOT NULL,
+    "depot_id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "certifications" JSONB NOT NULL DEFAULT '[]',
+    "current_load" INTEGER NOT NULL DEFAULT 0,
+    "max_load" INTEGER NOT NULL DEFAULT 5,
+    "first_time_fix_rate" DOUBLE PRECISION NOT NULL DEFAULT 0.85,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "technicians_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "priority_entries" (
+    "id" TEXT NOT NULL,
+    "vehicle_id" TEXT NOT NULL,
+    "score" DOUBLE PRECISION NOT NULL,
+    "status" TEXT NOT NULL,
+    "safety_urgency" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "failure_proximity" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "business_impact" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "downtime_cost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "service_window" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "reasons" JSONB NOT NULL DEFAULT '[]',
+    "is_overridden" BOOLEAN NOT NULL DEFAULT false,
+    "overridden_by" TEXT,
+    "updated_at" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "priority_entries_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "service_requests" (
+    "id" TEXT NOT NULL,
+    "vehicle_id" TEXT NOT NULL,
+    "priority_score" DOUBLE PRECISION NOT NULL,
+    "weakest_subsystem" TEXT NOT NULL,
+    "depot_id" TEXT,
+    "technician_id" TEXT,
+    "required_part_numbers" JSONB NOT NULL DEFAULT '[]',
+    "status" "ServiceRequestStatus" NOT NULL DEFAULT 'DETECTED',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL,
+    "scheduled_for" TIMESTAMPTZ,
+    "completed_at" TIMESTAMPTZ,
+
+    CONSTRAINT "service_requests_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "service_timeline" (
+    "id" TEXT NOT NULL,
+    "service_request_id" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "note" TEXT NOT NULL DEFAULT '',
+    "at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "service_timeline_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "service_history" (
+    "id" TEXT NOT NULL,
+    "vehicle_id" TEXT NOT NULL,
+    "depot_id" TEXT NOT NULL,
+    "technician_id" TEXT NOT NULL,
+    "subsystem" TEXT NOT NULL,
+    "outcome" TEXT NOT NULL,
+    "resolved_at" TIMESTAMPTZ NOT NULL,
+    "first_time_fix" BOOLEAN NOT NULL DEFAULT true,
+    "actual_fault" TEXT,
+    "parts_used" JSONB NOT NULL DEFAULT '[]',
+    "repair_duration_hours" DOUBLE PRECISION,
+    "diagnosis_correct" BOOLEAN,
+    "technician_notes" TEXT,
+
+    CONSTRAINT "service_history_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "sla_tracking" (
+    "id" TEXT NOT NULL,
+    "service_request_id" TEXT NOT NULL,
+    "detected_at" TIMESTAMPTZ NOT NULL,
+    "assigned_at" TIMESTAMPTZ,
+    "service_started_at" TIMESTAMPTZ,
+    "completed_at" TIMESTAMPTZ,
+    "detection_to_assign_ms" INTEGER,
+    "assign_to_start_ms" INTEGER,
+    "start_to_complete_ms" INTEGER,
+    "total_resolution_ms" INTEGER,
+    "breached" BOOLEAN NOT NULL DEFAULT false,
+    "breach_reason" TEXT,
+
+    CONSTRAINT "sla_tracking_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "webhooks" (
+    "id" TEXT NOT NULL,
+    "url" TEXT NOT NULL,
+    "events" TEXT[],
+    "secret" TEXT,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "webhooks_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "notification_preferences" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "channel" TEXT NOT NULL,
+    "event_type" TEXT NOT NULL,

@@ -265,3 +265,136 @@ const createDemoFixture = (): { state: DemoState; healthByVehicle: Record<string
     forensics: createForensicsSnapshot()
   }
 
+  const healthByVehicle = Object.fromEntries(
+    state.vehicles.map((vehicle) => [vehicle.id, computeHealthScore(state.signals[vehicle.id], state.faults[vehicle.id])])
+  )
+
+  return { state, healthByVehicle }
+}
+
+beforeEach(() => {
+  vi.useRealTimers()
+})
+
+describe("buildPriorityQueue", () => {
+  it("ranks the most urgent vehicle first with detailed weighting reasons", () => {
+    const { state, healthByVehicle } = createDemoFixture()
+    const criticalVehicle = state.vehicles[0]
+    const watchVehicle = state.vehicles[1]
+    const healthyVehicle = state.vehicles[2]
+
+    Object.assign(criticalVehicle, {
+      cargoPriority: 98,
+      routeCriticality: 99,
+      downtimeCostPerHour: 3400,
+      nextStopHours: 1.2
+    })
+    state.signals[criticalVehicle.id] = createSnapshot(criticalVehicle.id, {
+      coolantTemp: 118,
+      oilPressure: 24,
+      batteryVoltage: 11.9,
+      turboBoost: 0.95,
+      brakeWear: 92,
+      exhaustTemp: 560,
+      fuelLevel: 9,
+      speed: 12
+    })
+    state.faults[criticalVehicle.id] = [
+      createFault(criticalVehicle.id, "brakes", "safety"),
+      createFault(criticalVehicle.id, "engine", "critical"),
+      createFault(criticalVehicle.id, "cooling", "warning"),
+      createFault(criticalVehicle.id, "electrical", "critical"),
+      createFault(criticalVehicle.id, "exhaust", "warning")
+    ]
+
+    Object.assign(watchVehicle, {
+      cargoPriority: 80,
+      routeCriticality: 82,
+      downtimeCostPerHour: 2600,
+      nextStopHours: 3.5
+    })
+    state.signals[watchVehicle.id] = createSnapshot(watchVehicle.id, {
+      coolantTemp: 110,
+      oilPressure: 36,
+      batteryVoltage: 12.1,
+      turboBoost: 1.1,
+      brakeWear: 80,
+      exhaustTemp: 520,
+      fuelLevel: 15,
+      speed: 42
+    })
+    state.faults[watchVehicle.id] = []
+
+    state.signals[healthyVehicle.id] = createSnapshot(healthyVehicle.id)
+    state.faults[healthyVehicle.id] = []
+
+    healthByVehicle[criticalVehicle.id] = computeHealthScore(state.signals[criticalVehicle.id], state.faults[criticalVehicle.id])
+    healthByVehicle[watchVehicle.id] = computeHealthScore(state.signals[watchVehicle.id], state.faults[watchVehicle.id])
+    healthByVehicle[healthyVehicle.id] = computeHealthScore(state.signals[healthyVehicle.id], state.faults[healthyVehicle.id])
+
+    const queue = buildPriorityQueue(state, healthByVehicle)
+    const criticalEntry = queue.find((entry) => entry.vehicleId === criticalVehicle.id)
+    const watchEntry = queue.find((entry) => entry.vehicleId === watchVehicle.id)
+    const healthyEntry = queue.find((entry) => entry.vehicleId === healthyVehicle.id)
+
+    expect(queue).toHaveLength(96)
+    expect(queue[0].vehicleId).toBe(criticalVehicle.id)
+    expect(criticalEntry?.status).toBe("critical")
+    expect(watchEntry?.status).toBe("watch")
+    expect(healthyEntry?.status).toBe("healthy")
+    expect(criticalEntry?.score).toBeGreaterThan(watchEntry?.score ?? 0)
+    expect(watchEntry?.score).toBeGreaterThan(healthyEntry?.score ?? 0)
+    expect(criticalEntry?.breakdown.reasons).toEqual([
+      `${healthByVehicle[criticalVehicle.id].weakestSubsystem} is trending ${healthByVehicle[criticalVehicle.id].trend}`,
+      `route criticality ${criticalVehicle.routeCriticality}/100`,
+      `next serviceable stop in 1.2h`
+    ])
+  })
+})
+
+describe("recommendDepots", () => {
+  it("prefers nearby depots with the needed specialty, stock, and open capacity", () => {
+    const { state } = createDemoFixture()
+    const vehicle = state.vehicles[10]
+    const weakestSubsystem: SubsystemKey = "brakes"
+    const targetParts = PARTS_BY_SUBSYSTEM[weakestSubsystem].map((part) => part.partNumber)
+
+    vehicle.coordinates = { lat: 18.52, lng: 73.86 }
+
+    state.depots[0].coordinates = { lat: 18.5204, lng: 73.8567 }
+    state.depots[0].specialties = ["brakes", "engine", "cooling"]
+    state.depots[0].totalBays = 12
+    state.depots[0].occupiedBays = 4
+
+    state.depots[1].coordinates = { lat: 18.55, lng: 73.9 }
+    state.depots[1].specialties = ["engine", "fuel", "turbo"]
+    state.depots[1].totalBays = 12
+    state.depots[1].occupiedBays = 1
+
+    state.depots[2].coordinates = { lat: 20.4, lng: 75.2 }
+    state.depots[2].specialties = ["brakes", "electrical", "transmission"]
+    state.depots[2].totalBays = 10
+    state.depots[2].occupiedBays = 7
+
+    for (const item of state.inventory) {
+      if (item.depotId === state.depots[0].id && targetParts.includes(item.partNumber)) {
+        item.quantity = 4
+      }
+      if (item.depotId === state.depots[1].id && targetParts.includes(item.partNumber)) {
+        item.quantity = 0
+      }
+      if (item.depotId === state.depots[2].id && targetParts.includes(item.partNumber)) {
+        item.quantity = 2
+      }
+    }
+
+    const recommendations = recommendDepots(vehicle, state, weakestSubsystem)
+
+    expect(recommendations).toHaveLength(3)
+    expect(recommendations[0]).toMatchObject({
+      depotId: state.depots[0].id,
+      specialtyMatch: true,
+      partsReady: true,
+      capacityOpen: 8
+    })
+    expect(recommendations[0].requiredParts.map((part) => part.partNumber)).toEqual(targetParts)

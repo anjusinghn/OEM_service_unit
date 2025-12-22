@@ -236,3 +236,122 @@ export const createServer = (): express.Express => {
   })
 
   app.get("/api/v1/forensics/cohorts/:cohortId/compare", requireAuth, async (req, res) => {
+    const comparison = await store.getCohortComparison(param(req.params.cohortId))
+    if (!comparison) {
+      res.status(404).json({ error: "Cohort not found" })
+      return
+    }
+    res.json(comparison)
+  })
+
+  app.get("/api/v1/forensics/anomalies", requireAuth, async (_req, res) => {
+    res.json(await store.getAnomalies())
+  })
+
+  app.get("/api/v1/forensics/patterns", requireAuth, async (_req, res) => {
+    res.json(await store.getPatterns())
+  })
+
+  app.get("/api/v1/forensics/patterns/:patternId", requireAuth, async (req, res) => {
+    const pattern = await store.getPattern(param(req.params.patternId))
+    if (!pattern) {
+      res.status(404).json({ error: "Pattern not found" })
+      return
+    }
+    res.json(pattern)
+  })
+
+  app.patch("/api/v1/forensics/patterns/:patternId/status", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN"), async (req, res) => {
+    const { status } = req.body
+    if (!status) {
+      res.status(400).json({ error: "status is required" })
+      return
+    }
+    const pattern = await store.updatePatternStatus(param(req.params.patternId), status)
+    if (!pattern) {
+      res.status(404).json({ error: "Pattern not found" })
+      return
+    }
+    res.json(pattern)
+  })
+
+  app.get("/api/v1/forensics/investigations", requireAuth, async (_req, res) => {
+    res.json(await store.getInvestigations())
+  })
+
+  app.get("/api/v1/forensics/investigations/:investigationId", requireAuth, async (req, res) => {
+    const investigation = await store.getInvestigation(param(req.params.investigationId))
+    if (!investigation) {
+      res.status(404).json({ error: "Investigation not found" })
+      return
+    }
+    res.json(investigation)
+  })
+
+  app.post("/api/v1/forensics/investigations", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN"), async (req, res) => {
+    const { anomalyId, patternId } = req.body ?? {}
+    const result = await store.openInvestigation(anomalyId, patternId)
+    res.status(201).json(result)
+  })
+
+  app.patch("/api/v1/forensics/investigations/:investigationId/status", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN"), async (req, res) => {
+    const result = await store.advanceInvestigationStatus(param(req.params.investigationId), req.body?.status)
+    if (!result) {
+      res.status(404).json({ error: "Investigation not found" })
+      return
+    }
+    res.json(result)
+  })
+
+  app.get("/api/v1/forensics/investigations/:investigationId/evidence", requireAuth, async (req, res) => {
+    const evidence = await store.getEvidencePackage(param(req.params.investigationId))
+    if (!evidence) {
+      res.status(404).json({ error: "Investigation not found" })
+      return
+    }
+    res.json(evidence)
+  })
+
+  app.get("/api/v1/forensics/suppliers/scorecards", requireAuth, async (_req, res) => {
+    res.json(await store.getSupplierScorecards())
+  })
+
+  app.get("/api/v1/forensics/heatmap", requireAuth, async (_req, res) => {
+    res.json(await store.getHeatmapData())
+  })
+
+  app.get("/api/v1/events", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream")
+    res.setHeader("Cache-Control", "no-cache")
+    res.setHeader("Connection", "keep-alive")
+    res.flushHeaders?.()
+
+    const writePayload = async () => {
+      res.write(`data: ${JSON.stringify(await store.getDashboardPayload())}\n\n`)
+    }
+
+    void writePayload()
+    const unsubscribe = useDemoStore
+      ? demoStore.subscribe(() => {
+          void writePayload()
+        })
+      : (() => {
+          sseClients.add(res)
+          return () => {
+            sseClients.delete(res)
+          }
+        })()
+
+    req.on("close", () => {
+      unsubscribe()
+      res.end()
+    })
+  })
+
+  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error(error)
+    res.status(500).json({ error: "Unexpected server error" })
+  })
+
+  return app
+}

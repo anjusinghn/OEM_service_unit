@@ -193,3 +193,100 @@ export function PriorityTable({ vehicles, priorityQueue }: PriorityTableProps) {
                       <span
                         className={cn(
                           "text-sm font-bold tabular-nums",
+                          row.vehicle.health.overall >= 75
+                            ? "text-healthy"
+                            : row.vehicle.health.overall >= 50
+                              ? "text-watch"
+                              : "text-critical"
+                        )}
+                      >
+                        {row.vehicle.health.overall}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-xs",
+                          row.vehicle.health.trend === "improving"
+                            ? "text-healthy"
+                            : row.vehicle.health.trend === "degrading"
+                              ? "text-critical"
+                              : "text-muted-foreground"
+                        )}
+                      >
+                        {row.vehicle.health.trend === "improving"
+                          ? "↑"
+                          : row.vehicle.health.trend === "degrading"
+                            ? "↓"
+                            : "→"}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-sm font-bold tabular-nums text-foreground">
+                      {row.entry.score}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={row.entry.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    {ai ? (
+                      <div className="flex items-center gap-2">
+                        <AiBadge urgency={ai.urgency} />
+                        <span className="max-w-[160px] truncate text-xs text-muted-foreground">
+                          {ai.recommendation.length > 60
+                            ? `${ai.recommendation.slice(0, 60)}…`
+                            : ai.recommendation}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs italic text-muted-foreground">Pending</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleExpand(row.vehicle.id)
+                        }}
+                        aria-label="Dispatch"
+                      >
+                        <ArrowRight size={13} />
+                      </button>
+                      <span
+                        className={cn(
+                          "inline-flex transition-transform duration-150 ease-in-out",
+                          isExpanded ? "rotate-90" : "rotate-0"
+                        )}
+                      >
+                        <ChevronRight size={14} className="text-muted-foreground" />
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+
+                {isExpanded && (
+                  <tr>
+                    <td colSpan={7} className="border-b border-border p-0">
+                      <div className="overflow-hidden">
+                        <PriorityRowExpanded vehicle={row.vehicle} />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {sorted.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <span className="text-sm text-muted-foreground">No vehicles in triage queue</span>
+        </div>
+      )}
+    </div>
+  )
+}

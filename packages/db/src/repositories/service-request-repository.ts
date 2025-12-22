@@ -230,3 +230,119 @@ export const serviceRequestRepository = {
         }
 
         if (newStatus === "COMPLETED" && !request.slaTracking.completedAt) {
+          slaPatch.completedAt = now
+          slaPatch.startToCompleteMs = millisecondsBetween(request.slaTracking.serviceStartedAt, now)
+          slaPatch.totalResolutionMs = millisecondsBetween(request.slaTracking.detectedAt, now)
+        }
+
+        if (Object.keys(slaPatch).length > 0) {
+          await tx.slaTracking.update({
+            where: { id: request.slaTracking.id },
+            data: slaPatch
+          })
+        }
+      }
+
+      await tx.serviceRequest.update({
+        where: { id: requestId },
+        data: updateData
+      })
+
+      return tx.serviceRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        include: fullInclude
+      })
+    })
+  },
+
+  assignDepotAndTechnician(input: AssignDepotAndTechnicianInput) {
+    const { requestId, depotId, technicianId } = input
+
+    return prisma.$transaction(async (tx) => {
+      const request = await tx.serviceRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        include: { slaTracking: true }
+      })
+
+      const now = new Date()
+      const nextWorkflowStatus = statusIndex(request.status) < statusIndex("DEPOT_ASSIGNED") ? "DEPOT_ASSIGNED" : request.status
+
+      await tx.serviceTimeline.create({
+        data: {
+          serviceRequestId: requestId,
+          status: nextWorkflowStatus,
+          note: buildDefaultNote(nextWorkflowStatus, { depotId, technicianId })
+        }
+      })
+
+      if (request.slaTracking && !request.slaTracking.assignedAt) {
+        await tx.slaTracking.update({
+          where: { id: request.slaTracking.id },
+          data: {
+            assignedAt: now,
+            detectionToAssignMs: millisecondsBetween(request.slaTracking.detectedAt, now)
+          }
+        })
+      }
+
+      await tx.serviceRequest.update({
+        where: { id: requestId },
+        data: {
+          depotId,
+          technicianId: technicianId === undefined ? request.technicianId : technicianId,
+          status: nextWorkflowStatus
+        }
+      })
+
+      return tx.serviceRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        include: fullInclude
+      })
+    })
+  },
+
+  complete(input: CompleteServiceRequestInput) {
+    const { requestId, note } = input
+
+    return prisma.$transaction(async (tx) => {
+      const request = await tx.serviceRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        include: { slaTracking: true }
+      })
+
+      const now = new Date()
+
+      await tx.serviceTimeline.create({
+        data: {
+          serviceRequestId: requestId,
+          status: "COMPLETED",
+          note: note ?? buildDefaultNote("COMPLETED", { technicianId: request.technicianId })
+        }
+      })
+
+      if (request.slaTracking) {
+        await tx.slaTracking.update({
+          where: { id: request.slaTracking.id },
+          data: {
+            completedAt: request.slaTracking.completedAt ?? now,
+            startToCompleteMs: millisecondsBetween(request.slaTracking.serviceStartedAt, now),
+            totalResolutionMs: millisecondsBetween(request.slaTracking.detectedAt, now)
+          }
+        })
+      }
+
+      await tx.serviceRequest.update({
+        where: { id: requestId },
+        data: {
+          status: "COMPLETED",
+          completedAt: request.completedAt ?? now
+        }
+      })
+
+      return tx.serviceRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        include: fullInclude
+      })
+    })
+  }
+}

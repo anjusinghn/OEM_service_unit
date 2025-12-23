@@ -273,3 +273,140 @@ export function Dashboard() {
               value={payload.overview.watchVehicles + payload.overview.criticalVehicles}
               detail="watch + critical"
               tone={payload.overview.criticalVehicles > 0 ? "critical" : "watch"}
+            />
+            <MetricCard
+              label="Open requests"
+              value={payload.overview.openServiceRequests}
+              detail={`${payload.overview.avgTurnaroundHours}h avg turnaround`}
+            />
+            <MetricCard
+              label="Bay utilization"
+              value={`${payload.overview.bayUtilization}%`}
+              detail={`${payload.overview.firstTimeFixRate}% first-time-fix`}
+            />
+            <MetricCard
+              label="Forensics anomalies"
+              value={payload.forensics.anomalies.length}
+              detail={`${payload.forensics.investigations.length} open investigations`}
+              tone={payload.forensics.anomalies.length > 0 ? "watch" : "success"}
+            />
+            <MetricCard
+              label="Decision quality"
+              value={intelligence ? `${Math.round((intelligence.qualityTrend[0]?.aiScore ?? 0) * 100)}%` : "\u2014"}
+              detail={intelligence ? `${Math.round(intelligence.overrideRate * 100)}% override rate` : "learning pending"}
+              tone="success"
+            />
+          </div>
+
+          {/* Main grid: priority queue + decision card */}
+          <div className="grid grid--main mb-28 fade-in fade-in-3">
+            <SectionCard title="Priority Queue" eyebrow="Triage">
+              <div className="priority-list">
+                {payload.priorityQueue.slice(0, 14).map((entry, idx) => {
+                  const v = payload.vehicles.find((x) => x.id === entry.vehicleId)
+                  if (!v) return null
+                  return (
+                    <button
+                      key={entry.vehicleId}
+                      type="button"
+                      className={`priority-row${selectedVehicleId === entry.vehicleId ? " priority-row--active" : ""}`}
+                      onClick={() => setSelectedVehicleId(entry.vehicleId)}
+                    >
+                      <div className="priority-row__rank">{idx + 1}</div>
+                      <div className="priority-row__body">
+                        <strong>{v.vin}</strong>
+                        <span>{v.model} / {v.region}</span>
+                      </div>
+                      <div className="priority-row__meta">
+                        <StatusPill tone={toneFromHealth(v.health.status)}>{v.health.status}</StatusPill>
+                        <strong>{entry.score}</strong>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Vehicle Decision Card" eyebrow="Explainability">
+              {selected ? (
+                <>
+                  <div className="decision-header">
+                    <div>
+                      <h3>{selected.vin}</h3>
+                      <p>{selected.model} &middot; {selected.routeName} &middot; {selected.buildBatch}</p>
+                    </div>
+                    <StatusPill tone={toneFromHealth(selected.health.status)}>
+                      {selected.health.status}
+                    </StatusPill>
+                  </div>
+
+                  <div className="health-strip">
+                    <div className="health-strip__item">
+                      <span>Health</span>
+                      <strong>{selected.health.overall}</strong>
+                    </div>
+                    <div className="health-strip__item">
+                      <span>Signal quality</span>
+                      <strong>{selected.health.signalQuality}</strong>
+                    </div>
+                    <div className="health-strip__item">
+                      <span>Trend</span>
+                      <strong>{selected.health.trend}</strong>
+                    </div>
+                    <div className="health-strip__item">
+                      <span>Priority</span>
+                      <strong>{selected.priority?.score ?? "\u2014"}</strong>
+                    </div>
+                  </div>
+
+                  {selected.priority?.breakdown.reasons.length ? (
+                    <div className="reason-grid">
+                      {selected.priority.breakdown.reasons.map((r) => (
+                        <div className="reason-chip" key={r}>{r}</div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {selected.priority?.breakdown.aiAssessment ? (
+                    <div className="recommendation-card" style={{ marginBottom: 20 }}>
+                      <span>AI priority assessment</span>
+                      <strong>
+                        {selected.priority.breakdown.aiAssessment.urgency} · {selected.priority.breakdown.aiAssessment.adjustedScore}
+                      </strong>
+                      <p>{selected.priority.breakdown.aiAssessment.recommendation}</p>
+                    </div>
+                  ) : null}
+
+                  <div className="subsystem-section-title">Subsystem health</div>
+                  <div className="subsystem-grid">
+                    {Object.entries(selected.health.subsystems).map(([sys, score]) => (
+                      <div key={sys} className="subsystem-row">
+                        <span>{sys}</span>
+                        <div className="subsystem-bar">
+                          <span style={{
+                            width: `${score}%`,
+                            background: score < 55 ? "var(--critical)" : score < 78 ? "var(--warning)" : "var(--success)"
+                          }} />
+                        </div>
+                        <strong>{score}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="fault-stack">
+                    <div className="fault-section-title">Active fault codes</div>
+                    {selected.faults.length ? selected.faults.map((f) => (
+                      <div key={f.id} className="fault-card">
+                        <div>
+                          <strong>{f.dtcCode}</strong>
+                          <p>{f.title}</p>
+                        </div>
+                        <StatusPill tone={f.severity === "critical" || f.severity === "safety" ? "critical" : "watch"}>
+                          {f.severity}
+                        </StatusPill>
+                      </div>
+                    )) : (
+                      <div className="fault-card fault-card--empty">
+                        No active DTCs. Ranked by degradation trend and operational impact.
+                      </div>
+                    )}

@@ -262,3 +262,135 @@ export async function seedDatabase(db: PrismaClient = prisma) {
   const users = [
     {
       id: "user-admin-001",
+      name: "Admin User",
+      email: "admin@kazindustries.dev",
+      role: "PLATFORM_ADMIN" as const,
+      passwordHash: defaultPasswordHash,
+    },
+    {
+      id: "user-oem-001",
+      name: "OEM Manager",
+      email: "oem@kazindustries.dev",
+      role: "OEM_ADMIN" as const,
+      passwordHash: defaultPasswordHash,
+    },
+    {
+      id: "user-depot-001",
+      name: "Depot Manager (Pune)",
+      email: "depot-pune@kazindustries.dev",
+      role: "DEPOT_MANAGER" as const,
+      passwordHash: defaultPasswordHash,
+    },
+    {
+      id: "user-tech-001",
+      name: "Rajesh K",
+      email: "rajesh@kazindustries.dev",
+      role: "TECHNICIAN" as const,
+      passwordHash: defaultPasswordHash,
+    },
+    {
+      id: "user-viewer-001",
+      name: "Dashboard Viewer",
+      email: "viewer@kazindustries.dev",
+      role: "VIEWER" as const,
+      passwordHash: defaultPasswordHash,
+    },
+  ];
+
+  for (const u of users) {
+    await prisma.user.create({
+      data: {
+        ...u,
+        organizationId: org.id,
+      },
+    });
+  }
+
+  // ── 3. OEM Connection ──────────────────────────────────
+  console.log("  → Creating OEM connection...");
+  await prisma.oemConnection.create({
+    data: {
+      id: "oem-conn-mock",
+      organizationId: org.id,
+      adapterType: "mock",
+      name: "Mock OEM Telemetry Feed",
+      status: "CONNECTED",
+      lastSyncAt: new Date(),
+      config: {
+        vehicleCount: 96,
+        tickIntervalMs: 12000,
+        faultRate: 0.16,
+      },
+    },
+  });
+
+  // ── 4. DTC Codes ───────────────────────────────────────
+  console.log("  → Creating DTC code registry...");
+  const dtcEntries = Object.entries(FAULT_PROFILES).map(
+    ([subsystem, profile]) => ({
+      id: `dtc-${profile.code}`,
+      code: profile.code,
+      system:
+        subsystem === "brakes"
+          ? "chassis"
+          : subsystem === "electrical"
+            ? "body"
+            : "powertrain",
+      subsystem: SUBSYSTEM_ENUM_MAP[subsystem] as any,
+      severity:
+        subsystem === "brakes" || subsystem === "electrical"
+          ? ("CRITICAL" as const)
+          : ("WARNING" as const),
+      description: profile.description,
+      knownCauses: [
+        `Worn ${subsystem} components`,
+        `Sensor malfunction in ${subsystem} subsystem`,
+      ],
+      remedies: [
+        `Inspect ${subsystem} subsystem`,
+        `Replace affected components`,
+      ],
+      relatedCodes: [] as string[],
+    }),
+  );
+
+  // Add cross-references
+  dtcEntries[0].relatedCodes = ["P0217"]; // engine ↔ cooling
+  dtcEntries[1].relatedCodes = ["P0524"];
+  dtcEntries[4].relatedCodes = ["P0299"]; // exhaust ↔ turbo
+  dtcEntries[5].relatedCodes = ["P0420"];
+
+  for (const dtc of dtcEntries) {
+    await prisma.dtcCode.create({ data: dtc });
+  }
+
+  // ── 5. Signal Definitions ─────────────────────────────
+  console.log("  → Creating signal definitions...");
+  const signalDefs = [
+    {
+      name: "coolant_temp",
+      unit: "°C",
+      minValue: -40,
+      maxValue: 150,
+      sourceSystem: "ECU",
+    },
+    {
+      name: "oil_pressure",
+      unit: "PSI",
+      minValue: 0,
+      maxValue: 120,
+      sourceSystem: "ECU",
+    },
+    {
+      name: "battery_voltage",
+      unit: "V",
+      minValue: 0,
+      maxValue: 30,
+      sourceSystem: "BCM",
+    },
+    {
+      name: "turbo_boost",
+      unit: "bar",
+      minValue: 0,
+      maxValue: 4,
+      sourceSystem: "ECU",

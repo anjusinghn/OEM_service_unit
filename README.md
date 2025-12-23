@@ -213,3 +213,110 @@ When you trigger an AI dispatch, the agent:
 4. **Assesses technicians** — certifications, workload, DTC-specific history
 5. **Searches similar cases** — how were similar faults resolved historically
 6. **Generates a plan** — depot, technician, parts, timeline, cost, watch points
+
+The entire reasoning trace is visible in the dashboard. You see exactly what the AI considered and why it made each recommendation.
+
+### Graceful Degradation
+
+```
+AI enabled + responds in time  → Merge AI insights with heuristics
+AI enabled + timeout (>15s)    → Use heuristics, queue AI retry
+AI enabled + error             → Use heuristics, show "AI unavailable"
+AI disabled                    → Pure heuristic mode, fully functional
+```
+
+The system never depends on AI. Heuristics are the foundation. AI is an enrichment layer.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js** 22+ (LTS)
+- **pnpm** 10+ (`corepack enable && corepack prepare pnpm@latest --activate`)
+- **Docker** + Docker Compose
+
+### Quick Start
+
+```bash
+# 1. Clone and install
+git clone https://github.com/kaizen403/OEM_service_unit.git
+cd OEM_service_unit
+pnpm install
+
+# 2. Set up environment
+cp .env.example .env
+
+# 3. Start infrastructure (PostgreSQL/TimescaleDB + Redis)
+pnpm infra:up
+
+# 4. Set up database
+pnpm --filter @kaz/db db:push    # Apply schema
+pnpm --filter @kaz/db db:seed    # Seed with 96 vehicles, 6 depots, 50 technicians
+
+# 5. Run everything
+pnpm dev
+```
+
+**Services start at:**
+- Dashboard: http://localhost:3000
+- API: http://localhost:4000
+- Queue monitoring: http://localhost:4000/admin/queues
+
+### Enable AI (Optional)
+
+Add your [OpenRouter API key](https://openrouter.ai/keys) to `.env`:
+
+```env
+AI_ENABLED=true
+OPENROUTER_API_KEY=sk-or-...
+```
+
+The platform works fully without AI — heuristic scoring handles all core functionality.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        OEM TELEMATICS CLOUDS                            │
+│   Tata CV │ Ashok Leyland │ Mahindra │ Eicher │ Mock Simulator          │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    ADAPTER LAYER (Normalize & Queue)                    │
+│         REST Poller │ MQTT Subscriber │ Webhook │ Mock Generator        │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    WORKER CLUSTER (BullMQ + Redis)                      │
+│                                                                          │
+│   Signal Ingest → Health Compute → Priority Rank → AI Reasoning         │
+│   Fault Process → Depot Match → Tech Match → Notifications              │
+│   Reward Compute (learning loop)                                        │
+└────────────────────────┬────────────────────────────────────────────────┘
+                         │
+           ┌─────────────┴─────────────┐
+           ▼                           ▼
+┌─────────────────────┐      ┌──────────────────┐
+│  PostgreSQL 16      │      │     Redis 7      │
+│  + TimescaleDB      │      │                  │
+│                     │      │  Cache, pub/sub, │
+│  Operational data   │      │  queues, sessions│
+│  Time-series telemetry                     │
+│  Decision logs      │      └────────┬─────────┘
+│  Reward signals     │               │
+└─────────────────────┘               ▼
+                            ┌──────────────────┐
+                            │   Real-time SSE  │
+                            │   Dashboard feed │
+                            └────────┬─────────┘
+                                     │
+    ┌────────────────────────────────┴────────────────────────────────┐
+    │              API + DASHBOARD (Express + Next.js)                 │
+    │                                                                  │
+    │  REST API │ SSE Stream │ Bull Board │ Fleet Command Center      │

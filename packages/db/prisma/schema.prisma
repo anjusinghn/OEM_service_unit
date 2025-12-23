@@ -286,3 +286,147 @@ model VehicleFault {
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
+  @@index([vehicleId, isActive])
+  @@index([subsystem])
+  @@map("vehicle_faults")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ALERTS (de-duplicated, lifecycle-tracked)
+// ═══════════════════════════════════════════════════════════════
+
+model Alert {
+  id             String      @id @default(cuid())
+  vehicleId      String      @map("vehicle_id")
+  severity       String
+  title          String
+  subsystem      String
+  occurredAt     DateTime    @map("occurred_at") @db.Timestamptz
+  count          Int         @default(1)
+  status         AlertStatus @default(NEW)
+  acknowledgedAt DateTime?   @map("acknowledged_at") @db.Timestamptz
+  resolvedAt     DateTime?   @map("resolved_at") @db.Timestamptz
+
+  @@index([vehicleId])
+  @@index([status])
+  @@map("alerts")
+}
+
+enum AlertStatus {
+  NEW
+  ACKNOWLEDGED
+  INVESTIGATING
+  RESOLVED
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — DEPOTS & BAY MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+
+model Depot {
+  id             String   @id @default(cuid())
+  organizationId String?  @map("organization_id")
+  name           String
+  city           String
+  region         String
+  latitude       Float    @default(0)
+  longitude      Float    @default(0)
+  specialties    Json     @default("[]")
+  totalBays      Int      @map("total_bays")
+  occupiedBays   Int      @default(0) @map("occupied_bays")
+  operatingHours Json?    @map("operating_hours")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization     Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  bays             Bay[]
+  technicians      Technician[]
+  inventory        InventoryItem[]
+  serviceRequests  ServiceRequest[]
+  serviceHistory   ServiceHistory[]
+  affinityVehicles Vehicle[]        @relation("VehicleAffinity")
+
+  @@index([organizationId])
+  @@index([region])
+  @@map("depots")
+}
+
+model Bay {
+  id        String    @id @default(cuid())
+  depotId   String    @map("depot_id")
+  name      String
+  type      BayType   @default(GENERAL)
+  status    BayStatus @default(AVAILABLE)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  depot Depot @relation(fields: [depotId], references: [id], onDelete: Cascade)
+
+  @@index([depotId, status])
+  @@map("bays")
+}
+
+enum BayType {
+  GENERAL
+  ENGINE
+  ELECTRICAL
+  BODY
+  INSPECTION
+  EV
+}
+
+enum BayStatus {
+  AVAILABLE
+  OCCUPIED
+  OUT_OF_SERVICE
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — PARTS & INVENTORY
+// ═══════════════════════════════════════════════════════════════
+
+model Part {
+  partNumber  String   @id @map("part_number")
+  name        String
+  subsystem   String
+  leadDays    Int      @default(1) @map("lead_days")
+  price       Float    @default(0)
+  criticality String   @default("operational")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  inventory     InventoryItem[]
+  substitutes   PartSubstitute[]  @relation("OriginalPart")
+  substituteFor PartSubstitute[]  @relation("SubstitutePart")
+  reservations  PartReservation[]
+
+  @@map("parts")
+}
+
+model PartSubstitute {
+  id                   String @id @default(cuid())
+  originalPartNumber   String @map("original_part_number")
+  substitutePartNumber String @map("substitute_part_number")
+
+  original   Part @relation("OriginalPart", fields: [originalPartNumber], references: [partNumber], onDelete: Cascade)
+  substitute Part @relation("SubstitutePart", fields: [substitutePartNumber], references: [partNumber], onDelete: Cascade)
+
+  @@unique([originalPartNumber, substitutePartNumber])
+  @@map("part_substitutes")
+}
+
+model InventoryItem {
+  id           String   @id @default(cuid())
+  depotId      String   @map("depot_id")
+  partNumber   String   @map("part_number")
+  quantity     Int      @default(0)
+  reorderPoint Int      @default(2) @map("reorder_point")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  depot Depot @relation(fields: [depotId], references: [id], onDelete: Cascade)
+  part  Part  @relation(fields: [partNumber], references: [partNumber], onDelete: Cascade)
+
+  @@unique([depotId, partNumber])
+  @@index([depotId])
+  @@map("inventory_items")
+}
+
+model PartReservation {
+  id               String            @id @default(cuid())

@@ -221,3 +221,114 @@ describe("runDispatchReasoning — heuristic fallback", () => {
     expect(result.alternativePlan).toBeNull()
   })
 
+  it("handles empty faults → empty watchPoints", async () => {
+    const result = await runDispatchReasoning(makeInput({ faults: [] }))
+    expect(result.watchPoints).toEqual([])
+  })
+})
+
+describe("runDispatchReasoning — AI flow", () => {
+  beforeEach(() => {
+    clientMocks.canUseAi.mockReturnValue(false)
+    clientMocks.bindTools.mockReset()
+    clientMocks.withStructuredOutput.mockReset()
+    clientMocks.createOpenRouterClient.mockClear()
+    toolMocks.createDispatchTools.mockClear()
+    toolMocks.vehicleLookup.invoke.mockClear()
+    toolMocks.partsCheck.invoke.mockClear()
+    promptMocks.planningFormatMessages.mockClear()
+    promptMocks.planningPipe.mockClear()
+    promptMocks.summaryPipe.mockClear()
+  })
+
+  it("runs dispatch tools and returns the structured AI plan", async () => {
+    clientMocks.canUseAi.mockReturnValue(true)
+
+    const planningInvoke = vi.fn()
+      .mockResolvedValueOnce({
+        tool_calls: [
+          { name: "vehicle_lookup", id: "call-1", args: {} },
+          { name: "parts_check", id: "call-2", args: {} }
+        ]
+      })
+      .mockResolvedValueOnce({
+        tool_calls: []
+      })
+
+    const summaryInvoke = vi.fn().mockResolvedValue({
+      depotId: "d-9",
+      depotReasoning: "AI picked the depot with ready parts and shortest ETA.",
+      partsToStage: ["brake_pad", "rotor"],
+      estimatedRepairHours: 6,
+      estimatedTotalCost: 9000,
+      urgencyLevel: "urgent",
+      watchPoints: ["Coolant Thermostat"],
+      alternativePlan: {
+        depotId: "d-2",
+        reasoning: "Fallback depot with slower ETA."
+      },
+      confidence: 0.91,
+      agentTrace: ["ignored-by-runtime"]
+    })
+
+    clientMocks.bindTools.mockReturnValue({ invoke: planningInvoke })
+    clientMocks.withStructuredOutput.mockReturnValue({ invoke: summaryInvoke })
+
+    const input = makeInput({ fewShotExamples: "Case memory: cooling fault repeat." })
+    const result = await runDispatchReasoning(input)
+
+    expect(clientMocks.createOpenRouterClient).toHaveBeenCalledTimes(2)
+    expect(clientMocks.bindTools).toHaveBeenCalledTimes(1)
+    expect(clientMocks.withStructuredOutput).toHaveBeenCalledTimes(1)
+    expect(promptMocks.planningFormatMessages).toHaveBeenCalledWith({ vehicleId: "v-1" })
+    expect(promptMocks.planningPipe).toHaveBeenCalledTimes(0)
+    expect(promptMocks.summaryPipe).toHaveBeenCalledTimes(1)
+    expect(toolMocks.createDispatchTools).toHaveBeenCalledWith(input)
+    expect(planningInvoke).toHaveBeenCalledTimes(2)
+    expect(toolMocks.vehicleLookup.invoke).toHaveBeenCalledWith({})
+    expect(toolMocks.partsCheck.invoke).toHaveBeenCalledWith({})
+    expect(summaryInvoke).toHaveBeenCalledWith({
+      dispatchContext: JSON.stringify({
+        vehicle: input.vehicle,
+        health: input.health,
+        faults: input.faults,
+        depotRecommendations: input.depotRecommendations,
+        serviceHistory: input.serviceHistory.slice(0, 10),
+        partsToStage: input.partsToStage
+      }),
+      agentTrace: JSON.stringify(["vehicle_lookup", "parts_check"]),
+      fewShotExamples: "Case memory: cooling fault repeat."
+    })
+    expect(result).toMatchObject({
+      depotId: "d-9",
+      depotReasoning: "AI picked the depot with ready parts and shortest ETA.",
+      partsToStage: ["brake_pad", "rotor"],
+      estimatedRepairHours: 6,
+      estimatedTotalCost: 9000,
+      urgencyLevel: "urgent",
+      watchPoints: ["Coolant Thermostat"],
+      alternativePlan: {
+        depotId: "d-2",
+        reasoning: "Fallback depot with slower ETA."
+      },
+      confidence: 0.91,
+      agentTrace: ["vehicle_lookup", "parts_check"],
+      model: "test-model"
+    })
+    expect(result.latencyMs).toEqual(expect.any(Number))
+  })
+
+  it("falls back to heuristics when the AI planner throws", async () => {
+    clientMocks.canUseAi.mockReturnValue(true)
+    clientMocks.bindTools.mockReturnValue({
+      invoke: vi.fn().mockRejectedValue(new Error("planner failed"))
+    })
+
+    const result = await runDispatchReasoning(makeInput())
+
+    expect(toolMocks.createDispatchTools).toHaveBeenCalledTimes(1)
+    expect(result.model).toBeNull()
+    expect(result.latencyMs).toBeNull()
+    expect(result.agentTrace).toContain("fallback: heuristic dispatch used")
+  })
+})

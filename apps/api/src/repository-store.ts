@@ -284,3 +284,146 @@ class RepositoryStore {
     clearInterval(this.timer)
   }
 
+  subscribe(listener: () => void) {
+    this.emitter.on("change", listener)
+    return () => this.emitter.off("change", listener)
+  }
+
+  private async loadState(): Promise<DemoState> {
+    const [vehicleRows, depotRows, technicianRows, partRows, inventoryRows, activeFaultRows, serviceRequestRows, serviceHistoryRows, signalMap, pulseRows, supplierRows] = await Promise.all([
+      vehicleRepository.findAll(),
+      depotRepository.findAll(),
+      technicianRepository.findAll(),
+      partsRepository.getCatalog(),
+      partsRepository.getInventory(),
+      prisma.vehicleFault.findMany({ where: { isActive: true }, orderBy: { occurredAt: "desc" } }),
+      serviceRequestRepository.findAll(),
+      prisma.serviceHistory.findMany({ orderBy: { resolvedAt: "desc" } }),
+      loadLatestSignals(),
+      prisma.serviceTimeline.findMany({ orderBy: { at: "desc" }, take: 24 }),
+      prisma.$queryRaw<Array<{ id: string; name: string; componentTypes: Prisma.JsonValue; activeBatches: Prisma.JsonValue }>>`
+        SELECT id, name, component_types AS "componentTypes", active_batches AS "activeBatches"
+        FROM supplier_info
+        ORDER BY name ASC
+      `
+    ])
+
+    const vehicles = vehicleRows.map(mapVehicle)
+    const depots = depotRows.map(mapDepot)
+    const technicians = technicianRows.map(mapTechnician)
+    const parts = partRows.map(mapPart)
+    const inventory = inventoryRows.map(mapInventory)
+    const serviceRequests = serviceRequestRows.map(mapServiceRequest)
+    const serviceHistory = serviceHistoryRows.map(mapServiceHistory)
+
+    const faultsByVehicle = Object.fromEntries(vehicles.map((vehicle) => [vehicle.id, [] as VehicleFault[]]))
+    for (const fault of activeFaultRows.map(mapFault)) {
+      faultsByVehicle[fault.vehicleId] = [...(faultsByVehicle[fault.vehicleId] ?? []), fault]
+    }
+
+    const signals = Object.fromEntries(
+      vehicles.map((vehicle) => [vehicle.id, signalMap[vehicle.id] ?? defaultSignalSnapshot(vehicle.id)])
+    )
+
+    const livePulse: LivePulse[] = pulseRows.map((row, index) => ({
+      id: `pulse-${index + 1}`,
+      kind:
+        row.status === "COMPLETED"
+          ? "complete"
+          : row.status === "DEPOT_ASSIGNED"
+            ? "dispatch"
+            : row.status === "IN_PROGRESS" || row.status === "SCHEDULED"
+              ? "progress"
+              : "tick",
+      message: row.note,
+      at: row.at.toISOString()
+    }))
+
+    const suppliers: SupplierInfo[] = supplierRows.map((supplier) => ({
+      id: supplier.id,
+      name: supplier.name,
+      componentTypes: toStringArray(supplier.componentTypes),
+      activeBatches: toStringArray(supplier.activeBatches)
+    }))
+
+    return {
+      vehicles,
+      signals,
+      faults: faultsByVehicle,
+      depots,
+      parts,
+      inventory,
+      technicians,
+      serviceRequests,
+      serviceHistory,
+      livePulse,
+      suppliers,
+      forensics: {
+        cohorts: [],
+        anomalies: [],
+        patterns: [],
+        investigations: [],
+        supplierScorecards: [],
+        heatmapData: []
+      }
+    }
+  }
+
+  private applyForensicsOverlay(snapshot: ForensicsSnapshot): ForensicsSnapshot {
+    return {
+      ...snapshot,
+      patterns: snapshot.patterns.map((pattern) => ({
+        ...pattern,
+        status: this.overlay.patternStatuses.get(pattern.id) ?? pattern.status
+      })),
+      investigations: this.overlay.investigations.map((investigation) => ({ ...investigation }))
+    }
+  }
+
+  private async emitDashboardRefresh(type: string, payload: Record<string, unknown> = {}) {
+    const message = JSON.stringify({ type, timestamp: nowIso(), ...payload })
+    await publish(dashboardChannel, message)
+    this.emitter.emit("change")
+  }
+
+  private async buildPayload() {
+    const state = await this.loadState()
+    const latestAiRows = await prisma.$queryRaw<LatestAiDecisionRow[]>`
+      SELECT DISTINCT ON (vehicle_id, decision_type)
+        vehicle_id AS "vehicleId",
+        decision_type AS "decisionType",
+        ai_output AS "aiOutput"
+      FROM ai_decision_logs
+      ORDER BY vehicle_id, decision_type, created_at DESC
+    `
+    const aiByVehicle = Object.fromEntries(
+      latestAiRows.map((row) => [`${row.vehicleId}:${row.decisionType}`, row.aiOutput])
+    ) as Record<string, Prisma.JsonValue | null>
+    const healthByVehicle = Object.fromEntries(
+      state.vehicles.map((vehicle) => [
+        vehicle.id,
+        computeHealthScore(state.signals[vehicle.id], state.faults[vehicle.id] ?? [])
+      ])
+    ) as Record<string, HealthScore>
+    const alerts: Alert[] = dedupeAlerts(state.faults)
+    const baseSnapshot = buildSnapshot(state, healthByVehicle, alerts)
+    const depotRecommendations = Object.fromEntries(
+      state.vehicles.map((vehicle) => [
+        vehicle.id,
+        recommendDepots(vehicle, state, healthByVehicle[vehicle.id].weakestSubsystem)
+      ])
+    )
+    const snapshot: DashboardSnapshot = {
+      ...baseSnapshot,
+      priorityQueue: baseSnapshot.priorityQueue.map((entry) => ({
+        ...entry,
+        breakdown: {
+          ...entry.breakdown,
+          aiAssessment: aiByVehicle[`${entry.vehicleId}:priority`] && typeof aiByVehicle[`${entry.vehicleId}:priority`] === "object" && !Array.isArray(aiByVehicle[`${entry.vehicleId}:priority`])
+            ? (aiByVehicle[`${entry.vehicleId}:priority`] as DashboardSnapshot["priorityQueue"][number]["breakdown"]["aiAssessment"])
+            : null
+        }
+      })),
+      depotRecommendations: Object.fromEntries(
+        Object.entries(depotRecommendations).map(([vehicleId, recommendations]) => [
+          vehicleId,

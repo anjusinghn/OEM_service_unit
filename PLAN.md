@@ -310,3 +310,159 @@ OEM TELEMATICS CLOUD (their infrastructure, not ours)
 │  • Vehicle health alerts
 │
 │  How they expose it (3 common patterns):
+│
+├──── PATTERN A: REST API (Pull-based) ────────────────────────
+│     Most common. OEM provides a REST API with OAuth2 auth.
+│     We poll at intervals (every 30s–5min depending on SLA).
+│     Example: GET /api/vehicles/{vin}/signals?since={timestamp}
+│     Pagination, rate limits, API key management required.
+│
+├──── PATTERN B: MQTT Broker (Push-based, real-time) ──────────
+│     OEM publishes signals to an MQTT topic per vehicle/fleet.
+│     We subscribe to topics: oem/{fleetId}/vehicles/{vin}/signals
+│     Lowest latency. Best for real-time health monitoring.
+│     Requires persistent MQTT client connection management.
+│
+├──── PATTERN C: Webhook (Push-based, event-driven) ───────────
+│     OEM sends HTTP POST to our endpoint when events occur
+│     (new DTC, health alert, trip completed, geofence breach).
+│     Best for fault events and alerts. Not for continuous signals.
+│     Requires webhook registration, signature verification.
+│
+└──── PATTERN D: File-based / Batch ───────────────────────────
+      OEM drops CSV/JSON files to SFTP or cloud storage daily.
+      Least common for real-time, but some legacy OEMs use this.
+      We poll storage, parse, and ingest in batch jobs.
+```
+
+### Our OEM Adapter Architecture
+
+```
+packages/oem-adapters/
+├── core/
+│   └── src/
+│       ├── index.ts              # Abstract OEMAdapter interface
+│       ├── types.ts              # RawSignal, RawFault, RawVehicle, OEMConfig
+│       ├── normalizer.ts         # Normalize any OEM format → our standard format
+│       ├── rate-limiter.ts       # Per-OEM rate limit tracking
+│       └── health-check.ts      # Connection health monitoring
+│
+├── mock/                         # EXISTING — enhanced for continuous streaming
+│   └── src/index.ts             # Mock OEM that generates realistic telemetry
+│
+├── rest-poller/                  # Generic REST API adapter (Pattern A)
+│   └── src/
+│       ├── index.ts             # Polling loop: fetch → normalize → push to queue
+│       ├── auth.ts              # OAuth2 client credentials flow
+│       └── pagination.ts       # Cursor/offset pagination handling
+│
+├── mqtt-subscriber/              # Generic MQTT adapter (Pattern B)
+│   └── src/
+│       ├── index.ts             # MQTT.js client: connect, subscribe, handle messages
+│       ├── topic-router.ts      # Route messages by topic pattern to correct handler
+│       └── reconnect.ts        # Exponential backoff reconnection logic
+│
+└── webhook-receiver/             # Generic Webhook adapter (Pattern C)
+    └── src/
+        ├── index.ts             # Express sub-router mounted on API server
+        ├── signature.ts         # HMAC signature verification per OEM
+        └── transform.ts        # OEM-specific payload → normalized format
+```
+
+### The OEM Adapter Interface (Production Version)
+
+```typescript
+// packages/oem-adapters/core/src/types.ts
+
+interface OEMConfig {
+  oemId: string                    // "tata_fleet_edge" | "ashok_leyland_ialert" | ...
+  connectionType: "rest" | "mqtt" | "webhook" | "mock"
+  credentials: {
+    apiKey?: string
+    clientId?: string
+    clientSecret?: string
+    tokenUrl?: string
+    mqttBrokerUrl?: string
+    mqttUsername?: string
+    mqttPassword?: string
+    webhookSecret?: string
+  }
+  pollIntervalMs?: number          // For REST adapters (default: 30000)
+  batchSize?: number               // For REST adapters (default: 100)
+  topicPattern?: string            // For MQTT adapters
+  signalMapping: SignalMapping     // OEM field names → our field names
+}
+
+interface SignalMapping {
+  coolantTemp: string              // e.g., "engine.coolant_temperature_celsius"
+  oilPressure: string              // e.g., "engine.oil_pressure_kpa"
+  batteryVoltage: string           // e.g., "electrical.battery_voltage"
+  turboBoost: string               // e.g., "engine.turbo_boost_bar"
+  brakeWear: string                // e.g., "chassis.brake_pad_wear_percent"
+  exhaustTemp: string              // e.g., "exhaust.gas_temperature_celsius"
+  fuelLevel: string                // e.g., "fuel.level_percent"
+  speed: string                    // e.g., "motion.speed_kmh"
+  mileage: string                  // e.g., "odometer.total_km"
+  latitude: string                 // e.g., "gps.latitude"
+  longitude: string                // e.g., "gps.longitude"
+}
+
+// What comes out of normalization — OEM-agnostic
+interface NormalizedSignal {
+  vehicleId: string                // Our internal ID (mapped from VIN)
+  vin: string                      // Original VIN from OEM
+  timestamp: string                // ISO 8601
+  coolantTemp: number              // Always Celsius
+  oilPressure: number              // Always kPa
+  batteryVoltage: number           // Always Volts
+  turboBoost: number               // Always bar
+  brakeWear: number                // Always 0-100%
+  exhaustTemp: number              // Always Celsius
+  fuelLevel: number                // Always 0-100%
+  speed: number                    // Always km/h
+  mileage: number                  // Always km
+  coordinates: { lat: number; lng: number }
+  source: string                   // OEM adapter ID
+  rawHash: string                  // SHA-256 of raw payload for dedup
+}
+
+interface NormalizedFault {
+  vehicleId: string
+  vin: string
+  dtcCode: string                  // ISO 15031 format (P0420, C1234, etc.)
+  severity: "info" | "warning" | "critical" | "safety"
+  subsystem: SubsystemKey
+  title: string
+  description: string
+  occurredAt: string
+  source: string
+}
+
+interface OEMAdapter {
+  name: string
+  connectionType: OEMConfig["connectionType"]
+
+  // Lifecycle
+  initialize(config: OEMConfig): Promise<void>
+  start(): Promise<void>           // Begin polling/subscribing
+  stop(): Promise<void>            // Graceful shutdown
+  healthCheck(): Promise<{ healthy: boolean; latencyMs: number; lastDataAt: string }>
+
+  // Events — adapter emits these, ingestion gateway consumes them
+  on(event: "signals", handler: (signals: NormalizedSignal[]) => void): void
+  on(event: "faults", handler: (faults: NormalizedFault[]) => void): void
+  on(event: "error", handler: (error: Error) => void): void
+  on(event: "connected" | "disconnected", handler: () => void): void
+}
+```
+
+### Data Flow Sequence (Signal → Dashboard Update)
+
+```
+1. OEM cloud has new signal data for VEH-042 (coolant temp spiked to 104°C)
+
+2. OEM Adapter (REST Poller or MQTT Subscriber) receives the raw data
+   ├─ Normalizes: OEM "engine.coolant_temperature_celsius" → our "coolantTemp"
+   ├─ Unit converts if needed (some OEMs report in Fahrenheit)
+   ├─ Dedup check: SHA-256 hash → Redis SET lookup → not a duplicate
+   └─ Pushes normalized signal to BullMQ queue:telemetry-ingest

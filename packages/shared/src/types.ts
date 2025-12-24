@@ -351,3 +351,121 @@ export interface FleetOverview {
   firstTimeFixRate: number
   bayUtilization: number
 }
+
+export interface DashboardSnapshot {
+  overview: FleetOverview
+  healthByVehicle: Record<string, HealthScore>
+  alerts: Alert[]
+  priorityQueue: PriorityEntry[]
+  depotRecommendations: Record<string, DepotRecommendation[]>
+  livePulse: LivePulse[]
+  aiEscalations?: AiEscalation[]
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS
+// ═══════════════════════════════════════════════════════════════
+
+// --- Cohort Analysis (Sub-phase 2.1) ---
+
+export type CohortDimension = "buildBatch" | "softwareVersion" | "region" | "model" | "dutyCycle" | "depot"
+
+export interface Cohort {
+  id: string
+  name: string
+  dimension: CohortDimension
+  dimensionValue: string
+  vehicleIds: string[]
+  vehicleCount: number
+  createdAt: string
+}
+
+export interface CohortFaultProfile {
+  cohortId: string
+  dtcCode: string
+  subsystem: SubsystemKey
+  faultCount: number
+  faultRate: number
+  baselineFaultRate: number
+  rateRatio: number
+  mtbfDays: number
+}
+
+export interface CohortComparison {
+  cohortId: string
+  cohortName: string
+  baselineLabel: string
+  faultProfiles: CohortFaultProfile[]
+  overallFaultRate: number
+  baselineOverallFaultRate: number
+  avgHealthScore: number
+  baselineAvgHealthScore: number
+  statisticalSignificance: number
+  isSignificant: boolean
+  sampleSize: number
+}
+
+export interface CohortAnomaly {
+  id: string
+  cohortId: string
+  cohortName: string
+  dimension: CohortDimension
+  dimensionValue: string
+  anomalyType: string
+  dtcCode: string
+  subsystem: SubsystemKey
+  rateRatio: number
+  pValue: number
+  affectedVehicleCount: number
+  severity: "low" | "medium" | "high" | "critical"
+  detectedAt: string
+  summary: string
+}
+
+// --- Failure Pattern Detection (Sub-phase 2.2) ---
+
+export type PatternStatus = "DETECTED" | "UNDER_REVIEW" | "CONFIRMED" | "ACTIVE" | "RETIRED"
+
+export interface DtcSequenceStep {
+  dtcCode: string
+  subsystem: SubsystemKey
+  severity: DtcSeverity
+  medianDaysFromStart: number
+}
+
+export interface FailurePattern {
+  id: string
+  name: string
+  type: "dtc_sequence" | "signal_degradation" | "spatial" | "cross_system"
+  status: PatternStatus
+  confidence: number
+  supportCount: number
+  totalVehicles: number
+  supportRate: number
+  sequence: DtcSequenceStep[]
+  affectedSubsystems: SubsystemKey[]
+  affectedRegions: string[]
+  correlations: PatternCorrelation[]
+  detectedAt: string
+  summary: string
+}
+
+export interface PatternCorrelation {
+  factorA: string
+  factorB: string
+  correlationType: "temporal" | "spatial" | "cross_system"
+  strength: number
+  description: string
+}
+
+export interface GeographicHeatmapPoint {
+  lat: number
+  lng: number
+  intensity: number
+  dtcCode: string
+  vehicleCount: number
+  region: string
+}
+
+// --- Investigation Workflow (Sub-phase 2.3) ---
+

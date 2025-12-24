@@ -466,3 +466,159 @@ interface OEMAdapter {
    ├─ Unit converts if needed (some OEMs report in Fahrenheit)
    ├─ Dedup check: SHA-256 hash → Redis SET lookup → not a duplicate
    └─ Pushes normalized signal to BullMQ queue:telemetry-ingest
+
+3. Worker: SignalIngestProcessor picks up the job
+   ├─ Writes to TimescaleDB: INSERT INTO vehicle_signals (...)
+   ├─ Updates Redis: SET vehicle:signal:VEH-042 {json} EX 60
+   └─ Emits job → queue:health-recompute { vehicleId: "VEH-042" }
+
+4. Worker: HealthProcessor picks up the job
+   ├─ Reads latest signal from Redis (or TimescaleDB fallback)
+   ├─ Reads active faults from PostgreSQL
+   ├─ Runs computeHealthScore() → overall: 52.3, status: "critical"
+   ├─ Compares with previous: was "watch" (67.1) → now "critical" (52.3) = STATUS CHANGE
+   ├─ Writes to TimescaleDB: INSERT INTO vehicle_health_snapshots (...)
+   ├─ Updates Redis: SET vehicle:health:VEH-042 {json} EX 60
+   └─ Emits job → queue:priority-rerank { vehicleId: "VEH-042", statusChanged: true }
+
+5. Worker: PriorityProcessor picks up the job
+   ├─ Runs buildPriorityQueue() for VEH-042 → score: 78.4 (was 52.1)
+   ├─ Updates Redis sorted set: ZADD queue:priority 78.4 VEH-042
+   ├─ Vehicle jumped from position #31 to position #5 in the queue
+   ├─ Writes to TimescaleDB: INSERT INTO priority_snapshots (...)
+   ├─ Emits job → queue:ai-reasoning { vehicleId: "VEH-042" }
+   └─ Emits job → queue:depot-match { vehicleId: "VEH-042" }
+
+6. Worker: AIReasoningProcessor picks up the job (async, non-blocking)
+   ├─ Builds LangChain prompt with vehicle data, health, faults, service history
+├─ Calls OpenRouter API: POST https://openrouter.ai/api/v1/chat/completions
+│   model: "z-ai/glm-4.5-air:free"
+   │   thinking: { type: "disabled" }  (fast mode for real-time decisions)
+   │   tools: [vehicle_lookup, service_history, fleet_stats]
+   ├─ Parses structured output (Zod schema validation)
+   │   {
+   │     adjustedScore: 82.1,
+   │     urgency: "urgent",
+   │     riskFactors: ["Coolant spike to 104°C — 12°C above threshold",
+   │                   "This vehicle had cooling intervention 45 days ago — possible recurring issue"],
+   │     recommendation: "Immediate dispatch recommended. Prior cooling repair may not have
+   │                      addressed root cause. Suggest extended diagnostics at Pune depot."
+   │   }
+   ├─ Stores AI assessment in PostgreSQL: INSERT INTO decision_logs (...)
+   └─ Updates Redis cache: SET ai:priority:VEH-042 {json} EX 300
+
+7. Worker: NotificationProcessor (triggered by status change in step 4)
+   ├─ Builds SSE event payload:
+   │   {
+   │     type: "vehicle_status_change",
+   │     vehicleId: "VEH-042",
+   │     previousStatus: "watch",
+   │     newStatus: "critical",
+   │     health: { overall: 52.3, weakestSubsystem: "cooling", ... },
+   │     priority: { score: 78.4, rank: 5, aiAssessment: { urgency: "urgent", ... } },
+   │     timestamp: "2026-03-16T14:23:45.123Z"
+   │   }
+   ├─ Publishes to Redis: PUBLISH channel:dashboard {json}
+   └─ Sends webhook to registered endpoints (if any)
+
+8. API Server: SSE stream handler
+   ├─ Redis subscriber receives the published event
+   └─ Fans out to all connected EventSource clients: data: {json}\n\n
+
+9. Dashboard (browser):
+   ├─ EventSource receives the SSE event
+   ├─ Zustand store updates: vehicles, priorityQueue, healthByVehicle
+   ├─ React re-renders:
+   │   ├─ VEH-042 card flashes red with pulse animation (Framer Motion)
+   │   ├─ Priority queue table re-sorts with layout animation
+   │   ├─ VEH-042 slides from position #31 to #5 with smooth transition
+   │   ├─ Toast notification: "⚠️ VEH-042 entered CRITICAL status"
+   │   ├─ AI assessment badge appears: "🔴 Urgent — recurring cooling issue"
+   │   └─ Alert bell icon in header gets a red badge count increment
+   └─ Total latency from signal → dashboard update: < 3 seconds
+
+10. User clicks VEH-042 in the priority queue:
+    ├─ Vehicle detail panel slides open (Framer Motion)
+    ├─ Shows: subsystem radar chart, signal sparklines, fault history
+├─ AI reasoning panel expands: full explanation from OpenRouter model output
+    └─ "AI Dispatch" button is prominently available
+```
+
+---
+
+## OpenRouter AI Integration Architecture
+
+### API Configuration
+
+```
+Base URL:     https://openrouter.ai/api/v1
+Model:        z-ai/glm-4.5-air:free
+Context:      256K tokens
+API Style:    OpenAI-compatible (chat/completions endpoint)
+Tool Calling: Supported (tools array + tool_choice: "auto")
+Thinking:     Disable for real-time decisions (type: "disabled")
+              Enable for complex dispatch analysis (type: "enabled")
+Pricing:      $0.10/M input (cache hit), $0.60/M input (cache miss), $3.00/M output
+```
+
+### Environment Variables
+
+```bash
+# Required — OpenRouter API access
+OPENROUTER_API_KEY=sk-or-xxxxxxxxxxxxxxxxxxxx   # From openrouter.ai/keys
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=z-ai/glm-4.5-air:free
+
+# AI behavior configuration
+AI_ENABLED=true                              # Feature flag — false = pure heuristic mode
+AI_CACHE_TTL_SECONDS=300                     # Cache AI responses for 5 minutes
+AI_MAX_RETRIES=3                             # Retry on transient failures
+AI_TIMEOUT_MS=15000                          # Max wait per AI call (15 seconds)
+AI_THINKING_MODE=disabled                    # "disabled" for fast, "enabled" for deep reasoning
+AI_MAX_TOOL_STEPS=8                          # Max tool-calling loop iterations
+```
+
+### Package Structure
+
+```
+packages/ai/                    @kaz/ai
+├── src/
+│   ├── index.ts                # Public API — exportAll
+│   │
+│   ├── client.ts               # LangChain ChatOpenAI configured for OpenRouter
+│   │   │
+│   │   │  import { ChatOpenAI } from "@langchain/openai"
+│   │   │
+│   │   │  export const createOpenRouterClient = () => new ChatOpenAI({
+│   │   │    openAIApiKey: process.env.OPENROUTER_API_KEY,
+│   │   │    configuration: {
+│   │   │      baseURL: process.env.OPENROUTER_BASE_URL,
+│   │   │    },
+│   │   │    modelName: process.env.OPENROUTER_MODEL ?? "z-ai/glm-4.5-air:free",
+│   │   │    temperature: 0.6,
+│   │   │    maxTokens: 4096,
+│   │   │    timeout: 15000,
+│   │   │    maxRetries: 3,
+│   │   │  })
+│   │   │
+│   │   └── Includes: retry logic, token tracking, cost calculation, fallback handling
+│   │
+│   ├── chains/                 # LangChain LCEL chains (each is a focused reasoning pipeline)
+│   │   │
+│   │   ├── priority-reasoning.ts
+│   │   │   │
+│   │   │   │  PURPOSE: Evaluate whether the heuristic priority ranking is correct.
+│   │   │   │           Detect edge cases, recurring issues, non-obvious risk factors.
+│   │   │   │
+│   │   │   │  INPUT:
+│   │   │   │    vehicle: Vehicle + current signals + active faults + health score
+│   │   │   │    heuristicScore: number (from existing buildPriorityQueue)
+│   │   │   │    heuristicBreakdown: PriorityBreakdown (existing 5-factor breakdown)
+│   │   │   │    serviceHistory: last 10 service records for this vehicle
+│   │   │   │    fleetContext: { avgHealth, criticalCount, openRequests, queueDepth }
+│   │   │   │
+│   │   │   │  SYSTEM PROMPT:
+│   │   │   │    "You are a fleet service prioritization expert for commercial vehicles
+│   │   │   │     operating in India. You are given a vehicle's telemetry, health scores,
+│   │   │   │     fault codes, service history, and a heuristic priority score.
+│   │   │   │

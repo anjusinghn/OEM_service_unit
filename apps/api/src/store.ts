@@ -300,3 +300,103 @@ export class DemoStore {
     }
 
     const historyRecord: ServiceHistoryRecord = {
+      id: createId("srvhist", this.state.serviceHistory.length + 1),
+      vehicleId: request.vehicleId,
+      depotId: request.depotId ?? this.state.vehicles[0].depotAffinityId,
+      technicianId: request.technicianId ?? this.state.technicians[0].id,
+      subsystem: request.weakestSubsystem,
+      outcome: `Completed ${request.weakestSubsystem} intervention with staged orchestration workflow.`,
+      resolvedAt: nowIso(),
+      firstTimeFix: true
+    }
+
+    this.state.serviceHistory = [historyRecord, ...this.state.serviceHistory]
+    const livePulse = this.addLivePulse(
+      "complete",
+      `Service request ${request.id} completed. Vehicle ${request.vehicleId} health rebounded.`
+    )
+    this.recompute()
+    return { request, livePulse }
+  }
+
+  private tick() {
+    this.state = applyMockTick(this.state)
+    this.recompute()
+  }
+
+  private recompute() {
+    this.snapshot = this.computeSnapshot()
+    this.state.forensics = buildForensicsSnapshot(this.state, this.snapshot.healthByVehicle)
+    this.emitChange()
+  }
+
+  private emitChange() {
+    this.emitter.emit("change")
+  }
+
+  private computeSnapshot(): DashboardSnapshot {
+    const healthByVehicle = Object.fromEntries(
+      this.state.vehicles.map((vehicle) => [
+        vehicle.id,
+        computeHealthScore(this.state.signals[vehicle.id], this.state.faults[vehicle.id])
+      ])
+    ) as Record<string, HealthScore>
+    const alerts = dedupeAlerts(this.state.faults).slice(0, 20)
+    return buildSnapshot(this.state, healthByVehicle, alerts)
+  }
+
+  private materializeVehicle(vehicle: Vehicle) {
+    return {
+      ...vehicle,
+      signal: this.state.signals[vehicle.id],
+      health: this.snapshot.healthByVehicle[vehicle.id],
+      faults: this.state.faults[vehicle.id],
+      priority: this.getPriority(vehicle.id),
+      depotRecommendations: this.getDepotRecommendations(vehicle.id),
+      currentRequest:
+        this.state.serviceRequests.find((request) => request.vehicleId === vehicle.id && request.status !== "CLOSED") ?? null
+    }
+  }
+
+  private addLivePulse(kind: LivePulse["kind"], message: string) {
+    const pulse: LivePulse = {
+      id: createId("pulse", this.state.livePulse.length + 1),
+      kind,
+      message,
+      at: nowIso()
+    }
+    this.state.livePulse = [pulse, ...this.state.livePulse].slice(0, 24)
+    return pulse
+  }
+
+  private noteForStatus(status: ServiceRequestStatus, request: ServiceRequest) {
+    switch (status) {
+      case "PARTS_CONFIRMED":
+        return `Depot ${request.depotId ?? "unknown"} confirmed part pick readiness.`
+      case "TECHNICIAN_ASSIGNED":
+        return `Technician ${request.technicianId ?? "unknown"} accepted the assignment.`
+      case "SCHEDULED":
+        return `Vehicle booked into service bay window.`
+      case "IN_PROGRESS":
+        return `Vehicle entered active service bay.`
+      case "CLOSED":
+        return `Workflow closed after confirmation of stable telemetry.`
+      default:
+        return `Transitioned to ${status}.`
+    }
+  }
+
+  private adjustDepotCapacity(depotId: string | null, delta: number) {
+    if (!depotId) return
+    this.state.depots = this.state.depots.map((depot) =>
+      depot.id === depotId
+        ? {
+            ...depot,
+            occupiedBays: Math.max(0, Math.min(depot.totalBays, depot.occupiedBays + delta))
+          }
+        : depot
+    )
+  }
+}
+
+export const demoStore = new DemoStore()

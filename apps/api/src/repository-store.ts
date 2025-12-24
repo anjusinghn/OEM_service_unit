@@ -427,3 +427,146 @@ class RepositoryStore {
       depotRecommendations: Object.fromEntries(
         Object.entries(depotRecommendations).map(([vehicleId, recommendations]) => [
           vehicleId,
+          recommendations.map((recommendation) => {
+            const aiAssessment = aiByVehicle[`${vehicleId}:depot`]
+            return aiAssessment && typeof aiAssessment === "object" && !Array.isArray(aiAssessment)
+              ? { ...recommendation, aiAssessment: recommendation.depotId === (aiAssessment as { recommendedDepotId?: string }).recommendedDepotId ? (aiAssessment as unknown as DashboardSnapshot["depotRecommendations"][string][number]["aiAssessment"]) : null }
+              : recommendation
+          })
+        ])
+      ),
+      aiEscalations: latestAiRows
+        .filter((row) => row.decisionType === "escalation" && row.aiOutput && typeof row.aiOutput === "object" && !Array.isArray(row.aiOutput))
+        .map((row) => row.aiOutput as unknown as NonNullable<DashboardSnapshot["aiEscalations"]>[number])
+    }
+    const forensics = this.applyForensicsOverlay(buildForensicsSnapshot(state, healthByVehicle))
+
+    const vehicles = state.vehicles.map((vehicle) => ({
+      ...vehicle,
+      signal: state.signals[vehicle.id],
+      health: snapshot.healthByVehicle[vehicle.id],
+      faults: state.faults[vehicle.id] ?? [],
+      priority: snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicle.id) ?? null,
+      depotRecommendations: snapshot.depotRecommendations[vehicle.id] ?? [],
+      currentRequest: state.serviceRequests.find((request) => request.vehicleId === vehicle.id && request.status !== "CLOSED") ?? null
+    }))
+
+    const payload: DashboardPayload = {
+      ...snapshot,
+      vehicles,
+      depots: state.depots,
+      technicians: state.technicians,
+      serviceRequests: state.serviceRequests.filter((request) => request.status !== "CLOSED"),
+      forensics,
+      generatedAt: nowIso()
+    }
+
+    return { state, snapshot, forensics, payload }
+  }
+
+  private async buildIntelligenceSnapshot(): Promise<IntelligenceSnapshot> {
+    const [rewardSignals, decisionLogs] = await Promise.all([
+      rewardSignalRepository.findRecent(200),
+      prisma.aiDecisionLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 200
+      })
+    ])
+
+    const rewardRecords = rewardSignals
+      .map((signal: Awaited<ReturnType<typeof rewardSignalRepository.findRecent>>[number]) => ({
+        id: signal.id,
+        aiDecisionLogId: signal.aiDecisionLogId,
+        rewardType: signal.rewardType,
+        rewardScore: signal.rewardScore,
+        rewardBreakdown: signal.rewardBreakdown && typeof signal.rewardBreakdown === "object" && !Array.isArray(signal.rewardBreakdown)
+          ? Object.fromEntries(
+              Object.entries(signal.rewardBreakdown).filter(([, value]) => typeof value === "number") as Array<[string, number]>
+            )
+          : {},
+        createdAt: signal.createdAt.toISOString()
+      }))
+      .filter((signal) => signal.rewardType !== "technician")
+
+    const groupedByType = new Map<string, typeof rewardRecords>()
+    for (const signal of rewardRecords) {
+      const list = groupedByType.get(signal.rewardType) ?? []
+      list.push(signal)
+      groupedByType.set(signal.rewardType, list)
+    }
+
+    const qualityTrend = [...groupedByType.entries()].map(([label, signals]) => ({
+      label,
+      aiScore: signals.reduce((sum: number, item: (typeof rewardRecords)[number]) => sum + item.rewardScore, 0) / Math.max(1, signals.length),
+      heuristicScore: 0.5
+    }))
+
+    const activeDecisionLogs = decisionLogs.filter(
+      (log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) =>
+        log.decisionType !== "technician"
+    )
+    const scoredLogIds = new Set(rewardRecords.map((item: (typeof rewardRecords)[number]) => item.aiDecisionLogId))
+    const scoredDecisionLogs = activeDecisionLogs.filter((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => scoredLogIds.has(log.id))
+
+    const confidenceBuckets = new Map<number, { correct: number; total: number }>()
+    for (const log of scoredDecisionLogs) {
+      if (!log.aiOutput || typeof log.aiOutput !== "object" || Array.isArray(log.aiOutput)) continue
+      const confidence = (log.aiOutput as { confidence?: unknown }).confidence
+      if (typeof confidence !== "number") continue
+      const bucket = Math.floor(confidence * 10) / 10
+      const existing = confidenceBuckets.get(bucket) ?? { correct: 0, total: 0 }
+      const reward = rewardRecords.find((item: (typeof rewardRecords)[number]) => item.aiDecisionLogId === log.id)
+      existing.total += 1
+      if (reward!.rewardScore >= 0.6) existing.correct += 1
+      confidenceBuckets.set(bucket, existing)
+    }
+
+    const confidenceCalibration = [...confidenceBuckets.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([confidenceBucket, bucket]) => ({
+        confidenceBucket,
+        actualAccuracy: bucket.correct / Math.max(1, bucket.total),
+        sampleSize: bucket.total
+      }))
+
+    const reviewItems: DecisionReviewItem[] = scoredDecisionLogs.map((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => {
+      const reward = rewardRecords.find((item: (typeof rewardRecords)[number]) => item.aiDecisionLogId === log.id)!
+      return {
+        decisionLogId: log.id,
+        vehicleId: log.vehicleId,
+        decisionType: log.decisionType,
+        rewardScore: reward.rewardScore,
+        createdAt: log.createdAt.toISOString(),
+        summary: `${log.decisionType} decision for ${log.vehicleId}`
+      }
+    })
+
+    const bestDecisions = [...reviewItems].sort((a, b) => b.rewardScore - a.rewardScore).slice(0, 10)
+    const worstDecisions = [...reviewItems].sort((a, b) => a.rewardScore - b.rewardScore).slice(0, 10)
+    const overrideRate = activeDecisionLogs.length
+      ? activeDecisionLogs.filter((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => log.humanOverride).length / activeDecisionLogs.length
+      : 0
+    const fewShotExamples = buildFewShotExamples(bestDecisions, worstDecisions)
+    const weightAdjustmentProposals = buildWeightAdjustmentProposals(reviewItems)
+    const learnedPatterns = buildLearnedPatterns(
+      (await serviceHistoryRepository.findRecent(100)).map((record) => ({
+        id: record.id,
+        vehicleId: record.vehicleId,
+        depotId: record.depotId,
+        technicianId: record.technicianId,
+        subsystem: isSubsystemKey(record.subsystem) ? record.subsystem : "engine",
+        outcome: record.outcome,
+        resolvedAt: record.resolvedAt.toISOString(),
+        firstTimeFix: record.firstTimeFix,
+        actualFault: record.actualFault,
+        partsUsed: Array.isArray(record.partsUsed) ? record.partsUsed.filter((value): value is string => typeof value === "string") : [],
+        repairDuration: record.repairDuration,
+        diagnosisCorrect: record.diagnosisCorrect,
+        technicianNotes: record.technicianNotes
+      }))
+    )
+
+    return {
+      rewardSignals: rewardRecords,
+      qualityTrend,
+      confidenceCalibration,

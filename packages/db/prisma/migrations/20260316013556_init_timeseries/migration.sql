@@ -420,3 +420,143 @@ CREATE TABLE "notification_preferences" (
     "user_id" TEXT NOT NULL,
     "channel" TEXT NOT NULL,
     "event_type" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "notification_preferences_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "forensics_cohorts" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "dimension" TEXT NOT NULL,
+    "dimension_value" TEXT NOT NULL,
+    "vehicle_count" INTEGER NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "forensics_cohorts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "cohort_members" (
+    "id" TEXT NOT NULL,
+    "cohort_id" TEXT NOT NULL,
+    "vehicle_id" TEXT NOT NULL,
+
+    CONSTRAINT "cohort_members_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "cohort_comparisons" (
+    "id" TEXT NOT NULL,
+    "cohort_id" TEXT NOT NULL,
+    "baseline_label" TEXT NOT NULL,
+    "overall_fault_rate" DOUBLE PRECISION NOT NULL,
+    "baseline_overall_fault_rate" DOUBLE PRECISION NOT NULL,
+    "avg_health_score" DOUBLE PRECISION NOT NULL,
+    "baseline_avg_health_score" DOUBLE PRECISION NOT NULL,
+    "statistical_significance" DOUBLE PRECISION NOT NULL,
+    "is_significant" BOOLEAN NOT NULL,
+    "sample_size" INTEGER NOT NULL,
+    "fault_profiles" JSONB NOT NULL DEFAULT '[]',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "cohort_comparisons_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "cohort_anomalies" (
+    "id" TEXT NOT NULL,
+    "cohort_id" TEXT NOT NULL,
+    "anomaly_type" TEXT NOT NULL,
+    "dtc_code" TEXT NOT NULL,
+    "subsystem" TEXT NOT NULL,
+    "rate_ratio" DOUBLE PRECISION NOT NULL,
+    "p_value" DOUBLE PRECISION NOT NULL,
+    "affected_vehicle_count" INTEGER NOT NULL,
+    "severity" TEXT NOT NULL,
+    "summary" TEXT NOT NULL,
+    "detected_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "cohort_anomalies_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "forensics_patterns" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "status" "ForensicsPatternStatus" NOT NULL DEFAULT 'DETECTED',
+    "confidence" DOUBLE PRECISION NOT NULL,
+    "support_count" INTEGER NOT NULL,
+    "total_vehicles" INTEGER NOT NULL,
+    "support_rate" DOUBLE PRECISION NOT NULL,
+    "sequence" JSONB NOT NULL DEFAULT '[]',
+    "affected_subsystems" JSONB NOT NULL DEFAULT '[]',
+    "affected_regions" JSONB NOT NULL DEFAULT '[]',
+    "correlations" JSONB NOT NULL DEFAULT '[]',
+    "summary" TEXT NOT NULL,
+    "detected_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "forensics_patterns_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "forensics_investigations" (
+    "id" TEXT NOT NULL,
+    "pattern_id" TEXT,
+    "title" TEXT NOT NULL,
+    "status" "ForensicsInvestigationStatus" NOT NULL DEFAULT 'PATTERN_DETECTED',
+    "root_cause" TEXT,
+    "affected_vehicle_ids" JSONB NOT NULL DEFAULT '[]',
+    "affected_vehicle_count" INTEGER NOT NULL,
+    "containment" JSONB,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "forensics_investigations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "forensics_investigation_events" (
+    "id" TEXT NOT NULL,
+    "investigation_id" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "note" TEXT NOT NULL DEFAULT '',
+    "at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "forensics_investigation_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "supplier_info" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "component_types" JSONB NOT NULL DEFAULT '[]',
+    "active_batches" JSONB NOT NULL DEFAULT '[]',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "supplier_info_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "supplier_scorecards" (
+    "id" TEXT NOT NULL,
+    "supplier_id" TEXT NOT NULL,
+    "component_type" TEXT NOT NULL,
+    "overall_fault_rate" DOUBLE PRECISION NOT NULL,
+    "baseline_fault_rate" DOUBLE PRECISION NOT NULL,
+    "rate_ratio" DOUBLE PRECISION NOT NULL,
+    "trend" TEXT NOT NULL,
+    "affected_vehicle_count" INTEGER NOT NULL,
+    "total_vehicle_count" INTEGER NOT NULL,
+    "batches" JSONB NOT NULL DEFAULT '[]',
+    "updated_at" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "supplier_scorecards_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+
+-- CreateIndex

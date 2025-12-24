@@ -398,3 +398,136 @@ describe("recommendDepots", () => {
       capacityOpen: 8
     })
     expect(recommendations[0].requiredParts.map((part) => part.partNumber)).toEqual(targetParts)
+    expect(recommendations[0].reasons).toContain("has brakes capability")
+    expect(recommendations[0].score).toBeGreaterThan(recommendations[1].score)
+    expect(recommendations[1].score).toBeGreaterThanOrEqual(recommendations[2].score)
+  })
+})
+
+describe("buildOverview", () => {
+  it("summarizes fleet health, open work, first-time-fix rate, and bay utilization", () => {
+    const { state, healthByVehicle } = createDemoFixture()
+    state.signals[state.vehicles[0].id] = createSnapshot(state.vehicles[0].id, {
+      coolantTemp: 116,
+      oilPressure: 22,
+      batteryVoltage: 11.8,
+      turboBoost: 0.94,
+      brakeWear: 90,
+      exhaustTemp: 552,
+      fuelLevel: 8,
+      speed: 10
+    })
+    state.faults[state.vehicles[0].id] = [createFault(state.vehicles[0].id, "brakes", "safety")]
+    healthByVehicle[state.vehicles[0].id] = computeHealthScore(state.signals[state.vehicles[0].id], state.faults[state.vehicles[0].id])
+
+    const overview = buildOverview(state, healthByVehicle)
+
+    expect(overview.totalVehicles).toBe(96)
+    expect(overview.openServiceRequests).toBe(1)
+    expect(overview.firstTimeFixRate).toBe(66.7)
+    expect(overview.avgTurnaroundHours).toBe(7.9)
+    expect(overview.bayUtilization).toBeGreaterThan(35)
+    expect(overview.bayUtilization).toBeLessThan(60)
+    expect(overview.criticalVehicles + overview.watchVehicles + overview.healthyVehicles).toBe(96)
+  })
+})
+
+describe("buildSnapshot", () => {
+  it("assembles overview, queue, and recommendation maps for the top vehicles", () => {
+    const { state, healthByVehicle } = createDemoFixture()
+    const alerts = [
+      {
+        id: "alert-001",
+        vehicleId: state.vehicles[0].id,
+        severity: "critical" as const,
+        title: "Brake wear threshold exceeded",
+        subsystem: "brakes" as const,
+        occurredAt: "2026-03-18T08:00:00.000Z",
+        count: 2
+      }
+    ]
+
+    const snapshot = buildSnapshot(state, healthByVehicle, alerts)
+
+    expect(snapshot.alerts).toEqual(alerts)
+    expect(snapshot.priorityQueue).toHaveLength(96)
+    expect(Object.keys(snapshot.depotRecommendations)).toHaveLength(16)
+    expect(snapshot.livePulse).toEqual(state.livePulse)
+
+    const topVehicleId = snapshot.priorityQueue[0].vehicleId
+    expect(snapshot.depotRecommendations[topVehicleId]?.length).toBeGreaterThan(0)
+  })
+})
+
+describe("createServiceRequest", () => {
+  it("creates a depot-assigned request with the initial workflow timeline", () => {
+    const { state } = createDemoFixture()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-03-18T12:15:00.000Z"))
+
+    const request = createServiceRequest(
+      state,
+      "veh-042",
+      88.4,
+      "turbo",
+      "depot-003",
+      "tech-3-001",
+      PARTS_BY_SUBSYSTEM.turbo.map((part) => part.partNumber)
+    )
+
+    expect(request).toEqual({
+      id: "req-003",
+      vehicleId: "veh-042",
+      priorityScore: 88.4,
+      weakestSubsystem: "turbo",
+      depotId: "depot-003",
+      technicianId: "tech-3-001",
+      requiredPartNumbers: ["TRB-KIT-88", "TRB-HOSE-14"],
+      status: "DEPOT_ASSIGNED",
+      createdAt: "2026-03-18T12:15:00.000Z",
+      scheduledFor: null,
+      timeline: [
+        {
+          status: "DETECTED",
+          at: "2026-03-18T12:15:00.000Z",
+          note: "Signal Trust flagged the vehicle for intervention."
+        },
+        {
+          status: "PRIORITIZED",
+          at: "2026-03-18T12:15:00.000Z",
+          note: "Vehicle ranked at priority score 88.4."
+        },
+        {
+          status: "DEPOT_ASSIGNED",
+          at: "2026-03-18T12:15:00.000Z",
+          note: "Assigned to depot depot-003."
+        }
+      ]
+    })
+  })
+})
+
+describe("getNextServiceStatus", () => {
+  it("advances a service request through the workflow and stops at closed", () => {
+    const seen: ServiceRequestStatus[] = ["DETECTED"]
+    let current: ServiceRequestStatus = "DETECTED"
+
+    while (current !== "CLOSED") {
+      current = getNextServiceStatus(current)
+      seen.push(current)
+    }
+
+    expect(seen).toEqual([
+      "DETECTED",
+      "PRIORITIZED",
+      "DEPOT_ASSIGNED",
+      "PARTS_CONFIRMED",
+      "TECHNICIAN_ASSIGNED",
+      "SCHEDULED",
+      "IN_PROGRESS",
+      "COMPLETED",
+      "CLOSED"
+    ])
+    expect(getNextServiceStatus("CLOSED")).toBe("CLOSED")
+  })
+})

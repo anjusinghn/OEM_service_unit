@@ -410,3 +410,140 @@ export function Dashboard() {
                         No active DTCs. Ranked by degradation trend and operational impact.
                       </div>
                     )}
+                  </div>
+
+                  <div className="recommendation-grid">
+                    <div className="recommendation-card">
+                      <span>Recommended depot</span>
+                      <strong>{selected.depotRecommendations?.[0]?.depotId ?? "\u2014"}</strong>
+                      <p>{selected.depotRecommendations?.[0]?.aiAssessment?.reasoning ?? selected.depotRecommendations?.[0]?.reasons.join(" \u00b7 ")}</p>
+                    </div>
+                    <div className="recommendation-card">
+                      <span>Parts readiness</span>
+                      <strong>{selected.depotRecommendations?.[0]?.partsReady ? "All in stock" : "Transfer needed"}</strong>
+                      <p>{selected.depotRecommendations?.[0]?.requiredParts.map((p) => p.name).join(", ")}</p>
+                    </div>
+                  </div>
+
+                  <div className="decision-actions">
+                    <button
+                      type="button"
+                      className="button button--primary"
+                      onClick={() => dispatch(selected.id)}
+                      disabled={busyKey === `d:${selected.id}` || Boolean(selected.currentRequest)}
+                    >
+                      <Wrench size={14} />
+                      {selected.currentRequest ? "Already dispatched" : "Dispatch to workflow"}
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => fetchDispatchPlan(selected.id)}
+                      disabled={busyKey === `p:${selected.id}`}
+                    >
+                      AI dispatch plan
+                    </button>
+                    <span className="hint">Creates a service request with the recommended depot and staged parts.</span>
+                  </div>
+
+                  {dispatchPlan ? (
+                    <div className="recommendation-grid" style={{ marginTop: 18 }}>
+                      <div className="recommendation-card">
+                        <span>Dispatch depot</span>
+                        <strong>{dispatchPlan.depotId}</strong>
+                        <p>{dispatchPlan.depotReasoning}</p>
+                      </div>
+                      <div className="recommendation-card">
+                        <span>Parts to stage</span>
+                        <strong>{dispatchPlan.partsToStage.length}</strong>
+                        <p>{dispatchPlan.partsToStage.join(", ") || "No staging list required."}</p>
+                      </div>
+                      <div className="recommendation-card">
+                        <span>Watch points</span>
+                        <strong>{dispatchPlan.urgencyLevel}</strong>
+                        <p>{dispatchPlan.watchPoints.join(", ")}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </SectionCard>
+          </div>
+
+          {/* Service requests + depots */}
+          <div className="grid grid--secondary mb-28 fade-in fade-in-4">
+            <SectionCard
+              title="Service Requests"
+              eyebrow="Workflow"
+              actions={<StatusPill tone="info">{openRequests.length} active</StatusPill>}
+            >
+              <div className="request-board">
+                {openRequests.slice(0, 6).map((req) => {
+                  const v = payload.vehicles.find((x) => x.id === req.vehicleId)
+                  return (
+                    <article key={req.id} className="request-card">
+                      <div className="request-card__top">
+                        <div>
+                          <strong>{req.id}</strong>
+                          <p>{v?.vin} &middot; {req.weakestSubsystem}</p>
+                        </div>
+                        <StatusPill tone={toneFromRequest(req.status)}>{req.status.toLowerCase().replace(/_/g, " ")}</StatusPill>
+                      </div>
+                      <div className="request-card__meta">
+                        <span>{req.depotId ?? "\u2014"}</span>
+                        <span>{req.technicianId ?? "\u2014"}</span>
+                        <span>score {req.priorityScore}</span>
+                      </div>
+                      <div className="request-card__timeline">
+                        {req.timeline.slice(-2).map((ev) => (
+                          <div key={`${req.id}-${ev.status}-${ev.at}`}>
+                            <strong>{ev.status}</strong>
+                            <p>{ev.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="request-card__actions">
+                        <button
+                          type="button"
+                          className="button button--sm"
+                          onClick={() => advance(req.id)}
+                          disabled={busyKey === `a:${req.id}` || req.status === "COMPLETED" || req.status === "CLOSED"}
+                        >
+                          <ArrowRight size={13} /> Advance
+                        </button>
+                        <button
+                          type="button"
+                          className="button button--ghost button--sm"
+                          onClick={() => complete(req.id)}
+                          disabled={busyKey === `c:${req.id}` || req.status === "COMPLETED" || req.status === "CLOSED"}
+                        >
+                          <PackageCheck size={13} /> Complete
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
+                {openRequests.length === 0 && (
+                  <div className="empty-state">
+                    <GitBranch size={24} />
+                    <span>No active service requests. Dispatch a vehicle to create one.</span>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Depot Network" eyebrow="Capacity">
+              <div className="depot-grid">
+                {payload.depots.map((depot) => {
+                  const open = depot.totalBays - depot.occupiedBays
+                  return (
+                    <article className="depot-card" key={depot.id}>
+                      <div className="depot-card__top">
+                        <strong>{depot.name}</strong>
+                        <StatusPill tone={open <= 2 ? "critical" : "success"}>{open} open</StatusPill>
+                      </div>
+                      <p>{depot.city} &middot; {depot.region}</p>
+                      <div className="depot-specialties">
+                        {depot.specialties.map((s) => (
+                          <span key={s}>{s}</span>
+                        ))}

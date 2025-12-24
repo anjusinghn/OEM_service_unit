@@ -394,3 +394,135 @@ export async function seedDatabase(db: PrismaClient = prisma) {
       minValue: 0,
       maxValue: 4,
       sourceSystem: "ECU",
+    },
+    {
+      name: "brake_wear",
+      unit: "%",
+      minValue: 0,
+      maxValue: 100,
+      sourceSystem: "ABS",
+    },
+    {
+      name: "exhaust_temp",
+      unit: "°C",
+      minValue: 0,
+      maxValue: 900,
+      sourceSystem: "ECU",
+    },
+    {
+      name: "fuel_level",
+      unit: "%",
+      minValue: 0,
+      maxValue: 100,
+      sourceSystem: "BCM",
+    },
+    {
+      name: "speed",
+      unit: "km/h",
+      minValue: 0,
+      maxValue: 250,
+      sourceSystem: "ABS",
+    },
+    {
+      name: "mileage",
+      unit: "km",
+      minValue: 0,
+      maxValue: null,
+      sourceSystem: "ECU",
+    },
+  ];
+
+  for (const sd of signalDefs) {
+    await prisma.signalDefinition.create({ data: sd });
+  }
+
+  // ── 6. Depots ──────────────────────────────────────────
+  console.log("  → Creating depots...");
+  const depotRecords: { id: string; city: string }[] = [];
+
+  for (let i = 0; i < CITIES.length; i++) {
+    const c = CITIES[i];
+    const id = `depot-${String(i + 1).padStart(3, "0")}`;
+    const specialties = [
+      SUBSYSTEMS[i % SUBSYSTEMS.length],
+      SUBSYSTEMS[(i + 2) % SUBSYSTEMS.length],
+      SUBSYSTEMS[(i + 4) % SUBSYSTEMS.length],
+    ];
+    const totalBays = 10 + (i % 3) * 2;
+    const occupiedBays = 4 + (i % 4);
+
+    await prisma.depot.create({
+      data: {
+        id,
+        organizationId: org.id,
+        name: `${c.city} Response Hub`,
+        city: c.city,
+        region: c.region,
+        latitude: c.lat,
+        longitude: c.lng,
+        specialties,
+        totalBays,
+        occupiedBays,
+        operatingHours: {
+          weekdays: "06:00-22:00",
+          saturday: "08:00-18:00",
+          sunday: "closed",
+        },
+      },
+    });
+
+    depotRecords.push({ id, city: c.city });
+
+    // Create bays for each depot
+    for (let b = 0; b < totalBays; b++) {
+      await prisma.bay.create({
+        data: {
+          depotId: id,
+          name: `Bay ${String(b + 1).padStart(2, "0")}`,
+          type: BAY_TYPES[b % BAY_TYPES.length] as any,
+          status: b < occupiedBays ? "OCCUPIED" : "AVAILABLE",
+        },
+      });
+    }
+  }
+
+  // ── 7. Parts Catalog ───────────────────────────────────
+  console.log("  → Creating parts catalog...");
+  for (const [subsystem, parts] of Object.entries(PARTS_BY_SUBSYSTEM)) {
+    for (let i = 0; i < parts.length; i++) {
+      await prisma.part.create({
+        data: {
+          partNumber: parts[i].partNumber,
+          name: parts[i].name,
+          subsystem,
+          leadDays: 1 + (i % 3),
+          price: 2800 + i * 1700,
+          criticality:
+            subsystem === "brakes" || subsystem === "electrical"
+              ? "safety-critical"
+              : "operational",
+        },
+      });
+    }
+  }
+
+  // ── 8. Inventory ───────────────────────────────────────
+  console.log("  → Creating depot inventory...");
+  const allParts = Object.values(PARTS_BY_SUBSYSTEM).flat();
+
+  for (const depot of depotRecords) {
+    for (const part of allParts) {
+      await prisma.inventoryItem.create({
+        data: {
+          depotId: depot.id,
+          partNumber: part.partNumber,
+          quantity: 1 + Math.round(rng() * 8),
+          reorderPoint: 2,
+        },
+      });
+    }
+  }
+
+  // ── 9. Technicians ─────────────────────────────────────
+  console.log("  → Creating technicians...");
+  const technicianRecords: { id: string; depotId: string }[] = [];

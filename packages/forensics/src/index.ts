@@ -424,3 +424,145 @@ export const createInvestigation = (
     affectedVehicleCount: affectedVehicleIds.length,
     containment: null,
     timeline: [{ status: "INVESTIGATION_OPENED", at: createdAt, note: `${title} opened for evidence collection.` }],
+    createdAt,
+    updatedAt: createdAt
+  }
+}
+
+export const advanceInvestigation = (
+  investigation: Investigation,
+  status?: InvestigationStatus,
+  note?: string
+): Investigation => {
+  const currentIndex = INVESTIGATION_FLOW.indexOf(investigation.status)
+  const nextStatus = status ?? INVESTIGATION_FLOW[Math.min(currentIndex + 1, INVESTIGATION_FLOW.length - 1)]
+  const at = nowIso()
+
+  return {
+    ...investigation,
+    status: nextStatus,
+    updatedAt: at,
+    timeline: [
+      ...investigation.timeline,
+      {
+        status: nextStatus,
+        at,
+        note: note ?? `Investigation moved to ${nextStatus.toLowerCase().replace(/_/g, " ")}.`
+      }
+    ]
+  }
+}
+
+const buildSignalComparisons = (affectedVehicleIds: string[], state: DemoState): SignalComparison[] => {
+  const affectedSignals = affectedVehicleIds.map((vehicleId) => state.signals[vehicleId]).filter(Boolean)
+  const baselineSignals = state.vehicles.map((vehicle) => state.signals[vehicle.id]).filter(Boolean)
+
+  return signalKeys.map((signalName) => {
+    const affectedAvg = average(affectedSignals.map((signal) => Number(signal[signalName] ?? 0)))
+    const baselineAvg = average(baselineSignals.map((signal) => Number(signal[signalName] ?? 0)))
+    return {
+      signalName,
+      affectedAvg: round(affectedAvg, 2),
+      baselineAvg: round(baselineAvg, 2),
+      deviation: round(affectedAvg - baselineAvg, 2),
+      unit: signalUnits[signalName]
+    }
+  })
+}
+
+const buildSupplierEvidence = (state: DemoState): SupplierEvidence[] => {
+  const totalFaultCount = Object.values(state.faults).flat().length
+  const baselineFaultRate = totalFaultCount / Math.max(1, state.vehicles.length)
+
+  return state.suppliers.flatMap((supplier) =>
+    supplier.componentTypes.map((componentType, index) => {
+      const supplierFaultCount = Object.values(state.faults)
+        .flat()
+        .filter((fault) => {
+          if (componentType.includes("turbo")) return fault.subsystem === "turbo"
+          if (componentType.includes("exhaust")) return fault.subsystem === "exhaust"
+          if (componentType.includes("coolant")) return fault.subsystem === "cooling"
+          if (componentType.includes("brake")) return fault.subsystem === "brakes"
+          if (componentType.includes("fuel")) return fault.subsystem === "fuel"
+          if (componentType.includes("transmission")) return fault.subsystem === "transmission"
+          return fault.subsystem === "electrical"
+        }).length
+      const faultRate = supplierFaultCount / Math.max(1, state.vehicles.length)
+      const rateRatio = baselineFaultRate > 0 ? faultRate / baselineFaultRate : 1
+
+      return {
+        supplierName: supplier.name,
+        componentType,
+        batchId: supplier.activeBatches[index % supplier.activeBatches.length],
+        faultRate: round(faultRate, 3),
+        baselineFaultRate: round(baselineFaultRate, 3),
+        rateRatio: round(rateRatio, 2)
+      }
+    })
+  )
+}
+
+export const buildEvidencePackage = (
+  investigation: Investigation,
+  state: DemoState,
+  healthByVehicle: Record<string, HealthScore>
+): EvidencePackage => {
+  const affectedVehicleIds = investigation.affectedVehicleIds
+  const signalComparisons = buildSignalComparisons(affectedVehicleIds, state)
+  const dtcHistory = affectedVehicleIds.flatMap((vehicleId) =>
+    (state.faults[vehicleId] ?? []).map((fault) => ({
+      vehicleId,
+      dtcCode: fault.dtcCode,
+      occurredAt: fault.occurredAt,
+      severity: fault.severity
+    }))
+  )
+  const serviceHistory = state.serviceHistory
+    .filter((record) => affectedVehicleIds.includes(record.vehicleId))
+    .map((record) => ({
+      vehicleId: record.vehicleId,
+      subsystem: record.subsystem,
+      outcome: record.outcome,
+      resolvedAt: record.resolvedAt
+    }))
+  const cohorts = buildCohorts(state).filter((cohort) => cohort.vehicleIds.some((vehicleId) => affectedVehicleIds.includes(vehicleId)))
+  const cohortContext = cohorts.slice(0, 4).map((cohort) => ({
+    dimension: cohort.dimension,
+    value: cohort.dimensionValue,
+    faultRate: round(faultRateForVehicleIds(cohort.vehicleIds, state.faults), 3),
+    baselineRate: round(faultRateForVehicleIds(state.vehicles.map((vehicle) => vehicle.id), state.faults), 3)
+  }))
+  const supplierContext = buildSupplierEvidence(state).slice(0, 6)
+  const environmentalRegions = [
+    ...new Set(
+      affectedVehicleIds
+        .map((vehicleId) => vehicleMap(state).get(vehicleId)?.region)
+        .filter((region): region is string => Boolean(region))
+    )
+  ]
+  const environmentalContext = environmentalRegions.map((region) => ({
+      region,
+      faultRate: round(
+        faultRateForVehicleIds(
+          state.vehicles.filter((vehicle) => vehicle.region === region).map((vehicle) => vehicle.id),
+          state.faults
+        ),
+        3
+      )
+    }))
+
+  void healthByVehicle
+
+  return {
+    investigationId: investigation.id,
+    affectedVehicleIds,
+    signalComparisons,
+    dtcHistory,
+    serviceHistory,
+    cohortContext,
+    supplierContext,
+    environmentalContext
+  }
+}
+
+export const recommendContainment = (

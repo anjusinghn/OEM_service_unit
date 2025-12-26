@@ -526,3 +526,135 @@ export async function seedDatabase(db: PrismaClient = prisma) {
   // ── 9. Technicians ─────────────────────────────────────
   console.log("  → Creating technicians...");
   const technicianRecords: { id: string; depotId: string }[] = [];
+
+  for (let d = 0; d < depotRecords.length; d++) {
+    const depot = depotRecords[d];
+    for (let t = 0; t < 5; t++) {
+      const id = `tech-${d + 1}-${String(t + 1).padStart(3, "0")}`;
+      const firstName = FIRST_NAMES[(d + t) % FIRST_NAMES.length];
+      const lastName = LAST_NAMES[(d * 2 + t) % LAST_NAMES.length];
+      const certs = [
+        SUBSYSTEMS[(d + t) % SUBSYSTEMS.length],
+        SUBSYSTEMS[(d + t + 3) % SUBSYSTEMS.length],
+      ];
+
+      await prisma.technician.create({
+        data: {
+          id,
+          depotId: depot.id,
+          name: `${firstName} ${lastName}`,
+          certifications: certs,
+          currentLoad: Math.round(rng() * 3),
+          maxLoad: 5,
+          firstTimeFixRate: round(0.72 + rng() * 0.24, 2),
+        },
+      });
+
+      technicianRecords.push({ id, depotId: depot.id });
+    }
+  }
+
+  // ── 10. Vehicles ───────────────────────────────────────
+  console.log("  → Creating vehicles...");
+  const vehicleRecords: {
+    id: string;
+    depotAffinityId: string;
+    lat: number;
+    lng: number;
+  }[] = [];
+
+  for (let i = 0; i < 96; i++) {
+    const depotIdx = i % depotRecords.length;
+    const depot = depotRecords[depotIdx];
+    const cityData = CITIES[depotIdx];
+    const id = `veh-${String(i + 1).padStart(3, "0")}`;
+    const lat = shift(cityData.lat, 1.8);
+    const lng = shift(cityData.lng, 1.8);
+
+    await prisma.vehicle.create({
+      data: {
+        id,
+        organizationId: org.id,
+        vin: `KAZ${String(2026 + (i % 2)).slice(-2)}${String(i + 1).padStart(11, "0")}`,
+        make: i % 5 === 0 ? "VW" : "kazindustries-demo",
+        model: MODELS[i % MODELS.length],
+        year: 2022 + (i % 4),
+        buildBatch: `BATCH-24Q${1 + (i % 4)}`,
+        softwareVersion: `v3.${i % 5}.${i % 3}`,
+        region: cityData.region,
+        routeName: `${cityData.city} Corridor ${1 + (i % 4)}`,
+        cargoPriority: 45 + Math.round(rng() * 50),
+        routeCriticality: 40 + Math.round(rng() * 55),
+        downtimeCostPerHour: 850 + Math.round(rng() * 2350),
+        nextStopHours: round(2 + rng() * 18, 1),
+        latitude: lat,
+        longitude: lng,
+        depotAffinityId: depot.id,
+      },
+    });
+
+    vehicleRecords.push({ id, depotAffinityId: depot.id, lat, lng });
+  }
+
+  // ── 11. Vehicle Signals (last 24h snapshots) ──────────
+  console.log("  → Generating vehicle signal snapshots (24h history)...");
+  const now = new Date();
+  const SIGNAL_BATCH_SIZE = 500;
+  let signalBatch: Array<{
+    vehicleId: string;
+    timestamp: Date;
+    coolantTemp: number;
+    oilPressure: number;
+    batteryVoltage: number;
+    turboBoost: number;
+    brakeWear: number;
+    exhaustTemp: number;
+    fuelLevel: number;
+    speed: number;
+    mileage: number;
+  }> = [];
+
+  for (const veh of vehicleRecords) {
+    const faultBias = rng() > 0.84 ? 1.7 : rng() > 0.68 ? 0.7 : 0;
+
+    // Create 24 hourly snapshots per vehicle
+    for (let h = 23; h >= 0; h--) {
+      const degradationFactor = faultBias * (1 - h / 24); // gradual degradation
+
+      signalBatch.push({
+        vehicleId: veh.id,
+        timestamp: addHours(now, -h),
+        coolantTemp: round(shift(87 + degradationFactor * 6, 8), 1),
+        oilPressure: round(shift(48 - degradationFactor * 8, 9), 1),
+        batteryVoltage: round(shift(13.4 - degradationFactor * 0.7, 0.8), 2),
+        turboBoost: round(shift(1.7 - degradationFactor * 0.45, 0.35), 2),
+        brakeWear: round(shift(32 + degradationFactor * 24, 16), 1),
+        exhaustTemp: round(shift(365 + degradationFactor * 95, 44), 1),
+        fuelLevel: round(shift(62, 28), 1),
+        speed: round(Math.max(0, shift(56, 22)), 1),
+        mileage: round(40000 + rng() * 185000 + h * 42, 0),
+      });
+
+      if (signalBatch.length >= SIGNAL_BATCH_SIZE) {
+        await prisma.vehicleSignal.createMany({ data: signalBatch });
+        signalBatch = [];
+      }
+    }
+  }
+
+  if (signalBatch.length > 0) {
+    await prisma.vehicleSignal.createMany({ data: signalBatch });
+  }
+
+  // ── 12. Vehicle Faults ─────────────────────────────────
+  console.log("  → Injecting vehicle faults...");
+  let faultCount = 0;
+
+  for (const veh of vehicleRecords) {
+    const faultBias = rng() > 0.84 ? 1.7 : rng() > 0.68 ? 0.7 : 0;
+    if (faultBias === 0) continue;
+
+    const subsystem = pick([...SUBSYSTEMS]);
+    const profile = FAULT_PROFILES[subsystem];
+    const isCritical = faultBias > 1;
+

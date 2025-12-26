@@ -430,3 +430,147 @@ model InventoryItem {
 
 model PartReservation {
   id               String            @id @default(cuid())
+  serviceRequestId String            @map("service_request_id")
+  partNumber       String            @map("part_number")
+  depotId          String            @map("depot_id")
+  quantity         Int               @default(1)
+  status           ReservationStatus @default(HELD)
+  expiresAt        DateTime          @map("expires_at") @db.Timestamptz
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+  part           Part           @relation(fields: [partNumber], references: [partNumber], onDelete: Cascade)
+
+  @@index([serviceRequestId])
+  @@index([depotId, partNumber])
+  @@map("part_reservations")
+}
+
+enum ReservationStatus {
+  HELD
+  CONSUMED
+  RELEASED
+  EXPIRED
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — TECHNICIANS
+// ═══════════════════════════════════════════════════════════════
+
+model Technician {
+  id               String   @id @default(cuid())
+  depotId          String   @map("depot_id")
+  name             String
+  certifications   Json     @default("[]")
+  currentLoad      Int      @default(0) @map("current_load")
+  maxLoad          Int      @default(5) @map("max_load")
+  firstTimeFixRate Float    @default(0.85) @map("first_time_fix_rate")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  depot           Depot            @relation(fields: [depotId], references: [id], onDelete: Cascade)
+  serviceRequests ServiceRequest[]
+  serviceHistory  ServiceHistory[]
+
+  @@index([depotId])
+  @@map("technicians")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — PRIORITY QUEUE (cached/materialized)
+// ═══════════════════════════════════════════════════════════════
+
+model PriorityEntry {
+  id               String   @id @default(cuid())
+  vehicleId        String   @unique @map("vehicle_id")
+  score            Float
+  status           String
+  safetyUrgency    Float    @default(0) @map("safety_urgency")
+  failureProximity Float    @default(0) @map("failure_proximity")
+  businessImpact   Float    @default(0) @map("business_impact")
+  downtimeCost     Float    @default(0) @map("downtime_cost")
+  serviceWindow    Float    @default(0) @map("service_window")
+  reasons          Json     @default("[]")
+  isOverridden     Boolean  @default(false) @map("is_overridden")
+  overriddenBy     String?  @map("overridden_by")
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([score(sort: Desc)])
+  @@map("priority_entries")
+}
+
+model AiDecisionLog {
+  id              String   @id @default(cuid())
+  vehicleId       String   @map("vehicle_id")
+  decisionType    String   @map("decision_type")
+  decisionSubtype String?  @map("decision_subtype")
+  heuristicOutput Json     @map("heuristic_output")
+  aiOutput        Json?    @map("ai_output")
+  finalDecision   Json?    @map("final_decision")
+  humanOverride   Boolean  @default(false) @map("human_override")
+  overrideReason  String?  @map("override_reason")
+  modelName       String?  @map("model_name")
+  latencyMs       Int?     @map("latency_ms")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  rewardSignals RewardSignal[]
+
+  @@index([vehicleId, decisionType, createdAt(sort: Desc)])
+  @@map("ai_decision_logs")
+}
+
+model RewardSignal {
+  id              String   @id @default(cuid())
+  aiDecisionLogId String   @map("ai_decision_log_id")
+  rewardType      String   @map("reward_type")
+  rewardScore     Float    @map("reward_score")
+  rewardBreakdown Json     @default("{}") @map("reward_breakdown")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  aiDecisionLog AiDecisionLog @relation(fields: [aiDecisionLogId], references: [id], onDelete: Cascade)
+
+  @@index([aiDecisionLogId, rewardType, createdAt(sort: Desc)])
+  @@map("reward_signals")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — SERVICE REQUESTS & WORKFLOW
+// ═══════════════════════════════════════════════════════════════
+
+model ServiceRequest {
+  id                  String               @id @default(cuid())
+  vehicleId           String               @map("vehicle_id")
+  priorityScore       Float                @map("priority_score")
+  weakestSubsystem    String               @map("weakest_subsystem")
+  depotId             String?              @map("depot_id")
+  technicianId        String?              @map("technician_id")
+  requiredPartNumbers Json                 @default("[]") @map("required_part_numbers")
+  status              ServiceRequestStatus @default(DETECTED)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  scheduledFor        DateTime?            @map("scheduled_for") @db.Timestamptz
+  completedAt         DateTime?            @map("completed_at") @db.Timestamptz
+
+  vehicle      Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  depot        Depot?            @relation(fields: [depotId], references: [id], onDelete: SetNull)
+  technician   Technician?       @relation(fields: [technicianId], references: [id], onDelete: SetNull)
+  timeline     ServiceTimeline[]
+  reservations PartReservation[]
+  slaTracking  SlaTracking?
+
+  @@index([vehicleId])
+  @@index([depotId])
+  @@index([technicianId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("service_requests")
+}
+
+enum ServiceRequestStatus {
+  DETECTED
+  PRIORITIZED
+  DEPOT_ASSIGNED
+  PARTS_CONFIRMED
+  TECHNICIAN_ASSIGNED

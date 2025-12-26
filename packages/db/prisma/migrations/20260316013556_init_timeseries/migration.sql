@@ -701,3 +701,143 @@ CREATE UNIQUE INDEX "notification_preferences_user_id_channel_event_type_key" ON
 CREATE INDEX "forensics_cohorts_dimension_dimension_value_idx" ON "forensics_cohorts"("dimension", "dimension_value");
 
 -- CreateIndex
+CREATE INDEX "cohort_members_vehicle_id_idx" ON "cohort_members"("vehicle_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "cohort_members_cohort_id_vehicle_id_key" ON "cohort_members"("cohort_id", "vehicle_id");
+
+-- CreateIndex
+CREATE INDEX "cohort_comparisons_cohort_id_idx" ON "cohort_comparisons"("cohort_id");
+
+-- CreateIndex
+CREATE INDEX "cohort_anomalies_cohort_id_idx" ON "cohort_anomalies"("cohort_id");
+
+-- CreateIndex
+CREATE INDEX "cohort_anomalies_severity_idx" ON "cohort_anomalies"("severity");
+
+-- CreateIndex
+CREATE INDEX "forensics_patterns_status_idx" ON "forensics_patterns"("status");
+
+-- CreateIndex
+CREATE INDEX "forensics_patterns_type_idx" ON "forensics_patterns"("type");
+
+-- CreateIndex
+CREATE INDEX "forensics_investigations_pattern_id_idx" ON "forensics_investigations"("pattern_id");
+
+-- CreateIndex
+CREATE INDEX "forensics_investigations_status_idx" ON "forensics_investigations"("status");
+
+-- CreateIndex
+CREATE INDEX "forensics_investigation_events_investigation_id_idx" ON "forensics_investigation_events"("investigation_id");
+
+-- CreateIndex
+CREATE INDEX "supplier_scorecards_supplier_id_idx" ON "supplier_scorecards"("supplier_id");
+
+-- CreateIndex
+CREATE INDEX "supplier_scorecards_component_type_idx" ON "supplier_scorecards"("component_type");
+
+-- AddForeignKey
+ALTER TABLE "users" ADD CONSTRAINT "users_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "oem_connections" ADD CONSTRAINT "oem_connections_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vehicles" ADD CONSTRAINT "vehicles_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vehicles" ADD CONSTRAINT "vehicles_depot_affinity_id_fkey" FOREIGN KEY ("depot_affinity_id") REFERENCES "depots"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vehicle_signals" ADD CONSTRAINT "vehicle_signals_vehicle_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vehicle_health_snapshots" ADD CONSTRAINT "vehicle_health_snapshots_vehicle_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "priority_snapshots" ADD CONSTRAINT "priority_snapshots_vehicle_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vehicle_events" ADD CONSTRAINT "vehicle_events_vehicle_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vehicle_faults" ADD CONSTRAINT "vehicle_faults_vehicle_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "depots" ADD CONSTRAINT "depots_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "bays" ADD CONSTRAINT "bays_depot_id_fkey" FOREIGN KEY ("depot_id") REFERENCES "depots"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "part_substitutes" ADD CONSTRAINT "part_substitutes_original_part_number_fkey" FOREIGN KEY ("original_part_number") REFERENCES "parts"("part_number") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "part_substitutes" ADD CONSTRAINT "part_substitutes_substitute_part_number_fkey" FOREIGN KEY ("substitute_part_number") REFERENCES "parts"("part_number") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "inventory_items" ADD CONSTRAINT "inventory_items_depot_id_fkey" FOREIGN KEY ("depot_id") REFERENCES "depots"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "inventory_items" ADD CONSTRAINT "inventory_items_part_number_fkey" FOREIGN KEY ("part_number") REFERENCES "parts"("part_number") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "part_reservations" ADD CONSTRAINT "part_reservations_service_request_id_fkey" FOREIGN KEY ("service_request_id") REFERENCES "service_requests"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "part_reservations" ADD CONSTRAINT "part_reservations_part_number_fkey" FOREIGN KEY ("part_number") REFERENCES "parts"("part_number") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "technicians" ADD CONSTRAINT "technicians_depot_id_fkey" FOREIGN KEY ("depot_id") REFERENCES "depots"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "priority_entries" ADD CONSTRAINT "priority_entries_vehicle_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "service_requests" ADD CONSTRAINT "service_requests_vehicle_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "service_requests" ADD CONSTRAINT "service_requests_depot_id_fkey" FOREIGN KEY ("depot_id") REFERENCES "depots"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "service_requests" ADD CONSTRAINT "service_requests_technician_id_fkey" FOREIGN KEY ("technician_id") REFERENCES "technicians"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "service_timeline" ADD CONSTRAINT "service_timeline_service_request_id_fkey" FOREIGN KEY ("service_request_id") REFERENCES "service_requests"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "service_history" ADD CONSTRAINT "service_history_vehicle_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "service_history" ADD CONSTRAINT "service_history_depot_id_fkey" FOREIGN KEY ("depot_id") REFERENCES "depots"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "service_history" ADD CONSTRAINT "service_history_technician_id_fkey" FOREIGN KEY ("technician_id") REFERENCES "technicians"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "sla_tracking" ADD CONSTRAINT "sla_tracking_service_request_id_fkey" FOREIGN KEY ("service_request_id") REFERENCES "service_requests"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "cohort_members" ADD CONSTRAINT "cohort_members_cohort_id_fkey" FOREIGN KEY ("cohort_id") REFERENCES "forensics_cohorts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "cohort_comparisons" ADD CONSTRAINT "cohort_comparisons_cohort_id_fkey" FOREIGN KEY ("cohort_id") REFERENCES "forensics_cohorts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "cohort_anomalies" ADD CONSTRAINT "cohort_anomalies_cohort_id_fkey" FOREIGN KEY ("cohort_id") REFERENCES "forensics_cohorts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "forensics_investigations" ADD CONSTRAINT "forensics_investigations_pattern_id_fkey" FOREIGN KEY ("pattern_id") REFERENCES "forensics_patterns"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "forensics_investigation_events" ADD CONSTRAINT "forensics_investigation_events_investigation_id_fkey" FOREIGN KEY ("investigation_id") REFERENCES "forensics_investigations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "supplier_scorecards" ADD CONSTRAINT "supplier_scorecards_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "supplier_info"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+SELECT create_hypertable('vehicle_signals', 'timestamp', if_not_exists => TRUE);
+SELECT create_hypertable('vehicle_health_snapshots', 'timestamp', if_not_exists => TRUE);
+SELECT create_hypertable('priority_snapshots', 'timestamp', if_not_exists => TRUE);

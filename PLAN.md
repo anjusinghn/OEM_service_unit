@@ -622,3 +622,159 @@ packages/ai/                    @kaz/ai
 │   │   │   │     operating in India. You are given a vehicle's telemetry, health scores,
 │   │   │   │     fault codes, service history, and a heuristic priority score.
 │   │   │   │
+│   │   │   │     Your job is to evaluate the heuristic ranking and provide:
+│   │   │   │     1. Whether the vehicle should be escalated or de-escalated
+│   │   │   │     2. Non-obvious risk factors the heuristics might miss
+│   │   │   │     3. A natural language recommendation for the fleet manager
+│   │   │   │
+│   │   │   │     Consider: recurring failure patterns, seasonal effects (monsoon,
+│   │   │   │     extreme heat), route criticality, service history quality, and
+│   │   │   │     whether prior repairs actually resolved the underlying issue.
+│   │   │   │
+│   │   │   │     Be concise. Be specific. Cite actual numbers from the data."
+│   │   │   │
+│   │   │   │  OUTPUT (Zod-parsed):
+│   │   │   │    {
+│   │   │   │      adjustedScore: number,          // AI-adjusted priority (0-100)
+│   │   │   │      adjustment: number,             // Delta from heuristic
+│   │   │   │      urgency: "routine" | "elevated" | "urgent" | "emergency",
+│   │   │   │      riskFactors: string[],          // Specific, data-cited risks
+│   │   │   │      recommendation: string,         // 2-3 sentence action recommendation
+│   │   │   │      confidence: number,             // 0-1
+│   │   │   │      shouldEscalate: boolean         // True if human attention needed NOW
+│   │   │   │    }
+│   │   │   │
+│   │   │   └── Uses LangChain: ChatPromptTemplate → openRouterClient → StructuredOutputParser
+│   │   │
+│   │   ├── depot-reasoning.ts
+│   │   │   │
+│   │   │   │  PURPOSE: Evaluate heuristic depot recommendations with contextual reasoning.
+│   │   │   │           Consider depot performance history, parts supply chain risks,
+│   │   │   │           and logistical factors the scoring formula can't capture.
+│   │   │   │
+│   │   │   │  OUTPUT:
+│   │   │   │    {
+│   │   │   │      recommendedDepotId: string,
+│   │   │   │      rerankedDepots: { depotId, adjustedScore, reasoning }[],
+│   │   │   │      partsRisk: string | null,
+│   │   │   │      logisticsNote: string | null,
+│   │   │   │      confidence: number
+│   │   │   │    }
+│   │   │   │
+│   │   │   └── Enriched with: depot avg turnaround, first-time-fix rate,
+│   │   │       recent workload trend, parts stock trend for this fault type
+│   │   │
+│   │   ├── dispatch-reasoning.ts
+│   │   │   │
+│   │   │   │  PURPOSE: Full dispatch decision — this is a LangChain AGENT
+│   │   │   │           that orchestrates a multi-step decision by calling tools.
+│   │   │   │
+│   │   │   │  AGENT TOOLS:
+│   │   │   │    - vehicle_lookup(vehicleId) → full vehicle data
+│   │   │   │    - depot_lookup(depotId) → depot + capacity + perf metrics
+│   │   │   │    - parts_check(depotId, subsystem) → stock levels
+│   │   │   │    - service_history(vehicleId) → last 20 service records
+│   │   │   │    - fleet_stats() → fleet health distribution + open requests
+│   │   │   │    - similar_cases(subsystem, dtcCode) → past cases with outcomes
+│   │   │   │
+│   │   │   │  AGENT PROMPT:
+│   │   │   │    "You are the service orchestration AI for kazindustries.
+│   │   │   │     A vehicle has been flagged for service. Use your tools to
+│   │   │   │     gather the information you need, then produce a complete
+│   │   │   │     dispatch plan: which depot, what parts
+│   │   │   │     to stage, estimated timeline, and what to watch for.
+│   │   │   │     Explain your reasoning at each step."
+│   │   │   │
+│   │   │   │  OUTPUT:
+│   │   │   │    {
+│   │   │   │      dispatchPlan: {
+│   │   │   │        depotId: string,
+│   │   │   │        depotReasoning: string,
+│   │   │   │        partsToStage: string[],
+│   │   │   │        estimatedRepairHours: number,
+│   │   │   │        estimatedTotalCost: number,
+│   │   │   │        urgencyLevel: string,
+│   │   │   │        watchPoints: string[],    // "Check cooling hose — prior repair may have missed a micro-crack"
+│   │   │   │        alternativePlan: { ... } | null
+│   │   │   │      },
+│   │   │   │      agentTrace: string[],       // Step-by-step reasoning log
+│   │   │   │      toolCallCount: number,
+│   │   │   │      confidence: number,
+│   │   │   │      totalTokensUsed: number
+│   │   │   │    }
+│   │   │   │
+│   │   │   └── Uses LangChain: AgentExecutor with tool-calling, max 8 iterations
+│   │   │
+│   │   └── escalation-reasoning.ts
+│   │       │
+│   │       │  PURPOSE: Periodic scan of the queue + pipeline for anomalies
+│   │       │           that need human attention. Runs every 5 minutes.
+│   │       │
+│   │       │  DETECTS:
+│   │       │    - SLA breach risk (vehicle in queue too long)
+│   │       │    - Batch patterns (multiple vehicles from same build batch degrading)
+│   │       │    - Capacity crunch (depot overloaded, no alternative)
+│   │       │    - Rapid degradation (health dropping >10 points in 30 minutes)
+│   │       │    - Parts shortage developing for a trending fault type
+│   │       │    - Technician overload (>80% capacity at a depot)
+│   │       │
+│   │       │  OUTPUT:
+│   │       │    {
+│   │       │      escalations: {
+│   │       │        type: string,
+│   │       │        severity: "info" | "warning" | "critical",
+│   │       │        title: string,
+│   │       │        description: string,
+│   │       │        affectedEntities: string[],
+│   │       │        suggestedAction: string
+│   │       │      }[]
+│   │       │    }
+│   │       │
+│   │       └── Runs as a scheduled BullMQ repeatable job
+│   │
+│   ├── tools/                  # LangChain tools (functions the AI agent can call)
+│   │   ├── vehicle-lookup.ts    # DynamicTool: fetch vehicle + signals + health + faults
+│   │   ├── depot-lookup.ts      # DynamicTool: fetch depot + capacity + performance
+│   │   ├── parts-check.ts       # DynamicTool: check parts availability at depot
+│   │   ├── service-history.ts   # DynamicTool: fetch past services for vehicle
+│   │   ├── fleet-stats.ts       # DynamicTool: fleet-wide health/queue statistics
+│   │   └── similar-cases.ts    # DynamicTool: find similar past cases and their outcomes
+│   │
+│   ├── prompts/
+│   │   ├── system.ts            # System prompts for each chain
+│   │   └── few-shot-bank.ts    # Best/worst decision examples for in-context learning
+│   │
+│   ├── output-schemas.ts       # Zod schemas for all structured AI outputs
+│   │
+│   └── utils/
+│       ├── token-tracker.ts     # Track token usage per chain, per day, per org
+│       ├── cost-calculator.ts   # Calculate cost from token counts
+│       ├── cache.ts             # Redis-backed response cache with TTL
+│       └── fallback.ts         # Graceful degradation when AI is unavailable
+│
+├── package.json
+└── tsconfig.json
+```
+
+### Fallback Strategy (AI Down → System Still Works)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                      DECISION FLOW                                   │
+│                                                                      │
+│   Is AI_ENABLED=true?                                                │
+│   ├── NO  → Use heuristic scoring only (existing logic). Done.       │
+│   └── YES → Try AI chain:                                            │
+│             ├── Success (< 15s) → Merge AI assessment with heuristic │
+│             │                     Store both. Show both on dashboard. │
+│             ├── Timeout (> 15s) → Use heuristic only for now.        │
+│             │                     Queue AI job for retry (3 attempts) │
+│             │                     Dashboard shows "AI: pending..."    │
+│             └── Error/Rate Limit → Use heuristic only.               │
+│                                    Log error. Increment metrics.      │
+│                                    Dashboard shows "AI: unavailable"  │
+│                                                                      │
+│   THE SYSTEM NEVER BLOCKS ON AI. HEURISTICS ARE THE FAST PATH.      │
+│   AI IS AN ASYNCHRONOUS ENRICHMENT LAYER.                            │
+└──────────────────────────────────────────────────────────────────────┘
+```

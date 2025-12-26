@@ -570,3 +570,146 @@ class RepositoryStore {
       rewardSignals: rewardRecords,
       qualityTrend,
       confidenceCalibration,
+      bestDecisions,
+      worstDecisions,
+      overrideRate,
+      fewShotExamples,
+      weightAdjustmentProposals,
+      learnedPatterns
+    }
+  }
+
+  async reset() {
+    this.overlay.patternStatuses.clear()
+    this.overlay.investigations = []
+    await resetAndSeed(prisma)
+    await this.emitDashboardRefresh("service_update", { action: "reset" })
+    return this.getDashboardPayload()
+  }
+
+  async getDashboardPayload() {
+    const { payload } = await this.buildPayload()
+    return payload
+  }
+
+  async getVehicles() {
+    const { payload } = await this.buildPayload()
+    return payload.vehicles
+  }
+
+  async getVehicle(vehicleId: string) {
+    const { payload } = await this.buildPayload()
+    return payload.vehicles.find((vehicle) => vehicle.id === vehicleId) ?? null
+  }
+
+  async getPriorityQueue() {
+    const { snapshot } = await this.buildPayload()
+    return snapshot.priorityQueue
+  }
+
+  async getPriority(vehicleId: string) {
+    const { snapshot } = await this.buildPayload()
+    return snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicleId) ?? null
+  }
+
+  async getDepotRecommendations(vehicleId: string) {
+    const { snapshot } = await this.buildPayload()
+    return snapshot.depotRecommendations[vehicleId] ?? []
+  }
+
+  async getDispatchPlan(vehicleId: string) {
+    const { state, snapshot } = await this.buildPayload()
+    const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+    const health = snapshot.healthByVehicle[vehicleId]
+    if (!vehicle || !health) return null
+
+    const depotRecommendations = snapshot.depotRecommendations[vehicleId] ?? []
+    const partsToStage = depotRecommendations[0]?.requiredParts.map((part) => part.partNumber) ?? []
+    const serviceHistory = state.serviceHistory.filter((record) => record.vehicleId === vehicleId)
+    const intelligence = await this.buildIntelligenceSnapshot()
+
+    const plan = await runDispatchReasoning({
+      vehicle,
+      health,
+      faults: state.faults[vehicleId] ?? [],
+      depotRecommendations,
+      serviceHistory,
+      partsToStage,
+      fewShotExamples: renderFewShotExamples(intelligence.fewShotExamples)
+    })
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "dispatch",
+        heuristicOutput: toJsonValue({
+          depotRecommendations,
+          partsToStage
+        }),
+        aiOutput: toJsonValue(plan),
+        finalDecision: toJsonValue({
+          depotId: plan.depotId,
+          urgencyLevel: plan.urgencyLevel
+        }),
+        modelName: plan.model,
+        latencyMs: plan.latencyMs
+      }
+    })
+
+    return plan
+  }
+
+  async getServiceRequests() {
+    const state = await this.loadState()
+    return state.serviceRequests
+  }
+
+  async getForensics() {
+    const { forensics } = await this.buildPayload()
+    return forensics
+  }
+
+  async getIntelligenceSnapshot() {
+    return this.buildIntelligenceSnapshot()
+  }
+
+  async getDecisionAuditTrail(vehicleId?: string) {
+    const logs = await prisma.aiDecisionLog.findMany({
+      where: vehicleId ? { vehicleId } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 100
+    })
+
+    return logs.map((log) => ({
+      id: log.id,
+      vehicleId: log.vehicleId,
+      decisionType: log.decisionType,
+      decisionSubtype: log.decisionSubtype,
+      heuristicOutput: log.heuristicOutput,
+      aiOutput: log.aiOutput,
+      finalDecision: log.finalDecision,
+      humanOverride: log.humanOverride,
+      overrideReason: log.overrideReason,
+      modelName: log.modelName,
+      latencyMs: log.latencyMs,
+      createdAt: log.createdAt.toISOString()
+    }))
+  }
+
+  async getCohorts() {
+    return (await this.getForensics()).cohorts
+  }
+
+  async getCohort(cohortId: string) {
+    return (await this.getForensics()).cohorts.find((cohort) => cohort.id === cohortId) ?? null
+  }
+
+  async getCohortComparison(cohortId: string) {
+    const { state, snapshot } = await this.buildPayload()
+    const cohort = this.applyForensicsOverlay(buildForensicsSnapshot(state, snapshot.healthByVehicle)).cohorts.find((item) => item.id === cohortId)
+    if (!cohort) return null
+    return compareCohort(cohort, state, snapshot.healthByVehicle)
+  }
+
+  async getAnomalies() {
+    return (await this.getForensics()).anomalies

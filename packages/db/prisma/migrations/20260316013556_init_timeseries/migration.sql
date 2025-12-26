@@ -560,3 +560,144 @@ CREATE TABLE "supplier_scorecards" (
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
+CREATE INDEX "users_organization_id_idx" ON "users"("organization_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "api_keys_key_hash_key" ON "api_keys"("key_hash");
+
+-- CreateIndex
+CREATE INDEX "api_keys_organization_id_idx" ON "api_keys"("organization_id");
+
+-- CreateIndex
+CREATE INDEX "oem_connections_organization_id_idx" ON "oem_connections"("organization_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "vehicles_vin_key" ON "vehicles"("vin");
+
+-- CreateIndex
+CREATE INDEX "vehicles_organization_id_idx" ON "vehicles"("organization_id");
+
+-- CreateIndex
+CREATE INDEX "vehicles_region_idx" ON "vehicles"("region");
+
+-- CreateIndex
+CREATE INDEX "vehicles_depot_affinity_id_idx" ON "vehicles"("depot_affinity_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "signal_definitions_name_key" ON "signal_definitions"("name");
+
+-- CreateIndex
+CREATE INDEX "vehicle_signals_vehicle_id_timestamp_idx" ON "vehicle_signals"("vehicle_id", "timestamp" DESC);
+
+-- CreateIndex
+CREATE INDEX "vehicle_signals_timestamp_idx" ON "vehicle_signals"("timestamp");
+
+-- CreateIndex
+CREATE INDEX "vehicle_health_snapshots_vehicle_id_timestamp_idx" ON "vehicle_health_snapshots"("vehicle_id", "timestamp" DESC);
+
+-- CreateIndex
+CREATE INDEX "vehicle_health_snapshots_timestamp_idx" ON "vehicle_health_snapshots"("timestamp");
+
+-- CreateIndex
+CREATE INDEX "priority_snapshots_vehicle_id_timestamp_idx" ON "priority_snapshots"("vehicle_id", "timestamp" DESC);
+
+-- CreateIndex
+CREATE INDEX "priority_snapshots_timestamp_idx" ON "priority_snapshots"("timestamp");
+
+-- CreateIndex
+CREATE INDEX "vehicle_events_vehicle_id_timestamp_idx" ON "vehicle_events"("vehicle_id", "timestamp");
+
+-- CreateIndex
+CREATE INDEX "vehicle_events_dtc_code_idx" ON "vehicle_events"("dtc_code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "dtc_codes_code_key" ON "dtc_codes"("code");
+
+-- CreateIndex
+CREATE INDEX "dtc_codes_subsystem_idx" ON "dtc_codes"("subsystem");
+
+-- CreateIndex
+CREATE INDEX "vehicle_faults_vehicle_id_is_active_idx" ON "vehicle_faults"("vehicle_id", "is_active");
+
+-- CreateIndex
+CREATE INDEX "vehicle_faults_subsystem_idx" ON "vehicle_faults"("subsystem");
+
+-- CreateIndex
+CREATE INDEX "alerts_vehicle_id_idx" ON "alerts"("vehicle_id");
+
+-- CreateIndex
+CREATE INDEX "alerts_status_idx" ON "alerts"("status");
+
+-- CreateIndex
+CREATE INDEX "depots_organization_id_idx" ON "depots"("organization_id");
+
+-- CreateIndex
+CREATE INDEX "depots_region_idx" ON "depots"("region");
+
+-- CreateIndex
+CREATE INDEX "bays_depot_id_status_idx" ON "bays"("depot_id", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "part_substitutes_original_part_number_substitute_part_numbe_key" ON "part_substitutes"("original_part_number", "substitute_part_number");
+
+-- CreateIndex
+CREATE INDEX "inventory_items_depot_id_idx" ON "inventory_items"("depot_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "inventory_items_depot_id_part_number_key" ON "inventory_items"("depot_id", "part_number");
+
+-- CreateIndex
+CREATE INDEX "part_reservations_service_request_id_idx" ON "part_reservations"("service_request_id");
+
+-- CreateIndex
+CREATE INDEX "part_reservations_depot_id_part_number_idx" ON "part_reservations"("depot_id", "part_number");
+
+-- CreateIndex
+CREATE INDEX "technicians_depot_id_idx" ON "technicians"("depot_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "priority_entries_vehicle_id_key" ON "priority_entries"("vehicle_id");
+
+-- CreateIndex
+CREATE INDEX "priority_entries_score_idx" ON "priority_entries"("score" DESC);
+
+-- CreateIndex
+CREATE INDEX "service_requests_vehicle_id_idx" ON "service_requests"("vehicle_id");
+
+-- CreateIndex
+CREATE INDEX "service_requests_depot_id_idx" ON "service_requests"("depot_id");
+
+-- CreateIndex
+CREATE INDEX "service_requests_technician_id_idx" ON "service_requests"("technician_id");
+
+-- CreateIndex
+CREATE INDEX "service_requests_status_idx" ON "service_requests"("status");
+
+-- CreateIndex
+CREATE INDEX "service_requests_created_at_idx" ON "service_requests"("created_at");
+
+-- CreateIndex
+CREATE INDEX "service_timeline_service_request_id_idx" ON "service_timeline"("service_request_id");
+
+-- CreateIndex
+CREATE INDEX "service_history_vehicle_id_idx" ON "service_history"("vehicle_id");
+
+-- CreateIndex
+CREATE INDEX "service_history_depot_id_idx" ON "service_history"("depot_id");
+
+-- CreateIndex
+CREATE INDEX "service_history_technician_id_idx" ON "service_history"("technician_id");
+
+-- CreateIndex
+CREATE INDEX "service_history_resolved_at_idx" ON "service_history"("resolved_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "sla_tracking_service_request_id_key" ON "sla_tracking"("service_request_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "notification_preferences_user_id_channel_event_type_key" ON "notification_preferences"("user_id", "channel", "event_type");
+
+-- CreateIndex
+CREATE INDEX "forensics_cohorts_dimension_dimension_value_idx" ON "forensics_cohorts"("dimension", "dimension_value");
+
+-- CreateIndex

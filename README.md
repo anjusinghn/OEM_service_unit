@@ -320,3 +320,110 @@ The platform works fully without AI — heuristic scoring handles all core funct
     │              API + DASHBOARD (Express + Next.js)                 │
     │                                                                  │
     │  REST API │ SSE Stream │ Bull Board │ Fleet Command Center      │
+    │  Triage Queue │ AI Dispatch │ Workflow Board │ Intelligence      │
+    └──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Project Structure
+
+```
+kazindustries/
+│
+├── apps/
+│   ├── api/              Express REST API + SSE server
+│   ├── web/              Next.js enterprise dashboard
+│   ├── worker/           BullMQ job processing cluster
+│   └── simulator/        Continuous telemetry generator
+│
+├── packages/
+│   ├── shared/           Domain types and utilities
+│   ├── db/               Prisma schema, repositories, Redis
+│   ├── signal-trust/     Health scoring engine
+│   ├── orchestration/    Priority, matching, workflow
+│   ├── ai/               LangChain chains, prompts, rewards
+│   ├── forensics/        Telemetry analysis tools
+│   ├── ui/               Shared React components
+│   └── oem-adapters/     OEM integration layer
+│
+└── infra/docker/         PostgreSQL/TimescaleDB + Redis
+```
+
+---
+
+## What's Built vs. Planned
+
+### ✅ Implemented (Phases 1–6)
+
+- Dockerized infrastructure with PostgreSQL/TimescaleDB and Redis
+- Complete telemetry ingestion pipeline with BullMQ workers
+- Real-time health scoring across 8 vehicle subsystems
+- Priority ranking with 5-factor weighted model
+- AI reasoning chains for priority, depot, technician, and dispatch
+- Full LangChain dispatch agent with 7 research tools
+- Decision logging and reward signal computation
+- Reinforcement learning feedback loop
+- Enterprise dashboard with real-time SSE updates
+- Forensics module for cohort analysis and anomaly detection
+- JWT authentication with bcrypt password hashing
+- Role-based access control (RBAC) on API and UI
+- Multi-tenancy foundations with org-scoped queries
+- Login page with route protection middleware
+- Comprehensive test coverage (80%+) with Vitest
+
+### 🚧 Planned (Phase 7)
+
+- CI/CD with GitHub Actions
+- Azure deployment with Terraform (AKS, managed DB, cache)
+
+### 🔮 Future Modules
+
+- **Telemetry Forensics** — AI-powered root cause analysis
+- **Predictive Warranty Shield** — Failure prediction from RL outcomes
+
+---
+
+## Design Philosophy
+
+1. **Heuristics first, AI second.** The system works perfectly without AI. AI enriches but never blocks.
+2. **Every decision is auditable.** Full chain: input → heuristic → AI → human → outcome → reward.
+3. **The system learns.** Every completed service improves future decisions.
+4. **Docker-first, cloud-last.** One command to run locally. No cloud dependency for development.
+5. **Fail gracefully.** AI down → heuristics. Cache down → database. No single point of failure.
+6. **AI is explainable.** The dashboard shows exactly what the AI thinks and why.
+
+---
+
+## Scripts
+
+```bash
+pnpm dev               # Start all services
+pnpm build             # Build all packages
+pnpm typecheck         # Type-check everything
+pnpm test              # Run all tests with coverage
+
+pnpm infra:up          # Start PostgreSQL + Redis
+pnpm infra:down        # Stop infrastructure
+
+pnpm dev:api           # API only
+pnpm dev:web           # Dashboard only
+pnpm dev:worker        # Worker only
+pnpm dev:simulator     # Simulator only
+```
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feat/your-feature`
+3. Make changes
+4. Run `pnpm typecheck` and `pnpm build` to verify
+5. Open a pull request
+
+---
+
+<p align="center">
+  Built by <a href="https://github.com/kaizen403">kaizen403</a>
+</p>

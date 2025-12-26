@@ -469,3 +469,120 @@ export interface GeographicHeatmapPoint {
 
 // --- Investigation Workflow (Sub-phase 2.3) ---
 
+export type InvestigationStatus =
+  | "PATTERN_DETECTED"
+  | "INVESTIGATION_OPENED"
+  | "EVIDENCE_COLLECTED"
+  | "ROOT_CAUSE_IDENTIFIED"
+  | "CONTAINMENT_RECOMMENDED"
+  | "ACTION_TAKEN"
+  | "VERIFIED"
+
+export type ContainmentType =
+  | "monitor"
+  | "service_campaign"
+  | "software_update"
+  | "supplier_escalation"
+  | "training_bulletin"
+  | "safety_recall"
+
+export interface Investigation {
+  id: string
+  patternId: string | null
+  anomalyId: string | null
+  title: string
+  status: InvestigationStatus
+  rootCause: string | null
+  affectedVehicleIds: string[]
+  affectedVehicleCount: number
+  containment: ContainmentRecommendation | null
+  timeline: InvestigationTimelineEvent[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InvestigationTimelineEvent {
+  status: InvestigationStatus
+  at: string
+  note: string
+}
+
+export interface EvidencePackage {
+  investigationId: string
+  affectedVehicleIds: string[]
+  signalComparisons: SignalComparison[]
+  dtcHistory: { vehicleId: string; dtcCode: string; occurredAt: string; severity: DtcSeverity }[]
+  serviceHistory: { vehicleId: string; subsystem: SubsystemKey; outcome: string; resolvedAt: string }[]
+  cohortContext: { dimension: CohortDimension; value: string; faultRate: number; baselineRate: number }[]
+  supplierContext: SupplierEvidence[]
+  environmentalContext: { region: string; faultRate: number }[]
+}
+
+export interface SignalComparison {
+  signalName: string
+  affectedAvg: number
+  baselineAvg: number
+  deviation: number
+  unit: string
+}
+
+export interface SupplierEvidence {
+  supplierName: string
+  componentType: string
+  batchId: string
+  faultRate: number
+  baselineFaultRate: number
+  rateRatio: number
+}
+
+export interface ContainmentRecommendation {
+  type: ContainmentType
+  urgency: "low" | "medium" | "high" | "critical"
+  affectedVehicleCount: number
+  estimatedCostPerVehicle: number
+  estimatedTotalCost: number
+  costOfInaction: number
+  netSavings: number
+  suggestedTimeline: string
+  reasoning: string[]
+}
+
+// --- Supplier Scorecards ---
+
+export interface SupplierInfo {
+  id: string
+  name: string
+  componentTypes: string[]
+  activeBatches: string[]
+}
+
+export interface SupplierScorecard {
+  supplierId: string
+  supplierName: string
+  componentType: string
+  overallFaultRate: number
+  baselineFaultRate: number
+  rateRatio: number
+  trend: TrendDirection
+  affectedVehicleCount: number
+  totalVehicleCount: number
+  batches: SupplierBatchScore[]
+}
+
+export interface SupplierBatchScore {
+  batchId: string
+  faultRate: number
+  vehicleCount: number
+  trend: TrendDirection
+}
+
+// --- Forensics Snapshot ---
+
+export interface ForensicsSnapshot {
+  cohorts: Cohort[]
+  anomalies: CohortAnomaly[]
+  patterns: FailurePattern[]
+  investigations: Investigation[]
+  supplierScorecards: SupplierScorecard[]
+  heatmapData: GeographicHeatmapPoint[]
+}

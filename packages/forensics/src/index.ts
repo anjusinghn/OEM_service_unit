@@ -566,3 +566,144 @@ export const buildEvidencePackage = (
 }
 
 export const recommendContainment = (
+  investigation: Investigation,
+  evidence: EvidencePackage
+): ContainmentRecommendation => {
+  const hasSupplierSpike = evidence.supplierContext.some((entry) => entry.rateRatio >= 1.8)
+  const affectedVehicleCount = investigation.affectedVehicleCount
+  const topDeviation = evidence.signalComparisons.sort((left, right) => Math.abs(right.deviation) - Math.abs(left.deviation))[0]
+  const urgency: ContainmentRecommendation["urgency"] =
+    affectedVehicleCount >= 40 ? "critical" : affectedVehicleCount >= 20 ? "high" : affectedVehicleCount >= 8 ? "medium" : "low"
+
+  let type: ContainmentRecommendation["type"] = CONTAINMENT_TYPES[0]
+  if (hasSupplierSpike) type = "supplier_escalation"
+  else if (affectedVehicleCount >= 25) type = "service_campaign"
+  else if ((topDeviation?.signalName ?? "").includes("Voltage")) type = "software_update"
+  else if (affectedVehicleCount <= 5) type = "monitor"
+
+  const estimatedCostPerVehicle = 35000
+  const costOfInaction = 280000 * Math.max(1, affectedVehicleCount)
+  const estimatedTotalCost = estimatedCostPerVehicle * Math.max(1, affectedVehicleCount)
+
+  return {
+    type,
+    urgency,
+    affectedVehicleCount,
+    estimatedCostPerVehicle,
+    estimatedTotalCost,
+    costOfInaction,
+    netSavings: costOfInaction - estimatedTotalCost,
+    suggestedTimeline: urgency === "critical" ? "24-72 hours" : urgency === "high" ? "7 days" : "14 days",
+    reasoning: [
+      `${affectedVehicleCount} vehicles show the same signal/fault signature`,
+      hasSupplierSpike ? "supplier-linked rate spike detected" : "fleet-level anomaly exceeds baseline",
+      topDeviation ? `${topDeviation.signalName} deviates by ${topDeviation.deviation}${topDeviation.unit}` : "telemetry deviation requires monitoring"
+    ]
+  }
+}
+
+const trendFromRatio = (rateRatio: number): SupplierScorecard["trend"] => {
+  if (rateRatio >= 1.2) return "degrading"
+  if (rateRatio <= 0.9) return "improving"
+  return "stable"
+}
+
+export const buildSupplierScorecards = (state: DemoState): SupplierScorecard[] => {
+  const baselineFaultRate = Object.values(state.faults).flat().length / Math.max(1, state.vehicles.length)
+
+  return state.suppliers.flatMap((supplier) =>
+    supplier.componentTypes.map((componentType, index) => {
+      const matchingFaults = Object.values(state.faults)
+        .flat()
+        .filter((fault) => {
+          if (componentType.includes("turbo")) return fault.subsystem === "turbo"
+          if (componentType.includes("exhaust")) return fault.subsystem === "exhaust"
+          if (componentType.includes("coolant")) return fault.subsystem === "cooling"
+          if (componentType.includes("brake")) return fault.subsystem === "brakes"
+          if (componentType.includes("fuel")) return fault.subsystem === "fuel"
+          if (componentType.includes("transmission")) return fault.subsystem === "transmission"
+          return fault.subsystem === "electrical"
+        })
+      const affectedVehicleIds = [...new Set(matchingFaults.map((fault) => fault.vehicleId))]
+      const overallFaultRate = matchingFaults.length / Math.max(1, state.vehicles.length)
+      const rateRatio = baselineFaultRate > 0 ? overallFaultRate / baselineFaultRate : 1
+      const batches: SupplierBatchScore[] = supplier.activeBatches.map((batchId, batchIndex) => ({
+        batchId,
+        faultRate: round(clamp(overallFaultRate * (1 + batchIndex * 0.08), 0, 4), 3),
+        vehicleCount: Math.max(1, Math.round(state.vehicles.length / supplier.activeBatches.length)),
+        trend: trendFromRatio(rateRatio + batchIndex * 0.04)
+      }))
+
+      return {
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        componentType,
+        overallFaultRate: round(overallFaultRate, 3),
+        baselineFaultRate: round(baselineFaultRate, 3),
+        rateRatio: round(rateRatio, 2),
+        trend: trendFromRatio(rateRatio),
+        affectedVehicleCount: affectedVehicleIds.length,
+        totalVehicleCount: state.vehicles.length,
+        batches
+      }
+    })
+  )
+}
+
+const mergePatternStatuses = (nextPatterns: FailurePattern[], existingPatterns: FailurePattern[]) => {
+  const existingByName = new Map(existingPatterns.map((pattern) => [pattern.name, pattern]))
+  return nextPatterns.map((pattern) => {
+    const existing = existingByName.get(pattern.name)
+    return existing ? { ...pattern, status: existing.status } : pattern
+  })
+}
+
+export const buildForensicsSnapshot = (
+  state: DemoState,
+  healthByVehicle: Record<string, HealthScore>
+): ForensicsSnapshot => {
+  const cohorts = buildCohorts(state)
+  const anomalies = detectAnomalousCohorts(state, healthByVehicle)
+  const sequencePatterns = detectDtcSequences(state)
+  const crossSystemCorrelations = detectCrossSystemCorrelations(state, healthByVehicle)
+  const crossSystemPattern: FailurePattern | null = crossSystemCorrelations.length
+    ? {
+        id: createId("pattern", sequencePatterns.length + 1),
+        name: "Cross-system degradation matrix",
+        type: "cross_system",
+        status: "DETECTED",
+        confidence: round(clamp(0.48 + crossSystemCorrelations.length * 0.05, 0.48, 0.93), 2),
+        supportCount: crossSystemCorrelations.length,
+        totalVehicles: state.vehicles.length,
+        supportRate: round(crossSystemCorrelations.length / Math.max(1, SUBSYSTEMS.length), 2),
+        sequence: [],
+        affectedSubsystems: [...new Set(crossSystemCorrelations.flatMap((item) => [item.factorA, item.factorB]))].filter(
+          (value): value is SubsystemKey => SUBSYSTEMS.includes(value as SubsystemKey)
+        ),
+        affectedRegions: [...new Set(state.vehicles.map((vehicle) => vehicle.region))],
+        correlations: crossSystemCorrelations,
+        detectedAt: nowIso(),
+        summary: `Cross-system correlations identified across ${crossSystemCorrelations.length} subsystem pairs`
+      }
+    : null
+  const patterns = mergePatternStatuses(
+    crossSystemPattern ? [...sequencePatterns, crossSystemPattern] : sequencePatterns,
+    state.forensics.patterns
+  )
+  const supplierScorecards = buildSupplierScorecards(state)
+  const heatmapData = buildGeographicHeatmap(state)
+  const investigations = state.forensics.investigations.map((investigation) => {
+    if (investigation.containment) return investigation
+    const evidence = buildEvidencePackage(investigation, state, healthByVehicle)
+    return { ...investigation, containment: recommendContainment(investigation, evidence) }
+  })
+
+  return {
+    cohorts,
+    anomalies,
+    patterns,
+    investigations,
+    supplierScorecards,
+    heatmapData
+  }
+}

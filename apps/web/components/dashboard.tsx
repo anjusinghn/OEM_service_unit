@@ -547,3 +547,140 @@ export function Dashboard() {
                         {depot.specialties.map((s) => (
                           <span key={s}>{s}</span>
                         ))}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="grid grid--secondary mb-28 fade-in">
+            <SectionCard
+              title="Forensics Signals"
+              eyebrow="Telemetry Forensics"
+              actions={<StatusPill tone="info">{payload.forensics.cohorts.length} cohorts</StatusPill>}
+            >
+              <div className="request-board">
+                {payload.forensics.anomalies.slice(0, 4).map((anomaly) => (
+                  <article key={anomaly.id} className="request-card">
+                    <div className="request-card__top">
+                      <div>
+                        <strong>{anomaly.cohortName}</strong>
+                        <p>{anomaly.dtcCode} &middot; {anomaly.dimensionValue}</p>
+                      </div>
+                      <StatusPill tone={anomaly.severity === "critical" ? "critical" : anomaly.severity === "high" ? "watch" : "info"}>
+                        {anomaly.severity}
+                      </StatusPill>
+                    </div>
+                    <div className="request-card__meta">
+                      <span>{anomaly.rateRatio}x baseline</span>
+                      <span>{anomaly.affectedVehicleCount} vehicles</span>
+                      <span>p={anomaly.pValue}</span>
+                    </div>
+                    <div className="request-card__timeline">
+                      <div>
+                        <strong>Summary</strong>
+                        <p>{anomaly.summary}</p>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+                {payload.forensics.anomalies.length === 0 && (
+                  <div className="empty-state">
+                    <RadioTower size={24} />
+                    <span>No anomalous cohorts detected yet.</span>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Pattern Library"
+              eyebrow="Detected Chains"
+              actions={<StatusPill tone="info">{payload.forensics.patterns.length} patterns</StatusPill>}
+            >
+              <div className="alerts-list">
+                {payload.forensics.patterns.slice(0, 5).map((pattern) => (
+                  <article className="alert-row alert-row--warning" key={pattern.id}>
+                    <div className="alert-row__icon">
+                      <Activity size={16} />
+                    </div>
+                    <div>
+                      <strong>{pattern.name}</strong>
+                      <p>{pattern.summary}</p>
+                    </div>
+                    <StatusPill tone={pattern.status === "CONFIRMED" || pattern.status === "ACTIVE" ? "success" : "watch"}>
+                      {pattern.status.toLowerCase().replace(/_/g, " ")}
+                    </StatusPill>
+                  </article>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="grid grid--secondary mb-28 fade-in">
+            <SectionCard
+              title="Decision Intelligence"
+              eyebrow="Phase 4 Reward Loop"
+              actions={<StatusPill tone="info">{intelligence?.rewardSignals.length ?? 0} rewards</StatusPill>}
+            >
+              <div className="request-board">
+                {intelligence ? (
+                  <>
+                    <article className="request-card">
+                      <div className="request-card__top">
+                        <div>
+                          <strong>Quality trend</strong>
+                          <p>AI vs heuristic reward averages by decision type</p>
+                        </div>
+                        <StatusPill tone="success">{Math.round(intelligence.overrideRate * 100)}% overrides</StatusPill>
+                      </div>
+                      <div className="request-card__timeline">
+                        {intelligence.qualityTrend.map((point) => (
+                          <div key={point.label}>
+                            <strong>{point.label}</strong>
+                            <p>AI {point.aiScore.toFixed(2)} · heuristic {point.heuristicScore.toFixed(2)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                    <article className="request-card">
+                      <div className="request-card__top">
+                        <div>
+                          <strong>Best decisions</strong>
+                          <p>Highest reward scores in recent history</p>
+                        </div>
+                      </div>
+                      <div className="request-card__timeline">
+                        {intelligence.bestDecisions.slice(0, 3).map((item) => (
+                          <div key={item.decisionLogId}>
+                            <strong>{item.decisionType} · {item.vehicleId}</strong>
+                            <p>{item.rewardScore.toFixed(2)} reward</p>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                    <article className="request-card">
+                      <div className="request-card__top">
+                        <div>
+                          <strong>Worst decisions</strong>
+                          <p>Lowest reward scores to review</p>
+                        </div>
+                      </div>
+                      <div className="request-card__timeline">
+                        {intelligence.worstDecisions.slice(0, 3).map((item) => (
+                          <div key={item.decisionLogId}>
+                            <strong>{item.decisionType} · {item.vehicleId}</strong>
+                            <p>{item.rewardScore.toFixed(2)} reward</p>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  </>
+                ) : (
+                  <div className="empty-state">
+                    <Shield size={24} />
+                    <span>Decision intelligence is loading.</span>
+                  </div>
+                )}

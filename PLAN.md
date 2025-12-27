@@ -934,3 +934,159 @@ This is the "home base" — the screen the fleet manager sees first thing in the
 │  │i│ │  │                                  │                       │   │
 │  │a│ │  │  Cluster view at low zoom,       │  3. VEH-091 ●watch   │   │
 │  │g│ │  │  individual pins at high zoom    │     Turbo 61.2       │   │
+│  │e│ │  │                                  │     🤖 "Elevated"    │   │
+│  │ │ │  │                                  │     [Dispatch →]     │   │
+│  │W│ │  └──────────────────────────────────┤                       │   │
+│  │o│ │                                     │  ...                  │   │
+│  │r│ │  ┌───────────────┬──────────────┐  │                       │   │
+│  │k│ │  │ HEALTH        │ ACTIVE       │  │  [View full queue →]  │   │
+│  │f│ │  │ DISTRIBUTION  │ ALERTS       │  └───────────────────────┘   │
+│  │l│ │  │               │              │                               │
+│  │o│ │  │ [Donut chart] │ ⚠ VEH-042   │  ┌───────────────────────┐   │
+│  │w│ │  │               │   cooling    │  │ AI ESCALATIONS        │   │
+│  │ │ │  │  72 Healthy   │   spike      │  │                       │   │
+│  │ │ │  │  16 Watch     │              │  │ 🔴 Batch pattern:     │   │
+│  │D│ │  │   8 Critical  │ ⚠ VEH-017   │  │   3× BATCH-24Q2      │   │
+│  │e│ │  │               │   brake      │  │   turbo degradation   │   │
+│  │p│ │  │               │   wear       │  │   [Investigate →]     │   │
+│  │o│ │  │               │              │  │                       │   │
+│  │t│ │  │               │ ● VEH-008   │  │ 🟡 Capacity crunch:   │   │
+│  │s│ │  │               │   exhaust    │  │   Pune depot at 90%   │   │
+│  │ │ │  │               │   temp       │  │   utilization          │   │
+│  │A│ │  │               │              │  │   [View depot →]      │   │
+│  │l│ │  │               │ [View all →] │  │                       │   │
+│  │e│ │  └───────────────┴──────────────┘  └───────────────────────┘   │
+│  │r│ │                                                                  │
+│  │t│ │  ┌─────────────────────────────────────────────────────────┐   │
+│  │s│ │  │ LIVE ACTIVITY FEED                                 ● Live│   │
+│  │ │ │  │                                                         │   │
+│  │ │ │  │ 14:23  VEH-042 entered CRITICAL status (cooling: 52.3) │   │
+│  │I│ │  │ 14:21  Service REQ-047 completed. VEH-031 health → 94  │   │
+│  │n│ │  │ 14:18  Telemetry pulse. 3 vehicles re-ranked.          │   │
+│  │t│ │  │ 14:15  VEH-017 dispatch to Pune depot (AI recommended) │   │
+│  │e│ │  │                                                         │   │
+│  │l│ │  └─────────────────────────────────────────────────────────┘   │
+│  └─┘ │                                                                  │
+└──────┴──────────────────────────────────────────────────────────────────┘
+
+SIDEBAR NAVIGATION (left, collapsible):
+  ◆ Command Center          (/ — this page)
+  ⊘ Triage Queue            (/triage)
+  ⇢ AI Dispatch             (/dispatch)
+  ≡ Workflow Board          (/workflow)
+  ⊞ Depot Network           (/depots)
+  ⊕ Technicians             (/technicians)
+  ◈ Decision Intelligence   (/intelligence)
+  △ Alerts                  (/alerts)
+  ─── separator ───
+  ⊙ Settings                (/settings)
+```
+
+**Interactive behaviors:**
+- **Map pins** — hover shows tooltip with vehicle ID + health. Click opens a Sheet (shadcn/ui) with full vehicle detail
+- **Priority queue cards** — each card has a subtle left border colored by health status. AI assessment badge (purple glow) shows urgency with a one-line summary. "Dispatch" button opens the AI dispatch interface
+- **Metric cards** — each has a sparkline trend (last 24h) using Recharts mini `AreaChart`. The delta (▲3, ▼2%) uses Framer Motion `AnimatePresence` to animate number changes
+- **Health donut** — Recharts `PieChart` with animated segments. Click a segment to filter the map to only those vehicles
+- **Alert feed** — auto-scrolls with new items animating in from the top (Framer Motion `AnimatePresence`). Each alert is clickable → navigates to vehicle detail
+- **AI escalation cards** — purple border/glow (the AI accent). Each has a clear call-to-action button
+- **Live pulse** — green dot pulses when SSE is connected. Red dot + "Reconnecting..." when disconnected
+
+---
+
+#### 3. `/triage` — AI Priority Queue
+
+The main operational view. Where the fleet manager decides what to act on.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  TRIAGE QUEUE                                    [Filters ▾] [Search]   │
+│                                                                          │
+│  ┌─ BULK ACTIONS ──────────────────────────────────────────────────┐    │
+│  │ □ Select all    [Batch Dispatch]  [Export CSV]  96 vehicles     │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌─ TABLE ─────────────────────────────────────────────────────────┐    │
+│  │ # │ Vehicle   │ Health │ Score │ Status  │ AI Assessment │ Act. │    │
+│  │───┼───────────┼────────┼───────┼─────────┼───────────────┼──────│    │
+│  │ 1 │ VEH-042   │  52.3  │ 82.1  │●CRITICAL│ 🔴 Urgent     │ [⇢] │    │
+│  │   │ RidgeRun. │ ▼10.2  │ ▲30.0 │ cooling │ Recurring     │      │    │
+│  │   │ Pune C-2  │        │       │         │ cooling issue  │      │    │
+│  │───┼───────────┼────────┼───────┼─────────┼───────────────┼──────│    │
+│  │ 2 │ VEH-017   │  48.7  │ 79.3  │●CRITICAL│ 🔴 Emergency  │ [⇢] │    │
+│  │   │ CargoMax  │ ▼5.8   │ ▲12.4 │ brakes  │ Safety-crit.  │      │    │
+│  │   │ Delhi C-1 │        │       │         │ brake wear     │      │    │
+│  │───┼───────────┼────────┼───────┼─────────┼───────────────┼──────│    │
+│  │ 3 │ VEH-091   │  61.2  │ 68.5  │●WATCH   │ 🟡 Elevated   │ [⇢] │    │
+│  │   │ Atlas H.  │ ▼3.1   │ ▲8.2  │ turbo   │ Boost trend   │      │    │
+│  │   │ Jaipur C3 │        │       │         │ declining      │      │    │
+│  │───┼───────────┼────────┼───────┼─────────┼───────────────┼──────│    │
+│  │   │ ...       │        │       │         │               │      │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌─ EXPANDED ROW (click a row to expand) ─────────────────────────┐    │
+│  │                                                                 │    │
+│  │  VEH-042 — RidgeRunner — Pune Corridor 2                       │    │
+│  │                                                                 │    │
+│  │  ┌─────────────────┐  ┌──────────────────────────────────────┐ │    │
+│  │  │ SUBSYSTEM RADAR │  │ HEURISTIC BREAKDOWN                  │ │    │
+│  │  │                 │  │                                      │ │    │
+│  │  │   [RadarChart   │  │  Safety urgency    ████████░░  72.4  │ │    │
+│  │  │    showing all  │  │  Failure proximity ██████████  91.2  │ │    │
+│  │  │    8 subsystems │  │  Business impact   ██████░░░░  58.3  │ │    │
+│  │  │    with current │  │  Downtime cost     ████████░░  68.7  │ │    │
+│  │  │    health as    │  │  Service window    ███░░░░░░░  32.1  │ │    │
+│  │  │    filled area  │  │                                      │ │    │
+│  │  │    and baseline │  │  Heuristic score: 78.4               │ │    │
+│  │  │    as outline]  │  │  AI adjusted:     82.1 (▲ 3.7)      │ │    │
+│  │  └─────────────────┘  └──────────────────────────────────────┘ │    │
+│  │                                                                 │    │
+│  │  ┌─ AI REASONING ─────────────────────────── 🤖 OpenRouter AI ┐ │  │
+│  │  │                                                              │ │  │
+│  │  │  "This vehicle should be ESCALATED from score 78.4 to 82.1. │ │  │
+│  │  │                                                              │ │  │
+│  │  │  Risk factors identified:                                    │ │  │
+│  │  │  • Coolant temp spiked to 104°C — 12°C above threshold.     │ │  │
+│  │  │    This is a 3.2σ deviation from this vehicle's 30-day avg. │ │  │
+│  │  │  • Service history shows a cooling intervention 45 days ago  │ │  │
+│  │  │    (REQ-031, Pune depot). The repair may not have addressed  │ │  │
+│  │  │    the root cause — this looks like a                        │ │  │
+│  │  │    recurring failure pattern.                                 │ │  │
+│  │  │  • This vehicle operates on Pune Corridor 2, which has 14%   │ │  │
+│  │  │    higher ambient temperatures than fleet average.            │ │  │
+│  │  │                                                              │ │  │
+│  │  │  Recommendation: Immediate dispatch to Pune depot for        │ │  │
+│  │  │  extended cooling system diagnostics with both likely parts  │ │  │
+│  │  │  staged before intake."                                      │ │  │
+│  │  │                                                              │ │  │
+│  │  │  Confidence: 87%          Tokens used: 1,847                 │ │  │
+│  │  └──────────────────────────────────────────────────────────────┘ │  │
+│  │                                                                 │    │
+│  │  ┌────────────────────────┐  ┌────────────────────────┐        │    │
+│  │  │ 🤖 AI Dispatch         │  │ ⚡ Quick Dispatch       │        │    │
+│  │  │    (full agent run)    │  │    (heuristic only)    │        │    │
+│  │  └────────────────────────┘  └────────────────────────┘        │    │
+│  │                                                                 │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key interactions:**
+- **Row click** → expands with Framer Motion `AnimatePresence` height animation
+- **AI Reasoning panel** — purple gradient border (subtle glow), `🤖 OpenRouter` badge
+- **AI Dispatch button** — opens full-screen dispatch interface (see `/dispatch` page)
+- **Quick Dispatch** — uses heuristic-only matching, instant, no AI wait
+- **Table sorting** — click column headers. Sort animation on rows (Framer Motion `layoutId`)
+- **Filters** — shadcn/ui `Popover` with checkboxes: status (healthy/watch/critical), region, depot, subsystem
+- **Search** — instant filter by vehicle ID, VIN, model, route name
+- **Keyboard** — J/K to navigate rows, Enter to expand, D to dispatch, Esc to collapse
+
+---
+
+#### 4. `/dispatch` — AI Dispatch Agent Interface
+
+This is the star feature. A full-screen interface where the AI agent runs a multi-step dispatch decision.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  AI DISPATCH — VEH-042                              [Cancel]  [Accept]  │

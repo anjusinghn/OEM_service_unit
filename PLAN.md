@@ -778,3 +778,159 @@ packages/ai/                    @kaz/ai
 │   AI IS AN ASYNCHRONOUS ENRICHMENT LAYER.                            │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Enterprise Dashboard Architecture
+
+### Design Philosophy
+
+This is NOT a plain text dashboard showing numbers in tables. This is an **operational command center** that a fleet manager uses 8 hours a day. Every pixel must earn its place.
+
+**Design references:**
+- Stripe Dashboard (clean hierarchy, excellent data density)
+- Linear (keyboard-first, smooth animations, dark mode)
+- Vercel Dashboard (real-time updates, status indicators)
+- Datadog (operational dashboards, live charts, alerting UX)
+
+### UI Stack
+
+```
+shadcn/ui                   Component primitives (Button, Card, Dialog, Sheet,
+                            DropdownMenu, Command, Table, Tabs, Badge, Tooltip,
+                            Avatar, ScrollArea, Separator, Skeleton, Toast,
+                            Popover, Select, Checkbox, Switch, Slider, Form...)
+
+Tailwind CSS               Utility-first styling. Dark mode via class strategy.
+                            Custom theme extending shadcn defaults.
+
+Recharts                   Charts: LineChart, AreaChart, BarChart, RadarChart,
+                            PieChart, ComposedChart. Custom tooltips, animations.
+
+Framer Motion              Layout animations (list reordering when priority changes),
+                            page transitions, modal enter/exit, card interactions,
+                            number counters (AnimatedNumber component).
+
+react-leaflet              Fleet map (vehicle pins) + depot map (capacity pins).
+                            Custom markers with health-colored badges.
+
+Zustand                    Global state: vehicles, priorityQueue, healthByVehicle,
+                            serviceRequests, alerts, aiAssessments, user, theme.
+                            Updated by SSE events.
+
+TanStack Query             Server data fetching with caching, optimistic mutations,
+                            background refetching, retry, error handling.
+
+React Hook Form + Zod      All forms: service completion, settings, filters,
+                            dispatch confirmation, weight adjustment.
+
+Lucide React               Icons throughout (already in use).
+
+cmdk                       Command palette (Cmd+K) for quick navigation,
+                            vehicle search, action triggering.
+
+Sonner                     Toast notifications (beautiful, stackable, dismissable).
+
+nuqs                       URL query state (filters, sort, pagination in URL —
+                            shareable, bookmarkable dashboard views).
+```
+
+### Color System & Theme
+
+```css
+/* Light mode */
+--background:    hsl(0 0% 100%)        /* White */
+--foreground:    hsl(224 71% 4%)        /* Near-black */
+--card:          hsl(0 0% 100%)
+--muted:         hsl(220 14% 96%)
+--accent:        hsl(249 76% 67%)       /* Indigo — primary brand */
+
+/* Status colors (semantic) */
+--healthy:       hsl(160 60% 45%)       /* Teal-green */
+--watch:         hsl(38 92% 50%)        /* Amber */
+--critical:      hsl(346 77% 50%)       /* Rose-red */
+--info:          hsl(217 91% 60%)       /* Blue */
+
+/* AI accent */
+--ai-glow:       hsl(270 76% 60%)       /* Purple — used for AI badges, borders */
+--ai-muted:      hsl(270 76% 60% / 0.08)
+
+/* Dark mode */
+--background:    hsl(224 71% 4%)        /* Near-black */
+--foreground:    hsl(213 31% 91%)       /* Light gray */
+--card:          hsl(224 50% 8%)        /* Slightly lighter than bg */
+--muted:         hsl(223 47% 11%)
+```
+
+### Page-by-Page Design Specification
+
+---
+
+#### 1. `/login` — Authentication Page
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│                    ┌──────────────────────┐                     │
+│                    │                      │                     │
+│                    │   ⬡ kazindustries    │                     │
+│                    │                      │                     │
+│                    │  ┌────────────────┐  │                     │
+│                    │  │ Email          │  │                     │
+│                    │  └────────────────┘  │                     │
+│                    │  ┌────────────────┐  │                     │
+│                    │  │ Password       │  │                     │
+│                    │  └────────────────┘  │                     │
+│                    │                      │                     │
+│                    │  ┌────────────────┐  │                     │
+│                    │  │  Sign in    →  │  │                     │
+│                    │  └────────────────┘  │                     │
+│                    │                      │                     │
+│                    │  ── or continue ──   │                     │
+│                    │                      │                     │
+│                    │  [ Azure AD SSO ]    │                     │
+│                    │                      │                     │
+│                    └──────────────────────┘                     │
+│                                                                 │
+│    Background: subtle animated grid pattern (CSS only)          │
+│    Card: glassmorphism with subtle border glow                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 2. `/` — Fleet Command Center (Overview)
+
+This is the "home base" — the screen the fleet manager sees first thing in the morning.
+
+```
+┌──────┬──────────────────────────────────────────────────────────────────┐
+│      │  ⬡ kazindustries            [Cmd+K Search]  🔔 3  [Avatar ▾]   │
+│      ├──────────────────────────────────────────────────────────────────┤
+│  S   │                                                                  │
+│  I   │  FLEET COMMAND CENTER                              ☀️/🌙 Toggle  │
+│  D   │                                                                  │
+│  E   │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
+│  B   │  │ 96         │ │ 12         │ │ 87.2%      │ │ 68%        │   │
+│  A   │  │ vehicles   │ │ need       │ │ first-time │ │ bay        │   │
+│  R   │  │ monitored  │ │ service ▲3 │ │ fix rate ▲ │ │ util.  ▼2% │   │
+│      │  │ ●●● trend  │ │ ●●● trend  │ │ ●●● trend  │ │ ●●● trend  │   │
+│  ┌─┐ │  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
+│  │◆│ │                                                                  │
+│  │ │ │  ┌──────────────────────────────────┬───────────────────────┐   │
+│  │O│ │  │                                  │  PRIORITY QUEUE       │   │
+│  │v│ │  │     FLEET MAP                    │  (top 10)             │   │
+│  │e│ │  │                                  │                       │   │
+│  │r│ │  │  [Leaflet map with vehicle       │  1. VEH-042 ●crit    │   │
+│  │v│ │  │   pins colored by health         │     Cooling 52.3     │   │
+│  │i│ │  │   status: green/amber/red.       │     🤖 "Urgent"      │   │
+│  │e│ │  │   Depot pins with capacity       │     [Dispatch →]     │   │
+│  │w│ │  │   badges. Click pin = popover    │                       │   │
+│  │ │ │  │   with vehicle/depot summary]    │  2. VEH-017 ●crit    │   │
+│  │ │ │  │                                  │     Brakes 48.7      │   │
+│  │T│ │  │  Zoom: India map, centered       │     🤖 "Emergency"   │   │
+│  │r│ │  │  on fleet distribution           │     [Dispatch →]     │   │
+│  │i│ │  │                                  │                       │   │
+│  │a│ │  │  Cluster view at low zoom,       │  3. VEH-091 ●watch   │   │
+│  │g│ │  │  individual pins at high zoom    │     Turbo 61.2       │   │

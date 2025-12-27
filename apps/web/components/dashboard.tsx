@@ -684,3 +684,140 @@ export function Dashboard() {
                     <span>Decision intelligence is loading.</span>
                   </div>
                 )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Investigations"
+              eyebrow="Root Cause Workflow"
+              actions={<StatusPill tone="info">{payload.forensics.investigations.length} active</StatusPill>}
+            >
+              <div className="request-board">
+                {payload.forensics.investigations.slice(0, 4).map((investigation) => (
+                  <article key={investigation.id} className="request-card">
+                    <div className="request-card__top">
+                      <div>
+                        <strong>{investigation.title}</strong>
+                        <p>{investigation.affectedVehicleCount} affected vehicles</p>
+                      </div>
+                      <StatusPill tone={investigation.status === "VERIFIED" ? "success" : "watch"}>
+                        {investigation.status.toLowerCase().replace(/_/g, " ")}
+                      </StatusPill>
+                    </div>
+                    <div className="request-card__timeline">
+                      {investigation.timeline.slice(-2).map((event) => (
+                        <div key={`${investigation.id}-${event.status}-${event.at}`}>
+                          <strong>{event.status}</strong>
+                          <p>{event.note}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+                {payload.forensics.investigations.length === 0 && (
+                  <div className="empty-state">
+                    <Shield size={24} />
+                    <span>No investigations opened yet.</span>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Supplier Scorecards"
+              eyebrow="Supplier Risk"
+              actions={<StatusPill tone="info">{payload.forensics.supplierScorecards.length} suppliers</StatusPill>}
+            >
+              <div className="depot-grid">
+                {payload.forensics.supplierScorecards.slice(0, 6).map((scorecard) => (
+                  <article className="depot-card" key={`${scorecard.supplierId}-${scorecard.componentType}`}>
+                    <div className="depot-card__top">
+                      <strong>{scorecard.supplierName}</strong>
+                      <StatusPill tone={scorecard.rateRatio > 1.5 ? "critical" : scorecard.rateRatio > 1.15 ? "watch" : "success"}>
+                        {scorecard.rateRatio}x
+                      </StatusPill>
+                    </div>
+                    <p>{scorecard.componentType}</p>
+                    <div className="depot-specialties">
+                      <span>{scorecard.affectedVehicleCount}/{scorecard.totalVehicleCount} vehicles</span>
+                      <span>{scorecard.trend}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+
+          {/* Alerts + live pulse */}
+          <div className="grid grid--secondary fade-in">
+            <SectionCard title="AI Escalations" eyebrow="Phase 3 Intelligence">
+              <div className="alerts-list">
+                {(payload.aiEscalations ?? []).slice(0, 6).map((escalation, index) => (
+                  <article className={`alert-row${escalation.severity === "critical" ? " alert-row--critical" : " alert-row--warning"}`} key={`${escalation.type}-${index}`}>
+                    <div className="alert-row__icon">
+                      {escalation.severity === "critical" ? <ShieldAlert size={16} /> : <AlertTriangle size={16} />}
+                    </div>
+                    <div>
+                      <strong>{escalation.title}</strong>
+                      <p>{escalation.description}</p>
+                    </div>
+                    <StatusPill tone={escalation.severity === "critical" ? "critical" : "watch"}>
+                      {escalation.severity}
+                    </StatusPill>
+                  </article>
+                ))}
+                {!(payload.aiEscalations ?? []).length ? (
+                  <div className="empty-state">
+                    <Shield size={24} />
+                    <span>No AI escalations currently active.</span>
+                  </div>
+                ) : null}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Active Alerts" eyebrow="Signal Trust">
+              <div className="alerts-list">
+                {payload.alerts.slice(0, 8).map((alert) => {
+                  const isCritical = alert.severity === "critical" || alert.severity === "safety"
+                  return (
+                    <article
+                      className={`alert-row${isCritical ? " alert-row--critical" : " alert-row--warning"}`}
+                      key={alert.id}
+                    >
+                      <div className="alert-row__icon">
+                        {isCritical ? <ShieldAlert size={16} /> : <AlertTriangle size={16} />}
+                      </div>
+                      <div>
+                        <strong>{alert.title}</strong>
+                        <p>{alert.vehicleId} &middot; {alert.subsystem} &middot; {alert.count} occ.</p>
+                      </div>
+                      <StatusPill tone={isCritical ? "critical" : "watch"}>
+                        {alert.severity}
+                      </StatusPill>
+                    </article>
+                  )
+                })}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Live Pulse" eyebrow="Activity Log">
+              <div className="pulse-list">
+                {payload.livePulse.slice(0, 7).map((pulse, idx) => (
+                  <article className="pulse-row" key={`${pulse.id}-${idx}`}>
+                    <div className="pulse-row__icon">
+                      {pulse.kind === "tick" ? <Gauge size={14} /> : pulse.kind === "dispatch" ? <RadioTower size={14} /> : <Wrench size={14} />}
+                    </div>
+                    <div>
+                      <strong>{pulse.kind}</strong>
+                      <p>{pulse.message}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

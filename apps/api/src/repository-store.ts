@@ -713,3 +713,146 @@ class RepositoryStore {
 
   async getAnomalies() {
     return (await this.getForensics()).anomalies
+  }
+
+  async getPatterns() {
+    return (await this.getForensics()).patterns
+  }
+
+  async getPattern(patternId: string) {
+    return (await this.getForensics()).patterns.find((pattern) => pattern.id === patternId) ?? null
+  }
+
+  async updatePatternStatus(patternId: string, status: PatternStatus) {
+    const pattern = await this.getPattern(patternId)
+    if (!pattern) return null
+    this.overlay.patternStatuses.set(patternId, status)
+    await this.emitDashboardRefresh("service_update", { action: "pattern_status", patternId, status })
+    return { ...pattern, status }
+  }
+
+  async getInvestigations() {
+    return (await this.getForensics()).investigations
+  }
+
+  async getInvestigation(investigationId: string) {
+    return (await this.getForensics()).investigations.find((item) => item.id === investigationId) ?? null
+  }
+
+  async openInvestigation(anomalyId?: string, patternId?: string) {
+    const { forensics } = await this.buildPayload()
+    const anomaly = anomalyId ? forensics.anomalies.find((item) => item.id === anomalyId) ?? null : null
+    const pattern = patternId ? forensics.patterns.find((item) => item.id === patternId) ?? null : null
+    const affectedVehicleIds = anomaly
+      ? forensics.cohorts.find((cohort) => cohort.id === anomaly.cohortId)?.vehicleIds ?? []
+      : []
+
+    const investigation = createInvestigationEngine(anomaly, pattern, affectedVehicleIds)
+    this.overlay.investigations = [investigation, ...this.overlay.investigations]
+    const livePulse: LivePulse = {
+      id: `pulse-investigation-${investigation.id}`,
+      kind: "dispatch",
+      message: `Investigation opened: ${investigation.title}`,
+      at: nowIso()
+    }
+    await this.emitDashboardRefresh("service_update", { action: "investigation_opened", investigationId: investigation.id })
+    return { investigation, livePulse }
+  }
+
+  async advanceInvestigationStatus(investigationId: string, status?: InvestigationStatus) {
+    const existing = this.overlay.investigations.find((item) => item.id === investigationId)
+    if (!existing) return null
+    const updated = advanceInvestigationEngine(existing, status)
+    this.overlay.investigations = this.overlay.investigations.map((item) => item.id === investigationId ? updated : item)
+    const livePulse: LivePulse = {
+      id: `pulse-investigation-${investigationId}-${Date.now()}`,
+      kind: "progress",
+      message: `Investigation ${investigationId} moved to ${updated.status}.`,
+      at: nowIso()
+    }
+    await this.emitDashboardRefresh("service_update", { action: "investigation_status", investigationId, status: updated.status })
+    return { investigation: updated, livePulse }
+  }
+
+  async getEvidencePackage(investigationId: string) {
+    const { state, snapshot } = await this.buildPayload()
+    const investigation = this.overlay.investigations.find((item) => item.id === investigationId)
+    if (!investigation) return null
+    return buildEvidencePackageEngine(investigation, state, snapshot.healthByVehicle)
+  }
+
+  async getSupplierScorecards() {
+    return (await this.getForensics()).supplierScorecards
+  }
+
+  async getHeatmapData() {
+    return (await this.getForensics()).heatmapData
+  }
+
+  async dispatchVehicle(vehicleId: string, overrideDepotId?: string): Promise<ServiceActionResult | null> {
+    const { state, snapshot } = await this.buildPayload()
+    const existing = state.serviceRequests.find((request) => request.vehicleId === vehicleId && request.status !== "CLOSED")
+    if (existing) {
+      return {
+        request: existing,
+        livePulse: {
+          id: `pulse-dispatch-${existing.id}`,
+          kind: "dispatch",
+          message: `Vehicle ${vehicleId} already has an active service request.`,
+          at: nowIso()
+        }
+      }
+    }
+
+    const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+    const health = snapshot.healthByVehicle[vehicleId]
+    const priority = snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicleId)
+    if (!vehicle || !health || !priority) return null
+
+    const depotRec = recommendDepots(vehicle, state, health.weakestSubsystem)[0]
+    const selectedDepotId = overrideDepotId ?? depotRec?.depotId
+    if (!selectedDepotId) return null
+
+    const priorityAi = toAiDecisionData(snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicleId)?.breakdown.aiAssessment as Prisma.JsonValue | null)
+    const depotAi = toAiDecisionData((snapshot.depotRecommendations[vehicleId] ?? [])[0]?.aiAssessment as Prisma.JsonValue | null)
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "priority",
+        decisionSubtype: "selected",
+        heuristicOutput: toJsonValue(priority),
+        aiOutput: priorityAi ?? undefined,
+        finalDecision: toJsonValue({
+          score: priority.score,
+          status: priority.status
+        }),
+        humanOverride: false,
+        overrideReason: null,
+        modelName: priorityAi && typeof priorityAi.model === "string" ? priorityAi.model : null,
+        latencyMs: priorityAi && typeof priorityAi.latencyMs === "number" ? priorityAi.latencyMs : null
+      }
+    })
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "depot",
+        decisionSubtype: "selected",
+        heuristicOutput: toJsonValue(snapshot.depotRecommendations[vehicleId] ?? []),
+        aiOutput: depotAi ?? undefined,
+        finalDecision: toJsonValue({ depotId: selectedDepotId, score: depotRec?.score ?? 0 }),
+        humanOverride: !!overrideDepotId,
+        overrideReason: overrideDepotId ? "User override" : null,
+        modelName: depotAi && typeof depotAi.model === "string" ? depotAi.model : null,
+        latencyMs: depotAi && typeof depotAi.latencyMs === "number" ? depotAi.latencyMs : null
+      }
+    })
+
+    const created = await serviceRequestRepository.create({
+      vehicleId,
+      priorityScore: priority.score,
+      weakestSubsystem: health.weakestSubsystem,
+      depotId: selectedDepotId,
+      technicianId: null,
+      requiredPartNumbers: depotRec?.requiredParts.map((part: { partNumber: string }) => part.partNumber) ?? [],

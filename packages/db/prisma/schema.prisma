@@ -718,3 +718,146 @@ model CohortComparison {
   faultProfiles            Json     @default("[]") @map("fault_profiles")
   createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  cohort ForensicsCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@index([cohortId])
+  @@map("cohort_comparisons")
+}
+
+model CohortAnomaly {
+  id                   String   @id @default(cuid())
+  cohortId             String   @map("cohort_id")
+  anomalyType          String   @map("anomaly_type")
+  dtcCode              String   @map("dtc_code")
+  subsystem            String
+  rateRatio            Float    @map("rate_ratio")
+  pValue               Float    @map("p_value")
+  affectedVehicleCount Int      @map("affected_vehicle_count")
+  severity             String
+  summary              String
+  detectedAt           DateTime @default(now()) @map("detected_at") @db.Timestamptz
+
+  cohort ForensicsCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@index([cohortId])
+  @@index([severity])
+  @@map("cohort_anomalies")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS: FAILURE PATTERN DETECTION
+// ═══════════════════════════════════════════════════════════════
+
+model ForensicsPattern {
+  id                 String               @id @default(cuid())
+  name               String
+  type               String
+  status             ForensicsPatternStatus @default(DETECTED)
+  confidence         Float
+  supportCount       Int                  @map("support_count")
+  totalVehicles      Int                  @map("total_vehicles")
+  supportRate        Float                @map("support_rate")
+  sequence           Json                 @default("[]")
+  affectedSubsystems Json                 @default("[]") @map("affected_subsystems")
+  affectedRegions    Json                 @default("[]") @map("affected_regions")
+  correlations       Json                 @default("[]")
+  summary            String
+  detectedAt         DateTime             @default(now()) @map("detected_at") @db.Timestamptz
+
+  investigations ForensicsInvestigation[]
+
+  @@index([status])
+  @@index([type])
+  @@map("forensics_patterns")
+}
+
+enum ForensicsPatternStatus {
+  DETECTED
+  UNDER_REVIEW
+  CONFIRMED
+  ACTIVE
+  RETIRED
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS: INVESTIGATION WORKFLOW
+// ═══════════════════════════════════════════════════════════════
+
+model ForensicsInvestigation {
+  id                   String                       @id @default(cuid())
+  patternId            String?                      @map("pattern_id")
+  title                String
+  status               ForensicsInvestigationStatus @default(PATTERN_DETECTED)
+  rootCause            String?                      @map("root_cause")
+  affectedVehicleIds   Json                         @default("[]") @map("affected_vehicle_ids")
+  affectedVehicleCount Int                          @map("affected_vehicle_count")
+  containment          Json?
+  createdAt            DateTime                     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime                     @updatedAt @map("updated_at") @db.Timestamptz
+
+  pattern  ForensicsPattern?            @relation(fields: [patternId], references: [id], onDelete: SetNull)
+  timeline ForensicsInvestigationEvent[]
+
+  @@index([patternId])
+  @@index([status])
+  @@map("forensics_investigations")
+}
+
+model ForensicsInvestigationEvent {
+  id              String   @id @default(cuid())
+  investigationId String   @map("investigation_id")
+  status          String
+  note            String   @default("")
+  at              DateTime @default(now()) @db.Timestamptz
+
+  investigation ForensicsInvestigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId])
+  @@map("forensics_investigation_events")
+}
+
+enum ForensicsInvestigationStatus {
+  PATTERN_DETECTED
+  INVESTIGATION_OPENED
+  EVIDENCE_COLLECTED
+  ROOT_CAUSE_IDENTIFIED
+  CONTAINMENT_RECOMMENDED
+  ACTION_TAKEN
+  VERIFIED
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS: SUPPLIER SCORECARDS
+// ═══════════════════════════════════════════════════════════════
+
+model SupplierInfo {
+  id             String   @id @default(cuid())
+  name           String
+  componentTypes Json     @default("[]") @map("component_types")
+  activeBatches  Json     @default("[]") @map("active_batches")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  scorecards SupplierScorecard[]
+
+  @@map("supplier_info")
+}
+
+model SupplierScorecard {
+  id                   String   @id @default(cuid())
+  supplierId           String   @map("supplier_id")
+  componentType        String   @map("component_type")
+  overallFaultRate     Float    @map("overall_fault_rate")
+  baselineFaultRate    Float    @map("baseline_fault_rate")
+  rateRatio            Float    @map("rate_ratio")
+  trend                String
+  affectedVehicleCount Int      @map("affected_vehicle_count")
+  totalVehicleCount    Int      @map("total_vehicle_count")
+  batches              Json     @default("[]")
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  supplier SupplierInfo @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@index([componentType])
+  @@map("supplier_scorecards")
+}

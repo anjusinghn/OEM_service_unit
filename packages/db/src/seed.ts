@@ -658,3 +658,135 @@ export async function seedDatabase(db: PrismaClient = prisma) {
     const profile = FAULT_PROFILES[subsystem];
     const isCritical = faultBias > 1;
 
+    await prisma.vehicleFault.create({
+      data: {
+        vehicleId: veh.id,
+        dtcCode: profile.code,
+        subsystem,
+        severity: isCritical ? "critical" : rng() > 0.7 ? "safety" : "warning",
+        title: profile.title,
+        description: profile.description,
+        occurredAt: addHours(now, -(1 + Math.round(rng() * 24))),
+        occurrences: 1 + Math.round(rng() * 5),
+        isActive: true,
+      },
+    });
+
+    faultCount++;
+
+    // Create corresponding alert
+    await prisma.alert.create({
+      data: {
+        vehicleId: veh.id,
+        severity: isCritical ? "critical" : "warning",
+        title: profile.title,
+        subsystem,
+        occurredAt: addHours(now, -(1 + Math.round(rng() * 24))),
+        count: 1 + Math.round(rng() * 5),
+        status: "NEW",
+      },
+    });
+  }
+
+  // ── 13. Service History ────────────────────────────────
+  console.log("  → Creating service history records...");
+  for (let i = 0; i < 28; i++) {
+    const vehicleIdx = (i * 3) % vehicleRecords.length;
+    const veh = vehicleRecords[vehicleIdx];
+    const depotIdx = i % depotRecords.length;
+    const depot = depotRecords[depotIdx];
+    const tech = technicianRecords.find((t) => t.depotId === depot.id);
+    const subsystem = pick([...SUBSYSTEMS]);
+    const profile = FAULT_PROFILES[subsystem];
+
+    await prisma.serviceHistory.create({
+      data: {
+        vehicleId: veh.id,
+        depotId: depot.id,
+        technicianId: tech?.id ?? technicianRecords[0].id,
+        subsystem,
+        outcome: `Resolved ${profile.title.toLowerCase()}`,
+        resolvedAt: addHours(now, -(48 + i * 5)),
+        firstTimeFix: rng() > 0.16,
+        actualFault: profile.title,
+        partsUsed: PARTS_BY_SUBSYSTEM[subsystem].map((p) => p.partNumber),
+        repairDuration: round(1.5 + rng() * 6, 1),
+        diagnosisCorrect: rng() > 0.12,
+        technicianNotes: `Standard ${subsystem} maintenance procedure completed successfully.`,
+      },
+    });
+  }
+
+  // ── 14. Priority Entries (pre-computed for top vehicles)
+  console.log("  → Computing initial priority entries...");
+
+  for (const veh of vehicleRecords) {
+    const safetyUrgency = round(rng() * 80 + 10, 1);
+    const failureProximity = round(rng() * 70 + 15, 1);
+    const businessImpact = round(rng() * 60 + 20, 1);
+    const downtimeCost = round(rng() * 50 + 25, 1);
+    const serviceWindow = round(rng() * 80 + 10, 1);
+
+    const score = round(
+      safetyUrgency * 0.3 +
+        failureProximity * 0.25 +
+        businessImpact * 0.2 +
+        downtimeCost * 0.15 +
+        serviceWindow * 0.1,
+      1,
+    );
+
+    const status = score > 65 ? "critical" : score > 45 ? "watch" : "healthy";
+
+    await prisma.priorityEntry.create({
+      data: {
+        vehicleId: veh.id,
+        score,
+        status,
+        safetyUrgency,
+        failureProximity,
+        businessImpact,
+        downtimeCost,
+        serviceWindow,
+        reasons: [
+          `Safety urgency: ${safetyUrgency}`,
+          `Failure proximity: ${failureProximity}`,
+          `Business impact: ${businessImpact}`,
+        ],
+      },
+    });
+  }
+
+  // ── 15. Sample Service Requests (active workflow) ─────
+  console.log("  → Creating sample active service requests...");
+
+  const sampleStatuses = [
+    "DETECTED",
+    "PRIORITIZED",
+    "DEPOT_ASSIGNED",
+    "PARTS_CONFIRMED",
+    "TECHNICIAN_ASSIGNED",
+    "SCHEDULED",
+    "IN_PROGRESS",
+  ] as const;
+
+  for (let i = 0; i < 5; i++) {
+    const veh = vehicleRecords[i * 7];
+    const depot = depotRecords[i % depotRecords.length];
+    const tech = technicianRecords.find((t) => t.depotId === depot.id);
+    const subsystem = pick([...SUBSYSTEMS]);
+    const status = sampleStatuses[i % sampleStatuses.length];
+    const profile = FAULT_PROFILES[subsystem];
+    const reqId = `req-${String(i + 1).padStart(3, "0")}`;
+    const createdAt = addHours(now, -(12 + i * 3));
+
+    const statusIndex = sampleStatuses.indexOf(status);
+    const hasDepot = statusIndex >= 2;
+    const hasTech = statusIndex >= 4;
+
+    await prisma.serviceRequest.create({
+      data: {
+        id: reqId,
+        vehicleId: veh.id,
+        priorityScore: round(50 + rng() * 45, 1),
+        weakestSubsystem: subsystem,

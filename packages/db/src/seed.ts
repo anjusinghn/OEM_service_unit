@@ -790,3 +790,135 @@ export async function seedDatabase(db: PrismaClient = prisma) {
         vehicleId: veh.id,
         priorityScore: round(50 + rng() * 45, 1),
         weakestSubsystem: subsystem,
+        depotId: hasDepot ? depot.id : null,
+        technicianId: hasTech ? (tech?.id ?? null) : null,
+        requiredPartNumbers: PARTS_BY_SUBSYSTEM[subsystem].map(
+          (p) => p.partNumber,
+        ),
+        status: status as any,
+        createdAt,
+        scheduledFor: statusIndex >= 5 ? addHours(now, 6 + i * 2) : null,
+      },
+    });
+
+    // Build timeline up to current status
+    const allStatuses = [
+      "DETECTED",
+      "PRIORITIZED",
+      "DEPOT_ASSIGNED",
+      "PARTS_CONFIRMED",
+      "TECHNICIAN_ASSIGNED",
+      "SCHEDULED",
+      "IN_PROGRESS",
+    ];
+
+    for (let s = 0; s <= statusIndex; s++) {
+      const timelineNotes: Record<string, string> = {
+        DETECTED: `Signal Trust flagged ${profile.title.toLowerCase()}.`,
+        PRIORITIZED: `Vehicle ranked in priority queue.`,
+        DEPOT_ASSIGNED: `Assigned to ${depot.id} based on proximity and capability.`,
+        PARTS_CONFIRMED: `All required parts confirmed in stock at depot.`,
+        TECHNICIAN_ASSIGNED: `Technician ${tech?.id ?? "unknown"} accepted the assignment.`,
+        SCHEDULED: `Service bay window booked.`,
+        IN_PROGRESS: `Vehicle entered active service bay.`,
+      };
+
+      await prisma.serviceTimeline.create({
+        data: {
+          serviceRequestId: reqId,
+          status: allStatuses[s],
+          note:
+            timelineNotes[allStatuses[s]] ??
+            `Transitioned to ${allStatuses[s]}.`,
+          at: addHours(createdAt, s * 0.5),
+        },
+      });
+    }
+
+    // SLA tracking for active requests
+    await prisma.slaTracking.create({
+      data: {
+        serviceRequestId: reqId,
+        detectedAt: createdAt,
+        assignedAt: hasDepot ? addHours(createdAt, 1) : null,
+        serviceStartedAt: statusIndex >= 6 ? addHours(createdAt, 3) : null,
+        detectionToAssignMs: hasDepot ? 3600000 : null,
+        assignToStartMs: statusIndex >= 6 ? 7200000 : null,
+        breached: false,
+      },
+    });
+  }
+
+  // ── 16. Webhooks (sample) ─────────────────────────────
+  console.log("  → Creating sample webhook...");
+  await prisma.webhook.create({
+    data: {
+      url: "https://hooks.example.com/kazindustries",
+      events: [
+        "service_request.created",
+        "service_request.completed",
+        "alert.critical",
+        "sla.breached",
+      ],
+      secret: "whsec_demo_secret_key_placeholder",
+      isActive: true,
+    },
+  });
+
+  // ── Summary ────────────────────────────────────────────
+  const counts = {
+    organizations: await prisma.organization.count(),
+    users: await prisma.user.count(),
+    oemConnections: await prisma.oemConnection.count(),
+    dtcCodes: await prisma.dtcCode.count(),
+    signalDefinitions: await prisma.signalDefinition.count(),
+    vehicles: await prisma.vehicle.count(),
+    depots: await prisma.depot.count(),
+    bays: await prisma.bay.count(),
+    parts: await prisma.part.count(),
+    inventoryItems: await prisma.inventoryItem.count(),
+    technicians: await prisma.technician.count(),
+    vehicleSignals: await prisma.vehicleSignal.count(),
+    vehicleFaults: faultCount,
+    alerts: await prisma.alert.count(),
+    priorityEntries: await prisma.priorityEntry.count(),
+    serviceRequests: await prisma.serviceRequest.count(),
+    serviceHistory: await prisma.serviceHistory.count(),
+    slaTracking: await prisma.slaTracking.count(),
+    webhooks: await prisma.webhook.count(),
+  };
+
+  console.log("\n✅ Seed complete! Summary:");
+  console.log("─".repeat(48));
+  for (const [table, count] of Object.entries(counts)) {
+    const label = table
+      .replace(/([A-Z])/g, " $1")
+      .toLowerCase()
+      .trim();
+    console.log(`  ${label.padEnd(24)} ${String(count).padStart(6)}`);
+  }
+  console.log("─".repeat(48));
+  console.log(
+    `\n🚀 Database is ready for Phase 1 demo.\n   Run: pnpm db:studio to inspect data in Prisma Studio.\n`,
+  );
+}
+
+export async function resetAndSeed(db: PrismaClient = prisma) {
+  await resetDatabase(db);
+  await seedDatabase(db);
+}
+
+async function main() {
+  await resetAndSeed();
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main()
+    .catch((error) => {
+      console.error("❌ Seed failed:", error);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

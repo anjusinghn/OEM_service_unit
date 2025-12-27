@@ -856,3 +856,145 @@ class RepositoryStore {
       depotId: selectedDepotId,
       technicianId: null,
       requiredPartNumbers: depotRec?.requiredParts.map((part: { partNumber: string }) => part.partNumber) ?? [],
+      initialStatus: "DEPOT_ASSIGNED"
+    })
+
+    const depotRecord = state.depots.find((item) => item.id === selectedDepotId)
+    if (depotRecord) {
+      await depotRepository.updateCapacity(selectedDepotId, Math.min(depotRecord.totalBays, depotRecord.occupiedBays + 1))
+    }
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "dispatch",
+        decisionSubtype: "applied",
+        heuristicOutput: toJsonValue({
+          priority,
+          depot: depotRec,
+          requiredPartNumbers: depotRec?.requiredParts.map((part: { partNumber: string }) => part.partNumber) ?? []
+        }),
+        aiOutput: undefined,
+        finalDecision: toJsonValue({
+          serviceRequestId: created.id,
+          depotId: created.depotId
+        }),
+        humanOverride: false,
+        overrideReason: null,
+        modelName: null,
+        latencyMs: null
+      }
+    })
+
+    await cacheRepository.invalidateVehicle(vehicleId)
+    await this.emitDashboardRefresh("dispatch_event", { vehicleId, serviceRequestId: created.id })
+
+    return {
+      request: mapServiceRequest(created),
+      livePulse: {
+        id: `pulse-dispatch-${created.id}`,
+        kind: "dispatch",
+        message: `Vehicle ${vehicleId} dispatched to ${selectedDepotId}.`,
+        at: nowIso()
+      }
+    }
+  }
+
+  async advanceRequest(requestId: string, status?: ServiceRequestStatus): Promise<ServiceActionResult | null> {
+    const existing = await serviceRequestRepository.findById(requestId)
+    if (!existing) return null
+    const updated = await serviceRequestRepository.updateStatus({ requestId, targetStatus: status })
+
+    if (updated.status === "CLOSED" && updated.depotId) {
+      const depot = await depotRepository.findById(updated.depotId)
+      if (depot) {
+        await depotRepository.updateCapacity(updated.depotId, Math.max(0, depot.occupiedBays - 1))
+      }
+    }
+
+    await cacheRepository.invalidateVehicle(updated.vehicleId)
+    await this.emitDashboardRefresh("service_update", {
+      vehicleId: updated.vehicleId,
+      serviceRequestId: updated.id,
+      status: updated.status
+    })
+
+    return {
+      request: mapServiceRequest(updated),
+      livePulse: {
+        id: `pulse-progress-${updated.id}-${Date.now()}`,
+        kind: "progress",
+        message: `Service request ${updated.id} moved to ${updated.status}.`,
+        at: nowIso()
+      }
+    }
+  }
+
+  async completeRequest(requestId: string, completionInput: ServiceCompletionInput = {}): Promise<ServiceActionResult | null> {
+    const existing = await serviceRequestRepository.findById(requestId)
+    if (!existing) return null
+
+    const completed = await serviceRequestRepository.complete({ requestId })
+    await faultRepository.resolveAllForVehicle(completed.vehicleId)
+
+    const latestSignal = await signalRepository.getLatest(completed.vehicleId)
+    if (latestSignal) {
+      await signalRepository.insertSnapshot({
+        vehicleId: latestSignal.vehicleId,
+        timestamp: new Date(),
+        coolantTemp: Math.max(86, latestSignal.coolantTemp - 6),
+        oilPressure: latestSignal.oilPressure + 6,
+        batteryVoltage: latestSignal.batteryVoltage + 0.3,
+        turboBoost: latestSignal.turboBoost + 0.2,
+        brakeWear: Math.max(32, latestSignal.brakeWear - 10),
+        exhaustTemp: Math.max(360, latestSignal.exhaustTemp - 28),
+        fuelLevel: latestSignal.fuelLevel,
+        speed: latestSignal.speed,
+        mileage: latestSignal.mileage
+      })
+    }
+
+    await serviceHistoryRepository.create({
+      vehicleId: completed.vehicleId,
+      depotId: completed.depotId ?? "",
+      technicianId: completed.technicianId ?? "",
+      subsystem: completed.weakestSubsystem,
+      outcome: `Completed ${completed.weakestSubsystem} intervention with staged orchestration workflow.`,
+      resolvedAt: new Date(),
+      firstTimeFix: completionInput.firstTimeFix ?? true,
+      actualFault: completionInput.actualFault ?? null,
+      partsUsed: completionInput.partsUsed ?? [],
+      repairDuration: completionInput.repairDuration ?? null,
+      diagnosisCorrect: completionInput.diagnosisCorrect ?? null,
+      technicianNotes: completionInput.technicianNotes ?? null
+    })
+
+    await cacheRepository.invalidateVehicle(completed.vehicleId)
+    await this.emitDashboardRefresh("service_update", {
+      vehicleId: completed.vehicleId,
+      serviceRequestId: completed.id,
+      status: completed.status
+    })
+
+    await enqueueJob(queueNames.rewardCompute, {
+      serviceRequestId: completed.id,
+      vehicleId: completed.vehicleId,
+      timestamp: nowIso(),
+      depotRating: completionInput.depotRating ?? null,
+      technicianRating: completionInput.technicianRating ?? null,
+      priorityRating: completionInput.priorityRating ?? null
+    })
+
+    return {
+      request: mapServiceRequest(completed),
+      livePulse: {
+        id: `pulse-complete-${completed.id}`,
+        kind: "complete",
+        message: `Service request ${completed.id} completed. Vehicle ${completed.vehicleId} health rebounded.`,
+        at: nowIso()
+      }
+    }
+  }
+}
+
+export const repositoryStore = new RepositoryStore()

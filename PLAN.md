@@ -1558,3 +1558,315 @@ Each API key is scoped to:
 | **Phase 3** | AI Decision Engine (LangChain + OpenRouter) | 2–3 weeks | Heuristic → AI-augmented decisions with tool-calling agent |
 | **Phase 4** | Reinforcement Learning Feedback Loop | 2–3 weeks | Static weights → self-improving decisions from outcomes |
 | **Phase 5** | Enterprise Dashboard (shadcn/ui + Tailwind) | 2–3 weeks | Single-file demo → full enterprise command center |
+| **Phase 6** | Auth + Multi-Tenancy + Testing | 1–2 weeks | Open access → production-grade security + 80%+ test coverage |
+| **Phase 7** | Cloud Deployment + CI/CD | 1–2 weeks | Local Docker → Azure AKS production |
+
+**Total: 10–16 weeks to production-ready Service Orchestration**
+
+---
+
+### PHASE 1: Docker + Database + Repository Layer
+
+**Duration:** 1–2 weeks
+
+**Goal:** Replace `DemoStore` (in-memory) with real PostgreSQL + TimescaleDB + Redis, all running in Docker Compose.
+
+#### Sub-phase 1.1 — Docker Compose Local Stack
+
+**Build:**
+
+```yaml
+# infra/docker/docker-compose.yml
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: kazindustries
+      POSTGRES_USER: kaz
+      POSTGRES_PASSWORD: kaz_local_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kaz -d kazindustries"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redisdata:/var/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:
+```
+
+- Script: `pnpm infra:up` → `docker compose -f infra/docker/docker-compose.yml up -d`
+- Script: `pnpm infra:down` → stop everything
+- `.env.local` template with all connection strings
+
+**Demo:** `pnpm infra:up` brings up PG + Redis. `psql` connects. `redis-cli ping` returns PONG.
+
+#### Sub-phase 1.2 — Prisma Schema + Migrations
+
+Finalize the Prisma schema for all service orchestration tables:
+
+| Table | Key Columns |
+|---|---|
+| `organizations` | id, name, settings (JSONB), created_at |
+| `users` | id, email, password_hash, role, organization_id |
+| `vehicles` | id, vin, make, model, year, region, route, build_batch, software_version, coordinates, depot_affinity_id, organization_id |
+| `depots` | id, name, city, region, coordinates, specialties (SubsystemKey[]), total_bays, occupied_bays, organization_id |
+| `technicians` | id, name, depot_id, certifications (SubsystemKey[]), current_load, max_load, first_time_fix_rate |
+| `parts_catalog` | part_number, name, subsystem, lead_days, price |
+| `depot_inventory` | depot_id, part_number, quantity, reorder_point |
+| `vehicle_faults` | id, vehicle_id, dtc_code, subsystem, severity, title, description, occurred_at, occurrences, active |
+| `service_requests` | id, vehicle_id, priority_score, weakest_subsystem, depot_id, technician_id, required_part_numbers, status, timeline (JSONB), created_at, scheduled_for |
+| `service_history` | id, vehicle_id, depot_id, technician_id, subsystem, outcome, resolved_at, first_time_fix |
+| `decision_logs` | id, decision_type, vehicle_id, input_snapshot (JSONB), heuristic_output (JSONB), ai_output (JSONB), final_decision (JSONB), human_override, override_reason, created_at |
+| `reward_signals` | id, decision_log_id, reward_score, reward_breakdown (JSONB), created_at |
+| `oem_connections` | id, oem_id, connection_type, credentials (encrypted JSONB), signal_mapping (JSONB), organization_id, status |
+| `api_keys` | id, key_hash, organization_id, allowed_endpoints, rate_limit, expires_at, created_at |
+| `suppliers` | id, name, component_types, active_batches |
+| `notification_log` | id, type, payload (JSONB), sent_at |
+
+**TimescaleDB hypertables** (created via raw SQL migration):
+
+| Hypertable | Columns | Partition |
+|---|---|---|
+| `vehicle_signals` | vehicle_id, timestamp, coolant_temp, oil_pressure, battery_voltage, turbo_boost, brake_wear, exhaust_temp, fuel_level, speed, mileage, lat, lng | By time (7 days) |
+| `vehicle_health_snapshots` | vehicle_id, timestamp, overall, status, trend, weakest_subsystem, subsystem_scores (JSONB) | By time (7 days) |
+| `priority_snapshots` | vehicle_id, timestamp, score, breakdown (JSONB) | By time (7 days) |
+
+**Redis key schema:**
+
+| Key | Type | TTL | Purpose |
+|---|---|---|---|
+| `vehicle:signal:{id}` | STRING (JSON) | 60s | Latest signal snapshot cache |
+| `vehicle:health:{id}` | STRING (JSON) | 60s | Latest health score cache |
+| `vehicle:priority:{id}` | STRING (JSON) | 60s | Latest priority breakdown cache |
+| `ai:priority:{id}` | STRING (JSON) | 300s | AI reasoning cache |
+| `vehicle:depot-match:{id}` | STRING (JSON) | 120s | Depot recommendations cache |
+| `queue:priority` | SORTED SET | persistent | Real-time priority ranking |
+| `depot:capacity:{id}` | STRING | 30s | Live bay availability |
+| `lock:dispatch:{vehicleId}` | STRING | 30s | Distributed dispatch lock |
+| `dedup:signal:{hash}` | SET member | 300s | Signal deduplication |
+| `session:{token}` | STRING (JSON) | 24h | User session |
+| `channel:dashboard` | PUB/SUB | — | SSE event broadcast |
+| `ratelimit:api:{keyId}` | STRING (counter) | 60s | API rate limiting |
+
+**Demo:** `pnpm db:migrate` runs migrations. `pnpm db:seed` populates with same 96 vehicles, 6 depots, 50 technicians. Prisma Studio shows all tables.
+
+#### Sub-phase 1.3 — Repository Layer (Replace DemoStore)
+
+New `packages/db/src/repositories/` directory:
+
+```
+VehicleRepository       findAll, findById, updateCoordinates, upsertSignals
+DepotRepository         findAll, findById, updateCapacity, getAvailableBays
+TechnicianRepository    findAll, findByDepot, updateWorkload
+PartsRepository         getCatalog, getInventory, reservePart, releasePart
+ServiceRequestRepo      create, findById, findOpen, updateStatus, complete
+ServiceHistoryRepo      create, findByVehicle, getOutcomeStats
+SignalRepository        insertSnapshot, getLatest, getRange (TimescaleDB)
+HealthRepository        insertScore, getLatest, getTrend (TimescaleDB)
+PriorityRepository      upsertScore (Redis ZADD), getQueue, getVehicleRank
+DecisionLogRepo         create, findByVehicle, findByType, getRewardStats
+```
+
+- API server switches from `DemoStore` to repository layer
+- All existing endpoints return the same response shapes (backward compatible)
+- Redis for hot-path reads, PostgreSQL for persistence, TimescaleDB for time-series
+
+**Demo:** All 25+ existing API endpoints work exactly as before, but data persists across restarts.
+
+---
+
+### PHASE 2: Real Worker + Simulator Pipeline
+
+**Duration:** 1–2 weeks
+
+**Goal:** Replace stubs with real BullMQ streaming pipeline.
+
+#### Sub-phase 2.1 — Continuous Simulator
+
+- Runs as a long-lived process
+- Configurable tick interval (default: 10s) and fleet size
+- Each tick: applies `applyMockTick()`, publishes to BullMQ queues
+- Fault scenario profiles (gradual, sudden, intermittent, cascade)
+- Graceful shutdown on SIGTERM
+
+#### Sub-phase 2.2 — Background Worker
+
+All 8 processors from the architecture diagram:
+- SignalIngestProcessor → FaultProcessor → HealthProcessor → PriorityProcessor → AIReasoningProcessor → DepotMatchProcessor → TechMatchProcessor → NotificationProcessor
+- Pipeline flow via job chaining
+- Concurrency controls, retry with backoff, dead letter queue
+- Bull Board at `/admin/queues` for monitoring
+
+#### Sub-phase 2.3 — SSE Overhaul
+
+Replace `setInterval` with Redis pub/sub-driven SSE:
+- Worker publishes events to Redis channel
+- API subscribes and fans out to SSE clients
+- Event types: health_update, priority_change, fault_event, service_update, dispatch_event
+- Client reconnection with backoff
+
+**Demo:** Simulator → Worker → DB → API → SSE → Dashboard. Kill worker, restart — no data lost.
+
+---
+
+### PHASE 3: AI Decision Engine (LangChain + OpenRouter)
+
+**Duration:** 2–3 weeks
+
+**Goal:** LangChain + OpenRouter integration. AI-augmented priority, depot, tech matching. Full dispatch agent.
+
+#### Sub-phase 3.1 — LangChain + OpenRouter Client Setup
+
+- `packages/ai` package with ChatOpenAI configured for OpenRouter
+- Base URL: `https://openrouter.ai/api/v1`, model: `z-ai/glm-4.5-air:free`
+- Thinking mode: disabled for real-time (temperature fixed at 0.6)
+- Token tracking, cost monitoring, response caching, fallback handling
+
+#### Sub-phase 3.2 — AI-Augmented Priority Engine
+
+- Heuristic runs synchronously (fast path, always available)
+- AI runs asynchronously via BullMQ job
+- AI reviews top 20 vehicles per tick
+- Dashboard shows both scores + AI reasoning panel
+
+#### Sub-phase 3.3 — AI-Augmented Depot Matching + Dispatch
+
+- Depot reasoning chain with performance context
+- Full dispatch agent with 6 LangChain tools
+
+#### Sub-phase 3.4 — AI Escalation Detection
+
+- Periodic escalation scan (every 5 minutes)
+- Detects: SLA risk, batch patterns, capacity crunch, rapid degradation
+- Escalation cards on dashboard with purple AI styling
+
+**Demo:** "AI Dispatch" button runs the full agent. 6 tool calls in 3-5 seconds. Complete dispatch plan with reasoning and staged-parts guidance.
+
+---
+
+### PHASE 4: Reinforcement Learning Feedback Loop
+
+**Duration:** 2–3 weeks
+
+**Goal:** Every completed service generates reward signal that improves future decisions.
+
+#### Sub-phase 4.1 — Decision Logging + Outcome Recording
+
+- `decision_logs` table captures: input → heuristic output → AI output → human decision
+- Enhanced completion form captures: actual fault, diagnosis accuracy, parts used, repair time, ratings
+- Decision audit trail: click any past decision to see the full chain
+
+#### Sub-phase 4.2 — Reward Signal Computation
+
+Two reward functions (priority, depot) — each weighted composite of:
+- Diagnosis accuracy, urgency calibration, first-time-fix, turnaround efficiency, etc.
+- Rewards stored in `reward_signals` table, linked to `decision_logs`
+- Aggregate statistics computed as materialized views
+
+#### Sub-phase 4.3 — AI Self-Improvement
+
+- Prompt enrichment with historical outcomes (few-shot examples from best/worst decisions)
+- Dynamic weight adjustment proposals (AI suggests, human approves)
+- Pattern learning ("coolant temp > 98°C + oil pressure < 35 → likely engine bearing, not cooling")
+- Confidence calibration tracking
+
+#### Sub-phase 4.4 — Reward Dashboard
+
+Decision Intelligence page (`/intelligence`) with:
+- Quality trend charts, AI vs heuristic comparison, override analytics
+- Best/worst decision drill-down, confidence calibration plots, learning velocity
+
+**Demo:** After 50+ completed services, AI accuracy visibly improves. Before/after comparison shows value.
+
+---
+
+### PHASE 5: Enterprise Dashboard (shadcn/ui + Tailwind)
+
+**Duration:** 2–3 weeks
+
+**Goal:** Transform the 674-line single-file demo into the full enterprise command center described above.
+
+#### Sub-phase 5.1 — Foundation
+
+- Install and configure shadcn/ui + Tailwind CSS
+- Set up theme (light/dark mode, color system, typography)
+- Build layout components: Sidebar, TopBar, CommandPalette
+- Set up Zustand store, TanStack Query, SSE hook
+- Install Recharts, Framer Motion, react-leaflet
+
+#### Sub-phase 5.2 — Fleet Command Center (`/`)
+
+- Fleet map with Leaflet (vehicle pins + depot pins)
+- Metric cards with sparkline trends
+- Health distribution donut chart
+- Priority queue preview (top 10)
+- AI escalation cards
+- Live activity feed
+- All with real-time SSE updates and animations
+
+#### Sub-phase 5.3 — Triage Queue (`/triage`)
+
+- Full sortable/filterable/searchable priority table
+- Expandable rows with radar chart + heuristic breakdown + AI reasoning panel
+- AI urgency badges with purple glow styling
+- Keyboard navigation (J/K/Enter/Esc/D)
+
+#### Sub-phase 5.4 — AI Dispatch (`/dispatch`)
+
+- Full-screen dispatch agent interface
+- Streaming agent trace (tool calls animate in)
+- Dispatch plan card with all details
+- Accept / Modify / Cancel actions
+- Decision stored for RL training
+
+#### Sub-phase 5.5 — Workflow Board (`/workflow`)
+
+- Kanban board with drag-and-drop (or button-based advancement)
+- Service detail Sheet with timeline
+- Completion form with structured outcome recording
+
+#### Sub-phase 5.6 — Supporting Pages
+
+- `/depots` — network map + capacity gauges
+- `/technicians` — roster + workload distribution
+- `/intelligence` — decision quality dashboard (from Phase 4)
+- `/alerts` — alert feed + escalations
+- `/settings` — org config, priority weights, API keys, user management
+
+#### Sub-phase 5.7 — Polish
+
+- Dark mode toggle (class-based Tailwind)
+- Responsive design (md/lg breakpoints for tablet)
+- Loading skeletons for all async sections
+- Error boundaries with retry
+- Toast notifications (Sonner)
+- Cmd+K command palette
+- Number animation (Framer Motion)
+- Empty states with illustrations
+
+**Demo:** A beautiful, engaging, interactive dashboard that a fleet manager opens in the morning and uses all day. Every click leads to an action. AI reasoning is visible and transparent. The system feels alive — vehicles move on the map, health scores pulse, the queue re-sorts with smooth animations.
+
+---
+
+### PHASE 6: Auth + Multi-Tenancy + Testing
+
+**Duration:** 1–2 weeks
+
+**Goal:** Production-grade security and test coverage.
+

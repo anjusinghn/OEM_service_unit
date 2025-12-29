@@ -1090,3 +1090,159 @@ This is the star feature. A full-screen interface where the AI agent runs a mult
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  AI DISPATCH — VEH-042                              [Cancel]  [Accept]  │
+│                                                                          │
+│  ┌─ AGENT TRACE (live streaming) ──────────────────────────────────┐    │
+│  │                                                                  │    │
+│  │  🤖 Starting dispatch analysis for VEH-042...                    │    │
+│  │                                                                  │    │
+│  │  Step 1: Fetching vehicle data                          ✓ 0.3s  │    │
+│  │  → RidgeRunner, Pune Corridor 2, cooling subsystem critical     │    │
+│  │                                                                  │    │
+│  │  Step 2: Checking service history                       ✓ 0.4s  │    │
+│  │  → Found prior cooling repair 45 days ago (REQ-031)             │    │
+│  │  → Same DTC code P0217 — this is a RECURRING issue              │    │
+│  │                                                                  │    │
+│  │  Step 3: Evaluating Pune Response Hub                   ✓ 0.2s  │    │
+│  │  → 3/10 bays open, cooling specialty ✓, COOL-SENS-15 in stock  │    │
+│  │                                                                  │    │
+│  │  Step 4: Evaluating Bengaluru Response Hub              ✓ 0.2s  │    │
+│  │  → 5/12 bays open, cooling specialty ✓, but 487km away         │    │
+│  │                                                                  │    │
+│  │  Step 5: Searching similar past cases                   ✓ 0.5s  │    │
+│  │  → 3 similar P0217 recurrences found in fleet history           │    │
+│  │  → 2 of 3 were resolved by replacing coolant pump (not sensor)  │    │
+│  │                                                                  │    │
+│  │  Step 6: Generating dispatch plan                       ✓ 1.2s  │    │
+│  │                                                                  │    │
+│  │  Total: 6 steps, 2.8 seconds, 1,980 tokens              ● Done │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌─ DISPATCH PLAN ─────────────────────────────────────────────────┐    │
+│  │                                                                  │    │
+│  │  📍 DEPOT: Pune Response Hub                                     │    │
+│  │     42km away • 3 open bays • cooling specialty                 │    │
+│  │     ETA: 1.1 hours                                               │    │
+│  │                                                                  │    │
+│  │  🔧 PARTS TO STAGE:                                              │    │
+│  │     ✓ COOL-SENS-15  Coolant temperature sensor    (in stock: 4) │    │
+│  │     ✓ COOL-PUMP-04  Coolant circulation pump      (in stock: 2) │    │
+│  │     ⚠ Note: "Similar cases suggest pump replacement, not just   │    │
+│  │        sensor. Stage both parts."                                │    │
+│  │                                                                  │    │
+│  │  ⏱ ESTIMATED: 4.5 hours repair time • ₹12,400 total cost        │    │
+│  │                                                                  │    │
+│  │  ⚠ WATCH POINTS:                                                 │    │
+│  │     • Inspect coolant hose from prior repair for micro-cracks   │    │
+│  │     • Check thermostat — may be sticking in hot conditions      │    │
+│  │     • Request extended post-repair monitoring (48h telemetry)    │    │
+│  │                                                                  │    │
+│  │  📋 ALTERNATIVE PLAN:                                             │    │
+│  │     If Pune is at capacity: Nagpur Response Hub (168km,          │    │
+│  │     4.4h ETA, cooling capability, COOL-PUMP-04 needs transfer)  │    │
+│  │                                                                  │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌───────────────────────────────┐  ┌────────────────────────────────┐ │
+│  │  ✓ Accept & Dispatch          │  │  ✏️ Modify & Dispatch          │ │
+│  │    (execute this plan)        │  │    (change depot/parts)        │ │
+│  └───────────────────────────────┘  └────────────────────────────────┘ │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key interactions:**
+- **Agent trace** — streams in real-time as the AI agent calls tools. Each step appears with a typing animation and a spinner that becomes a checkmark when done
+- **Accept & Dispatch** — creates the service request with all pre-filled data. Optimistic UI update. Toast: "VEH-042 dispatched to Pune Response Hub"
+- **Modify & Dispatch** — opens a Sheet (shadcn/ui) where the user can change depot or parts before confirming
+- **The entire trace is stored** in `decision_logs` for audit and RL training
+
+---
+
+#### 5. `/workflow` — Service Workflow Kanban Board
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  SERVICE WORKFLOW                        [Calendar view] [List view]    │
+│                                                                          │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐    │
+│  │DETECTED 2│ │ASSIGNED 4│ │PARTS     │ │SCHEDULED │ │IN PROG.  │    │
+│  │          │ │          │ │CONFIRMED │ │    3     │ │    2     │    │
+│  │ ┌──────┐ │ │ ┌──────┐ │ │    1     │ │ ┌──────┐ │ │ ┌──────┐ │    │
+│  │ │REQ-  │ │ │ │REQ-  │ │ │ ┌──────┐ │ │ │REQ-  │ │ │ │REQ-  │ │    │
+│  │ │052   │ │ │ │049   │ │ │ │REQ-  │ │ │ │045   │ │ │ │041   │ │    │
+│  │ │VEH042│ │ │ │VEH017│ │ │ │048   │ │ │ │VEH008│ │ │ │VEH023│ │    │
+│  │ │●crit │ │ │ │●crit │ │ │ │VEH091│ │ │ │●watch│ │ │ │●watch│ │    │
+│  │ │cool. │ │ │ │brake │ │ │ │●watch│ │ │ │exh.  │ │ │ │turbo │ │    │
+│  │ │      │ │ │ │      │ │ │ │turbo │ │ │ │      │ │ │ │      │ │    │
+│  │ │[Adv.]│ │ │ │[Adv.]│ │ │ │      │ │ │ │[Adv.]│ │ │ │[Done]│ │    │
+│  │ └──────┘ │ │ └──────┘ │ │ │[Adv.]│ │ │ └──────┘ │ │ └──────┘ │    │
+│  │          │ │          │ │ └──────┘ │ │          │ │          │    │
+│  │ ┌──────┐ │ │ ┌──────┐ │ │          │ │ ┌──────┐ │ │ ┌──────┐ │    │
+│  │ │REQ-  │ │ │ │REQ-  │ │ │          │ │ │REQ-  │ │ │ │REQ-  │ │    │
+│  │ │053   │ │ │ │050   │ │ │          │ │ │046   │ │ │ │042   │ │    │
+│  │ └──────┘ │ │ └──────┘ │ │          │ │ └──────┘ │ │ └──────┘ │    │
+│  │          │ │          │ │          │ │          │ │          │    │
+│  │          │ │ ┌──────┐ │ │          │ │ ┌──────┐ │ │          │    │
+│  │          │ │ │REQ-  │ │ │          │ │ │REQ-  │ │ │          │    │
+│  │          │ │ │051   │ │ │          │ │ │047   │ │ │          │    │
+│  │          │ │ └──────┘ │ │          │ │ └──────┘ │ │          │    │
+│  │          │ │          │ │          │ │          │ │          │    │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘    │
+│                                                                          │
+│  Each card: click to open detail Sheet with full timeline,              │
+│  AI dispatch reasoning, assigned depot, and parts list.                 │
+│                                                                          │
+│  "Done" button opens COMPLETION FORM (feeds RL loop).                   │
+│  "Advance" button moves card to next column with animation.             │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Completion Form** (opens when "Complete" is clicked):
+
+```
+┌─ COMPLETE SERVICE — REQ-041 ────────────────────────────────────┐
+│                                                                  │
+│  What was actually wrong?                                        │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ [Dropdown: subsystem + free text]                        │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  Was the initial diagnosis correct?    ○ Yes  ○ Partially  ○ No │
+│                                                                  │
+│  Parts actually used:                                            │
+│  ☑ TRB-KIT-88  Turbocharger repair kit                          │
+│  ☐ TRB-HOSE-14 Boost hose replacement set                      │
+│  ☑ [+ Add part]                                                  │
+│                                                                  │
+│  Actual repair time:   [  3.5  ] hours                           │
+│                                                                  │
+│  First-time fix?       ○ Yes  ○ No (requires return visit)      │
+│                                                                  │
+│  Was this the right depot?    ★★★★☆                              │
+│  Was this the right tech?     ★★★★★                              │
+│  Was the priority correct?    ★★★★☆                              │
+│                                                                  │
+│  Technician notes:                                               │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ Turbo wastegate actuator was sticking. Replaced kit.     │   │
+│  │ Also found minor boost hose wear — recommend monitoring. │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  ┌──────────────────────┐                                       │
+│  │  ✓ Complete Service   │                                       │
+│  └──────────────────────┘                                       │
+│                                                                  │
+│  This data feeds the reinforcement learning loop.                │
+│  Better data = smarter AI decisions over time.                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6. `/intelligence` — Decision Intelligence Dashboard
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  DECISION INTELLIGENCE                              [Last 30 days ▾]    │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐     │

@@ -1402,3 +1402,159 @@ apps/web/
 │   │   ├── depot-card.tsx             # Depot summary card
 │   │   ├── bay-gauge.tsx              # Capacity gauge (circular progress)
 │   │   ├── depot-detail.tsx           # Full depot detail view
+│   │   └── inventory-table.tsx        # Parts inventory per depot
+│   │
+│   ├── intelligence/
+│   │   ├── quality-trend-chart.tsx    # Line chart: reward score over time
+│   │   ├── ai-vs-heuristic.tsx        # Comparison chart
+│   │   ├── override-analytics.tsx     # Human override rate + analysis
+│   │   ├── calibration-plot.tsx       # Predicted vs actual probability
+│   │   ├── best-worst-decisions.tsx   # Top/bottom decision cards with drill-down
+│   │   └── learning-velocity.tsx      # How fast is the system improving
+│   │
+│   ├── alerts/
+│   │   ├── alert-feed.tsx             # Scrollable alert list with live updates
+│   │   ├── alert-card.tsx             # Individual alert with severity styling
+│   │   ├── escalation-card.tsx        # AI escalation with purple glow
+│   │   └── notification-bell.tsx      # Header bell with badge count
+│   │
+│   └── shared/
+│       ├── status-dot.tsx             # Colored dot indicator (health status)
+│       ├── health-badge.tsx           # Health score badge (number + color)
+│       ├── subsystem-tag.tsx          # Subsystem label tag
+│       ├── empty-state.tsx            # Illustrated empty state placeholder
+│       ├── loading-skeleton.tsx       # Skeleton loaders for each card type
+│       ├── error-boundary.tsx         # Error boundary with retry button
+│       └── keyboard-shortcuts.tsx     # Global keyboard shortcut handler
+│
+├── hooks/
+│   ├── use-sse.ts                     # SSE connection management + Zustand updates
+│   ├── use-vehicles.ts                # TanStack Query: fetch vehicles
+│   ├── use-priority-queue.ts          # TanStack Query: fetch priority queue
+│   ├── use-service-requests.ts        # TanStack Query + mutations
+│   ├── use-dispatch.ts                # AI dispatch mutation + streaming trace
+│   ├── use-depots.ts                  # TanStack Query: fetch depots
+│   ├── use-technicians.ts             # TanStack Query: fetch technicians
+│   ├── use-keyboard.ts                # Keyboard shortcut registration
+│   └── use-theme.ts                   # Theme toggle (localStorage + class)
+│
+├── stores/
+│   └── dashboard-store.ts             # Zustand store: all real-time state
+│       │
+│       │  State shape:
+│       │  {
+│       │    vehicles: Map<string, VehicleRecord>,
+│       │    priorityQueue: PriorityEntry[],
+│       │    healthByVehicle: Map<string, HealthScore>,
+│       │    aiAssessments: Map<string, AIAssessment>,
+│       │    serviceRequests: ServiceRequest[],
+│       │    alerts: Alert[],
+│       │    escalations: Escalation[],
+│       │    livePulse: LivePulse[],
+│       │    sseConnected: boolean,
+│       │    lastEventAt: string | null,
+│       │  }
+│       │
+│       │  Updated by: SSE events → store.getState().handleEvent(event)
+│       │  Consumed by: React components via useStore(selector)
+│       │
+│       └── Zustand with immer middleware for immutable updates
+│
+├── lib/
+│   ├── api-client.ts                  # Typed fetch wrapper for all API calls
+│   ├── query-client.ts                # TanStack Query client config
+│   ├── format.ts                      # Number/date/duration formatters
+│   └── cn.ts                          # clsx + twMerge utility (shadcn standard)
+│
+├── tailwind.config.ts                 # Tailwind config with shadcn/ui theme
+├── components.json                    # shadcn/ui configuration file
+└── next.config.mjs
+```
+
+---
+
+## Authentication & Authorization
+
+### NextAuth.js (Auth.js v5) Configuration
+
+```typescript
+// apps/web/auth.ts
+import NextAuth from "next-auth"
+import Credentials from "next-auth/providers/credentials"
+import AzureAD from "next-auth/providers/azure-ad"
+import { PrismaAdapter } from "@auth/prisma-adapter"
+import { prisma } from "@kaz/db"
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    Credentials({
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      authorize: async (credentials) => {
+        // Verify against users table (bcrypt hashed passwords)
+        // Return user with role and organizationId
+      },
+    }),
+    AzureAD({
+      clientId: process.env.AZURE_AD_CLIENT_ID,
+      clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
+      tenantId: process.env.AZURE_AD_TENANT_ID,
+    }),
+  ],
+  session: { strategy: "jwt" },
+  callbacks: {
+    jwt({ token, user }) {
+      if (user) {
+        token.role = user.role
+        token.organizationId = user.organizationId
+      }
+      return token
+    },
+    session({ session, token }) {
+      session.user.role = token.role
+      session.user.organizationId = token.organizationId
+      return session
+    },
+  },
+})
+```
+
+### Role-Based Access Control
+
+| Role | See | Do |
+|---|---|---|
+| `platform_admin` | Everything across all orgs | All actions. Manage orgs, users, system settings |
+| `fleet_manager` | All vehicles, depots, service requests in their org | Dispatch, approve assignments, view AI insights, manage weights |
+| `depot_manager` | Vehicles assigned to their depot, their depot's data | Accept/reject assignments, advance workflow, complete services |
+| `technician` | Only their assigned work | View assignment details, mark work steps, record completion |
+| `viewer` | Dashboards, read-only | No actions. Useful for executives, analysts |
+
+### API Key Authentication (for OEM adapters and webhooks)
+
+```
+POST /api/v1/ingest/signals
+Authorization: Bearer kaz_live_xxxxxxxxxxxxxxxxxxxx
+
+Each API key is scoped to:
+  - organizationId (tenant isolation)
+  - allowedEndpoints (e.g., only ingest/*)
+  - rateLimit (requests per minute)
+  - expiresAt (optional expiration)
+```
+
+---
+
+## Phase-by-Phase Build Plan
+
+### Phase Overview
+
+| Phase | Focus | Duration | Key Deliverable |
+|---|---|---|---|
+| **Phase 1** | Docker + Database + Repository Layer | 1–2 weeks | In-memory → persistent PostgreSQL + Redis |
+| **Phase 2** | Real Worker + Simulator Pipeline | 1–2 weeks | Stub apps → real streaming BullMQ pipeline |
+| **Phase 3** | AI Decision Engine (LangChain + OpenRouter) | 2–3 weeks | Heuristic → AI-augmented decisions with tool-calling agent |
+| **Phase 4** | Reinforcement Learning Feedback Loop | 2–3 weeks | Static weights → self-improving decisions from outcomes |
+| **Phase 5** | Enterprise Dashboard (shadcn/ui + Tailwind) | 2–3 weeks | Single-file demo → full enterprise command center |

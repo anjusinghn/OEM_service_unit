@@ -1246,3 +1246,159 @@ This is the star feature. A full-screen interface where the AI agent runs a mult
 │  DECISION INTELLIGENCE                              [Last 30 days ▾]    │
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────┐     │
+│  │                   DECISION QUALITY TREND                       │     │
+│  │                                                                │     │
+│  │  100% ─┐                                                      │     │
+│  │        │                                    ╱──── AI+Heuristic │     │
+│  │   80% ─┤                              ╱───╱                   │     │
+│  │        │                         ╱───╱                         │     │
+│  │   60% ─┤                    ╱───╱                              │     │
+│  │        │               ╱───╱                                   │     │
+│  │   40% ─┤          ╱───╱ ─────────── Heuristic Only             │     │
+│  │        │     ╱───╱                                             │     │
+│  │   20% ─┤╱───╱                                                  │     │
+│  │        └────┬────┬────┬────┬────┬────┬────┬────                │     │
+│  │           Week 1    Week 2    Week 3    Week 4                 │     │
+│  │                                                                │     │
+│  │  The AI+Heuristic line should diverge upward from heuristic   │     │
+│  │  only as the system learns from completed service outcomes.    │     │
+│  └────────────────────────────────────────────────────────────────┘     │
+│                                                                          │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────┐     │
+│  │ Priority    │ │ Depot Match │ │ Tech Assign  │ │ Human        │     │
+│  │ Accuracy    │ │ Score       │ │ Score        │ │ Override     │     │
+│  │             │ │             │ │              │ │ Rate         │     │
+│  │   78% ▲    │ │   82% ▲    │ │   75% ▲     │ │   12% ▼     │     │
+│  │   ●●● trend│ │   ●●● trend│ │   ●●● trend │ │   ●●● trend │     │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────┘     │
+│                                                                          │
+│  ┌──────────────────────────────────┬─────────────────────────────┐     │
+│  │ BEST DECISIONS                   │ WORST DECISIONS              │     │
+│  │ (highest reward scores)          │ (lowest reward scores)       │     │
+│  │                                  │                              │     │
+│  │ 1. REQ-031: VEH-008 exhaust     │ 1. REQ-027: VEH-055 engine  │     │
+│  │    AI predicted 4.2h, actual 4h  │    Wrong depot — no parts   │     │
+│  │    First-time fix ✓              │    Required transfer → 2d   │     │
+│  │    Reward: 0.94                  │    Reward: 0.31             │     │
+│  │    [View decision chain →]       │    [View decision chain →]  │     │
+│  │                                  │                              │     │
+│  │ 2. REQ-035: VEH-012 turbo       │ 2. REQ-029: VEH-067 brakes  │     │
+│  │    AI escalated correctly — the  │    Over-prioritized. Vehicle │     │
+│  │    heuristic had it at #18,      │    was routine maintenance,  │     │
+│  │    AI moved it to #4. Prevented  │    not urgent. Wasted depot  │     │
+│  │    roadside breakdown.           │    capacity.                 │     │
+│  │    Reward: 0.91                  │    Reward: 0.38             │     │
+│  │    [View decision chain →]       │    [View decision chain →]  │     │
+│  └──────────────────────────────────┴─────────────────────────────┘     │
+│                                                                          │
+│  ┌─ CONFIDENCE CALIBRATION ───────────────────────────────────────┐     │
+│  │                                                                 │     │
+│  │  When AI says 90% confident, is it right 90% of the time?      │     │
+│  │                                                                 │     │
+│  │  [Calibration plot: predicted probability vs actual frequency]  │     │
+│  │                                                                 │     │
+│  │  Perfect calibration = diagonal line.                           │     │
+│  │  Above diagonal = overconfident. Below = underconfident.        │     │
+│  └─────────────────────────────────────────────────────────────────┘     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Component Library (shadcn/ui + Custom)
+
+```
+apps/web/
+├── app/
+│   ├── layout.tsx                      # Root layout: ThemeProvider, Toaster, QueryClientProvider
+│   ├── (auth)/
+│   │   └── login/page.tsx              # Login page
+│   ├── (dashboard)/
+│   │   ├── layout.tsx                  # Dashboard layout: Sidebar + TopBar + CommandPalette
+│   │   ├── page.tsx                    # Fleet Command Center
+│   │   ├── triage/
+│   │   │   ├── page.tsx               # AI Priority Queue
+│   │   │   └── [vehicleId]/page.tsx   # Vehicle Deep Dive
+│   │   ├── dispatch/page.tsx          # AI Dispatch Agent Interface
+│   │   ├── workflow/page.tsx          # Service Kanban Board
+│   │   ├── depots/
+│   │   │   ├── page.tsx               # Depot Network Map + List
+│   │   │   └── [depotId]/page.tsx     # Depot Detail
+│   │   ├── technicians/page.tsx       # Technician Roster
+│   │   ├── intelligence/page.tsx      # Decision Intelligence Dashboard
+│   │   ├── alerts/page.tsx            # Alert Feed + Escalations
+│   │   └── settings/page.tsx          # Settings
+│   └── globals.css                    # Tailwind base + shadcn/ui theme overrides
+│
+├── components/
+│   ├── ui/                            # shadcn/ui primitives (installed via CLI)
+│   │   ├── button.tsx
+│   │   ├── card.tsx
+│   │   ├── dialog.tsx
+│   │   ├── sheet.tsx
+│   │   ├── dropdown-menu.tsx
+│   │   ├── command.tsx                # Cmd+K command palette
+│   │   ├── table.tsx
+│   │   ├── tabs.tsx
+│   │   ├── badge.tsx
+│   │   ├── tooltip.tsx
+│   │   ├── avatar.tsx
+│   │   ├── scroll-area.tsx
+│   │   ├── separator.tsx
+│   │   ├── skeleton.tsx
+│   │   ├── popover.tsx
+│   │   ├── select.tsx
+│   │   ├── checkbox.tsx
+│   │   ├── switch.tsx
+│   │   ├── slider.tsx
+│   │   ├── form.tsx
+│   │   ├── input.tsx
+│   │   ├── textarea.tsx
+│   │   ├── label.tsx
+│   │   ├── progress.tsx
+│   │   ├── sonner.tsx                 # Toast notifications
+│   │   └── ... (more as needed)
+│   │
+│   ├── layout/
+│   │   ├── sidebar.tsx                # Collapsible sidebar with nav items + footer
+│   │   ├── top-bar.tsx                # Search, notifications bell, user avatar menu
+│   │   ├── command-palette.tsx        # Cmd+K global search + actions
+│   │   └── theme-toggle.tsx           # Dark/light mode switch
+│   │
+│   ├── fleet/
+│   │   ├── fleet-map.tsx              # Leaflet map with vehicle + depot pins
+│   │   ├── vehicle-pin.tsx            # Custom map marker (health-colored circle)
+│   │   ├── depot-pin.tsx              # Custom map marker (capacity badge)
+│   │   ├── health-donut.tsx           # Recharts PieChart (healthy/watch/critical)
+│   │   ├── metric-card.tsx            # Stat card with sparkline + trend delta
+│   │   └── animated-number.tsx        # Framer Motion number counter animation
+│   │
+│   ├── triage/
+│   │   ├── priority-table.tsx         # Sortable, filterable vehicle table
+│   │   ├── priority-row.tsx           # Expandable row with radar chart + AI panel
+│   │   ├── subsystem-radar.tsx        # Recharts RadarChart (8 subsystems)
+│   │   ├── heuristic-breakdown.tsx    # Horizontal bar breakdown (5 factors)
+│   │   ├── ai-reasoning-panel.tsx     # Purple-bordered AI explanation panel
+│   │   ├── ai-badge.tsx               # AI urgency badge (🔴🟡🟢 + label)
+│   │   └── signal-sparklines.tsx      # Mini line charts for recent signal values
+│   │
+│   ├── dispatch/
+│   │   ├── dispatch-agent.tsx         # Full AI dispatch interface
+│   │   ├── agent-trace.tsx            # Step-by-step streaming trace display
+│   │   ├── dispatch-plan-card.tsx     # Formatted dispatch plan output
+│   │   ├── plan-modifier-sheet.tsx    # Sheet to modify depot/parts before confirm
+│   │   └── dispatch-confirm-dialog.tsx # Final confirmation dialog
+│   │
+│   ├── workflow/
+│   │   ├── kanban-board.tsx           # Kanban columns by service status
+│   │   ├── kanban-card.tsx            # Service request card (draggable)
+│   │   ├── service-detail-sheet.tsx   # Full service request detail
+│   │   ├── completion-form.tsx        # Structured outcome recording form (feeds RL)
+│   │   └── timeline.tsx              # Service request timeline (vertical steps)
+│   │
+│   ├── depot/
+│   │   ├── depot-network-map.tsx      # Map with capacity-colored depot pins
+│   │   ├── depot-card.tsx             # Depot summary card
+│   │   ├── bay-gauge.tsx              # Capacity gauge (circular progress)
+│   │   ├── depot-detail.tsx           # Full depot detail view

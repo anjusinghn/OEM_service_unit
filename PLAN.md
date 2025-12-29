@@ -1870,3 +1870,158 @@ Decision Intelligence page (`/intelligence`) with:
 
 **Goal:** Production-grade security and test coverage.
 
+#### Sub-phase 6.1 — Authentication + RBAC
+
+- NextAuth.js v5 with Credentials + Azure AD providers
+- JWT sessions stored in Redis
+- RBAC middleware on all API routes
+- Role-based UI (hide actions user can't perform)
+- Login page with email/password + SSO button
+
+#### Sub-phase 6.2 — Multi-Tenancy
+
+- Organization model + `organization_id` on all data tables
+- Query scoping middleware (all queries filtered by org)
+- API key management per organization
+
+#### Sub-phase 6.3 — Test Coverage
+
+| Type | Tool | Target |
+|---|---|---|
+| Unit tests | Vitest | Signal trust, orchestration, AI output parsers, utils |
+| Integration tests | Vitest + Testcontainers | Repositories against real PG/Redis in Docker |
+| API tests | Supertest | All endpoints — happy path, auth, validation |
+| AI chain tests | Vitest + LangChain mock | Structured output parsing, fallback behavior |
+| E2E smoke | Playwright (minimal) | Login → command center → dispatch → complete |
+
+80%+ coverage on core business logic packages.
+
+**Demo:** `pnpm test` runs full suite, all green. Coverage report shows 80%+ on `signal-trust`, `orchestration`, `ai`.
+
+---
+
+### PHASE 7: Cloud Deployment + CI/CD
+
+**Duration:** 1–2 weeks
+
+**Goal:** Azure production infrastructure.
+
+#### Sub-phase 7.1 — CI/CD (GitHub Actions)
+
+- `ci.yml` — lint, typecheck, unit tests on every push
+- `test.yml` — full test suite on push to `main`
+- `deploy-staging.yml` — auto-deploy to staging on merge to `main`
+- `deploy-prod.yml` — manual trigger / tag for production
+- Multi-stage Docker builds for API, worker, simulator, web
+
+#### Sub-phase 7.2 — Terraform (Azure)
+
+| Resource | Azure Service | Spec |
+|---|---|---|
+| Kubernetes | AKS | 2-3 node pool, autoscaling |
+| Database | Azure Database for PostgreSQL Flexible Server | TimescaleDB extension, 4 vCores / 16GB |
+| Cache | Azure Cache for Redis | Standard C1, 1GB |
+| Container Registry | Azure Container Registry | Basic tier |
+| Ingress | AKS LoadBalancer + NGINX Ingress | Azure-assigned public IP / FQDN (no custom domain needed) |
+| TLS | Let's Encrypt via cert-manager | Auto-renewing certs on Azure-provided FQDN |
+| Monitoring | Azure Monitor + Application Insights | Logs, metrics, traces, alerts |
+| Secrets | Azure Key Vault | All API keys, DB credentials, OPENROUTER_API_KEY |
+
+Kubernetes deployments:
+
+| Service | Replicas | HPA | Resources |
+|---|---|---|---|
+| `api` | 2 | 2–5 (CPU-based) | 512Mi RAM, 250m CPU |
+| `worker` | 2 | 2–4 (queue depth) | 1Gi RAM, 500m CPU |
+| `simulator` | 1 | — | 256Mi RAM, 100m CPU |
+| `web` | 2 | 2–4 (CPU-based) | 256Mi RAM, 100m CPU |
+
+- NGINX Ingress with TLS termination
+- Pod Disruption Budgets for zero-downtime deploys
+- Network policies for pod-to-pod security
+- ConfigMaps + Secrets from Key Vault
+
+#### Sub-phase 7.3 — Production Hardening
+
+| Area | Implementation |
+|---|---|
+| **Rate limiting** | Per-endpoint, per-API-key quotas via Redis counters |
+| **Request validation** | Zod schemas on all inputs — reject malformed requests |
+| **Error handling** | Structured JSON error responses, no stack traces in production |
+| **Logging** | Pino structured JSON, correlation IDs per request → Azure Monitor |
+| **Metrics** | Prometheus-compatible: request latency, queue depth, AI response time, error rate |
+| **Alerting** | Azure Monitor alerts: high error rate, queue backup, AI latency spike, DB pool exhaustion |
+| **Health checks** | `/health` checks DB + Redis + BullMQ + AI provider connectivity |
+| **Graceful shutdown** | SIGTERM: drain connections, finish in-progress jobs, then exit |
+| **Database** | Connection pooling (Prisma pool), query timeouts, slow query logging |
+| **Security** | Helmet headers, CORS whitelist, input sanitization, dependency audit |
+
+**Demo (Phase 7 Final — "PRODUCTION"):**
+
+The full Service Orchestration platform running on Azure:
+
+- Accessible via Azure-provided FQDN (e.g., `http://<aks-lb-ip>` or `https://kaz-orch-aks.eastus.cloudapp.azure.com`)
+- Auto-scaling under load
+- Monitored with alerts
+- CI/CD deploying on every merge to `main`
+- Database backed up automatically
+- AI decisions flowing through LangChain + OpenRouter
+- RL feedback loop capturing outcomes and improving over time
+- Enterprise dashboard with dark mode, keyboard shortcuts, AI dispatch agent, real-time animations
+
+---
+
+## What Comes Next (Out of Scope for This Plan)
+
+Once the Service Orchestration platform is production-ready:
+
+### → Telemetry Forensics Module
+
+The forensics package (`@kaz/forensics`) already has significant in-memory logic:
+cohort analysis, DTC sequence mining, cross-system correlation, investigation workflow,
+supplier scorecards, geographic heatmaps. Next step: persist in the database, connect to
+the real telemetry pipeline, add AI-powered root cause analysis using the same LangChain +
+OpenRouter infrastructure built in Phase 3.
+
+### → Predictive Warranty Shield Module
+
+With the RL feedback loop generating structured outcome data from every completed service,
+you'll have the labeled training data needed for predictive models. The warranty shield can
+predict which vehicles will fail before they do, and recommend proactive interventions that
+avoid warranty claims.
+
+**The Service Orchestration platform must be built first because it generates the data
+that Forensics and Warranty Shield need to function.**
+
+---
+
+## Risk Register
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| OpenRouter free model limits or outages | Medium | Medium | Fallback to heuristic-only mode. Cache AI responses. Consider secondary model/provider |
+| AI recommendations are poor initially | High | Low | Heuristics are the primary path. AI is advisory-only until confidence improves. Human override always available |
+| RL feedback loop needs volume to work | High | Medium | Start heuristic-only. RL improves over time. Need 50+ completions for meaningful improvement |
+| Database migration complexity | Low | Medium | Prisma Migrate handles versioning. Test against staging before production |
+| Docker resource requirements | Low | Low | Minimal footprint: PG + Redis + apps. Any dev machine handles it |
+| Azure costs | Medium | Medium | Start with minimal tiers. Scale based on actual load. Monitor costs weekly |
+| Scope creep into Forensics/Warranty | Medium | High | Hard boundary: this plan is orchestration only. Those modules start AFTER this plan is complete |
+| Dashboard performance with many vehicles | Medium | Medium | Virtualized lists (TanStack Virtual), pagination, SSE filtering by viewport |
+| OEM API access delays | High | Medium | Mock adapter provides full functionality for dev/demo/staging. Real adapters added per-OEM |
+
+---
+
+## Key Principles
+
+1. **Heuristics first, AI second.** The system works perfectly without AI. AI enriches — it never blocks the critical path.
+2. **Every decision is auditable.** Full chain: input data → heuristic score → AI recommendation → human decision → outcome → reward. Complete transparency.
+3. **The system gets smarter over time.** Every completed service makes future decisions better. This is the core differentiator.
+4. **Docker-first, cloud-last.** One command to start locally. No cloud dependency for development.
+5. **The dashboard drives action, not vanity.** Every screen leads to a decision. No decorative charts. Every pixel earns its place.
+6. **AI is visible and explainable.** The purple-accented AI panels show exactly what the AI thinks and why. Users trust systems they can understand.
+7. **Fail gracefully, always.** AI down → heuristics. Redis down → PostgreSQL. DB slow → serve from cache. No single component takes down the system.
+8. **The data pipeline is the product.** OEM cloud → adapter → normalization → ingestion → health scoring → priority ranking → AI reasoning → dispatch → outcome → learning loop. End to end.
+
+---
+
+*This plan describes the complete architecture and build path for the kazindustries Service Orchestration platform. Each phase has a clear demo gate. No phase requires cloud infrastructure until Phase 7.*

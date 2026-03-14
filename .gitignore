@@ -1,0 +1,21 @@
+node_modules/
+.turbo/
+dist/
+.next/
+coverage/
+.DS_Store
+.env
+.env.*
+pnpm-lock.yaml
+
+# Separate projects
+landing/
+.opencode/
+
+# Research binary (too large for git)
+oem_research.docx
+
+# OS files
+Thumbs.db
+*.swp
+*.swo

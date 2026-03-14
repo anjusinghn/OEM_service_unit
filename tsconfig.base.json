@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@kaz/shared": ["packages/shared/src/index.ts"],
+      "@kaz/db": ["packages/db/src/index.ts"],
+      "@kaz/signal-trust": ["packages/signal-trust/src/index.ts"],
+      "@kaz/orchestration": ["packages/orchestration/src/index.ts"],
+      "@kaz/ui": ["packages/ui/src/index.ts"],
+      "@kaz/oem-adapters-core": ["packages/oem-adapters/core/src/index.ts"],
+      "@kaz/oem-adapters-mock": ["packages/oem-adapters/mock/src/index.ts"]
+    }
+  }
+}

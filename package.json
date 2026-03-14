@@ -1,0 +1,22 @@
+{
+  "name": "kazindustries",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.32.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "dev:api": "pnpm --filter @kaz/api dev",
+    "dev:web": "pnpm --filter @kaz/web dev",
+    "dev:worker": "pnpm --filter @kaz/worker dev",
+    "dev:simulator": "pnpm --filter @kaz/simulator dev",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "turbo": "^2.5.6",
+    "typescript": "^5.9.2"
+  }
+}

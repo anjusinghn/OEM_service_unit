@@ -1,0 +1,16 @@
+{
+  "name": "@kaz/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --out-dir dist",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@kaz/oem-adapters-mock": "workspace:*",
+    "@kaz/orchestration": "workspace:*",
+    "@kaz/shared": "workspace:*"
+  }
+}

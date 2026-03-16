@@ -9,8 +9,11 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@kaz/db": "workspace:*",
     "@kaz/oem-adapters-mock": "workspace:*",
     "@kaz/orchestration": "workspace:*",
     "@kaz/shared": "workspace:*"
+    ,"@kaz/signal-trust": "workspace:*"
+    ,"bullmq": "^5.58.0"
   }
 }

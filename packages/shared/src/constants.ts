@@ -1,4 +1,11 @@
-import type { ServiceRequestStatus, SubsystemKey } from "./types"
+import type {
+  CohortDimension,
+  ContainmentType,
+  InvestigationStatus,
+  PatternStatus,
+  ServiceRequestStatus,
+  SubsystemKey
+} from "./types"
 
 export const SUBSYSTEMS: SubsystemKey[] = [
   "engine",
@@ -21,6 +28,42 @@ export const SERVICE_FLOW: ServiceRequestStatus[] = [
   "IN_PROGRESS",
   "COMPLETED",
   "CLOSED"
+]
+
+export const INVESTIGATION_FLOW: InvestigationStatus[] = [
+  "PATTERN_DETECTED",
+  "INVESTIGATION_OPENED",
+  "EVIDENCE_COLLECTED",
+  "ROOT_CAUSE_IDENTIFIED",
+  "CONTAINMENT_RECOMMENDED",
+  "ACTION_TAKEN",
+  "VERIFIED"
+]
+
+export const PATTERN_STATUSES: PatternStatus[] = [
+  "DETECTED",
+  "UNDER_REVIEW",
+  "CONFIRMED",
+  "ACTIVE",
+  "RETIRED"
+]
+
+export const CONTAINMENT_TYPES: ContainmentType[] = [
+  "monitor",
+  "service_campaign",
+  "software_update",
+  "supplier_escalation",
+  "training_bulletin",
+  "safety_recall"
+]
+
+export const COHORT_DIMENSIONS: CohortDimension[] = [
+  "buildBatch",
+  "softwareVersion",
+  "region",
+  "model",
+  "dutyCycle",
+  "depot"
 ]
 
 export const PARTS_BY_SUBSYSTEM: Record<SubsystemKey, { partNumber: string; name: string }[]> = {

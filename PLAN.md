@@ -1,1346 +1,2066 @@
-# KAZINDUSTRIES — Master Build Plan
+# KAZINDUSTRIES — Service Orchestration: Production Architecture & Build Plan
 
-## AI-Driven OEM Aftersales Decision & Orchestration Platform
+## AI-Driven OEM Aftersales Service Orchestration Platform
 
-> One-sentence answer: Yes, this can become a real business — but only if you sell a
-> focused post-sales decision layer above existing telematics, not another telematics platform.
-
----
-
-## What This Is NOT
-
-- Not a telematics cloud
-- Not a tracking dashboard
-- Not a TCU / hardware product
-- Not a generic "AI on telemetry" tool
-
-## What This IS
-
-An **aftersales decision/orchestration layer that sits ABOVE existing OEM telematics
-clouds**. It turns noisy telemetry data into explainable decisions and workflow actions.
-
-It answers: *"Why did it happen, which vehicles matter most right now, what should we
-do next, and who should act?"*
+> **Scope:** Full implementation of the **Service Orchestration Unit** — from the current
+> in-memory demo to a production-grade, AI-powered, enterprise-level platform.
+>
+> **Not in scope:** Forensics and Predictive Warranty Shield. A handoff note at the end
+> describes how to begin those modules once orchestration is production-ready.
 
 ---
 
-## Locked Decisions
+## Table of Contents
 
-| Decision        | Choice                                              |
-| --------------- | --------------------------------------------------- |
-| Platform name   | **kazindustries**                                   |
-| Backend         | TypeScript + Node.js (Express)                      |
-| Frontend        | Next.js 14+ (App Router, React)                     |
-| Cloud           | Microsoft Azure                                     |
-| Primary DB      | PostgreSQL 16                                       |
-| Time-series DB  | TimescaleDB (extension on PG)                       |
-| Cache / Pub-Sub | Redis (via Azure Cache for Redis)                   |
-| Message Queue   | BullMQ (Redis-backed) + Azure Service Bus           |
-| ORM             | Drizzle ORM                                         |
-| Auth            | NextAuth.js + Azure AD B2C (for OEM SSO later)      |
-| Monorepo        | Turborepo + pnpm workspaces                         |
-| IaC             | Terraform (Azure provider)                          |
-| CI/CD           | GitHub Actions                                      |
-| Target OEMs     | OEM-agnostic (mock data first) -> VW Group          |
-| Team model      | Growing team                                        |
-| Pkg namespace   | `@kaz/*`                                            |
+1. [Current State Assessment](#current-state-assessment)
+2. [Production Architecture Blueprint](#production-architecture-blueprint)
+3. [OEM Cloud Data Flow — How Telemetry Reaches Us](#oem-cloud-data-flow)
+4. [Kimi-K2.5 AI Integration Architecture](#kimi-k25-ai-integration-architecture)
+5. [Enterprise Dashboard Architecture (shadcn/ui)](#enterprise-dashboard-architecture)
+6. [Authentication & Authorization](#authentication--authorization)
+7. [Phase-by-Phase Build Plan](#phase-by-phase-build-plan)
+8. [What Comes Next](#what-comes-next)
+9. [Risk Register](#risk-register)
+10. [Key Principles](#key-principles)
 
 ---
 
-## Repository Structure
+## Current State Assessment
 
-```
-kazindustries/
-├── apps/
-│   ├── api/                    # Express API server
-│   ├── web/                    # Next.js dashboard
-│   ├── worker/                 # Background job processor (BullMQ)
-│   └── simulator/              # OEM data simulator (dev tool)
-├── packages/
-│   ├── db/                     # Drizzle schemas, migrations, seeds
-│   ├── signal-trust/           # Signal Trust Layer core engine
-│   ├── orchestration/          # Service Orchestration engine
-│   ├── forensics/              # Telemetry Forensics engine
-│   ├── warranty/               # Predictive Warranty Shield engine
-│   ├── oem-adapters/
-│   │   ├── core/               # Abstract adapter interface
-│   │   ├── mock/               # Mock OEM data generator
-│   │   └── vw-group/           # VW/Audi/Skoda adapter (later)
-│   ├── dtc-registry/           # DTC code mapping + knowledge base
-│   ├── shared/                 # Shared types, utils, constants
-│   └── ui/                     # Shared React UI component library
-├── infra/
-│   ├── terraform/              # Azure infrastructure
-│   ├── docker/                 # Dockerfiles, compose
-│   └── k8s/                    # AKS manifests (later)
-├── docs/                       # Technical documentation
-├── tools/                      # Dev scripts, data generators
-├── PLAN.md
-├── turbo.json
-├── pnpm-workspace.yaml
-└── package.json
-```
+### What Exists (Working In-Memory Demo)
 
----
+| Layer | Implementation | Lines | Status |
+|---|---|---|---|
+| **Monorepo scaffold** | Turborepo + pnpm, Express API, Next.js web, worker stub, simulator stub | — | ✅ |
+| **Shared types** | Full TypeScript type system — vehicles, signals, faults, depots, technicians, service requests, health scores | ~605 | ✅ |
+| **OEM Mock Adapter** | 96-vehicle fleet, deterministic PRNG, signal degradation, fault injection, 12s tick cycle | ~374 | ✅ |
+| **Signal Trust** | `computeHealthScore()` — 8-subsystem scoring, fault severity weighting, trend detection, `dedupeAlerts()` | ~75 | ✅ |
+| **Priority Engine** | 5-factor weighted scoring (safety 30%, failure 25%, business 20%, downtime 15%, window 10%) | — | ✅ |
+| **Depot Matching** | Specialty match (+35), parts availability (+30), capacity (+7/bay), distance penalty (-0.45/km) | — | ✅ |
+| **Technician Assignment** | Skill match (+44), first-time-fix rate weighting, workload capacity, top 3 recommendations | — | ✅ |
+| **Service Workflow** | Full state machine: DETECTED → PRIORITIZED → DEPOT_ASSIGNED → … → COMPLETED → CLOSED | — | ✅ |
+| **Dashboard** | Single-file 674-line Next.js dashboard, custom CSS, SSE streaming, Lucide icons | ~674 | ✅ |
+| **API** | 25+ REST endpoints + SSE live stream | ~645 | ✅ |
 
-## Phase Overview
+### Critical Gaps
 
-| Phase | Module                      | Duration  | Team     | Cumulative |
-| ----- | --------------------------- | --------- | -------- | ---------- |
-| 0     | Foundation + Signal Trust   | 4 weeks   | 2 devs   | Week 4     |
-| 1     | Service Orchestration Layer | 8 weeks   | 2-3 devs | Week 12    |
-| 2     | Telemetry Forensics         | 7 weeks   | 3-4 devs | Week 19    |
-| 3     | Predictive Warranty Shield  | 11 weeks  | 3-5 devs | Week 30    |
-| 4+    | Extensions                  | Ongoing   | 4-6 devs | --         |
-
-**First pilot-ready demo (Phase 0+1): ~12 weeks**
-**Full platform (through Phase 3): ~30 weeks (~7.5 months)**
+| Gap | Severity | Impact |
+|---|---|---|
+| Everything is in-memory (`DemoStore`) | 🔴 Critical | State vanishes on restart. Zero persistence |
+| No real database | 🔴 Critical | No PostgreSQL, TimescaleDB, or Redis |
+| No Docker Compose | 🟡 High | Cannot spin up local infra with one command |
+| Worker is an 8-line stub | 🟡 High | No background job processing — everything blocks the API thread |
+| Simulator exits after one log | 🟡 High | No continuous telemetry streaming |
+| No auth | 🔴 Critical | Anyone can access everything. No login, no RBAC |
+| No AI/ML in decisions | 🟡 High | Pure heuristic scoring — no learning, no LLM reasoning, no explanations |
+| No RL feedback loop | 🟡 High | Completed services don't improve future decisions |
+| Dashboard is a single file | 🟡 High | 674 lines, no component library, no design system, plain CSS |
+| No OEM cloud integration | 🟡 High | Only mock adapter — no real telemetry ingestion path |
+| Zero tests | 🟡 High | No unit, integration, or E2E tests |
+| No CI/CD | 🟡 Medium | No automated pipeline |
+| No cloud infrastructure | 🟡 Medium | No Terraform, no Azure |
 
 ---
 
-## PHASE 0: Foundation + Signal Trust Layer
+## Production Architecture Blueprint
 
-**Duration:** 3-4 weeks (2 devs)
+### System Architecture (30,000-Foot View)
 
-**Goal:** Project scaffold, database design, OEM data simulation, and the
-invisible-but-critical Signal Trust Layer that makes everything repeatable.
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           OEM TELEMATICS CLOUDS                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│  │ Tata CV  │  │ Ashok    │  │ Mahindra │  │ Eicher   │  │ Mock Simulator   │  │
+│  │ Fleet    │  │ Leyland  │  │ Truck &  │  │ (VECV)   │  │ (Dev/Staging)    │  │
+│  │ Edge     │  │ iAlert   │  │ Bus      │  │          │  │                  │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬─────────┘  │
+│       │              │              │              │                 │            │
+│       ▼              ▼              ▼              ▼                 ▼            │
+│  ┌──────────────────────────────────────────────────────────────────────────┐    │
+│  │                    OEM ADAPTER LAYER (@kaz/oem-adapters)                 │    │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────────┐  │    │
+│  │  │ REST Poller │ │ MQTT Sub   │ │ Webhook Rx  │ │ Mock Generator   │  │    │
+│  │  │ (pull)      │ │ (push)     │ │ (push)      │ │ (dev/test)       │  │    │
+│  │  └──────┬──────┘ └──────┬─────┘ └──────┬──────┘ └──────┬───────────┘  │    │
+│  │         └───────────────┴───────────────┴───────────────┘              │    │
+│  │                              │                                         │    │
+│  │                     Normalized Signal Format                           │    │
+│  └──────────────────────────────┬────────────────────────────────────────┘    │
+└─────────────────────────────────┼───────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        INGESTION GATEWAY (apps/api)                             │
+│                                                                                 │
+│  POST /api/v1/ingest/signals    ← Adapter pushes normalized signals             │
+│  POST /api/v1/ingest/faults     ← Adapter pushes fault events                   │
+│  POST /api/v1/ingest/batch      ← Bulk signal ingestion (up to 1000/request)    │
+│  POST /api/v1/webhooks/oem/:id  ← Direct OEM webhook receiver                  │
+│                                                                                 │
+│  ┌─────────────────┐   Auth: API key per OEM connection                        │
+│  │ Zod Validation  │   Rate limit: per-key, per-endpoint                       │
+│  │ + Normalization │   Deduplication: signal hash → Redis SET (5min TTL)         │
+│  └────────┬────────┘                                                            │
+│           │                                                                     │
+│           ▼                                                                     │
+│  ┌─────────────────────────────────────────────────┐                           │
+│  │           BullMQ Job Queues (Redis-backed)        │                           │
+│  │                                                   │                           │
+│  │  queue:telemetry-ingest    (concurrency: 10)     │                           │
+│  │  queue:fault-events        (concurrency: 5)      │                           │
+│  │  queue:health-recompute    (concurrency: 5)      │                           │
+│  │  queue:priority-rerank     (concurrency: 2)      │                           │
+│  │  queue:ai-reasoning        (concurrency: 3)      │                           │
+│  │  queue:depot-match         (concurrency: 3)      │                           │
+│  │  queue:tech-match          (concurrency: 3)      │                           │
+│  │  queue:notifications       (concurrency: 2)      │                           │
+│  └────────────────────┬────────────────────────────┘                           │
+└───────────────────────┼─────────────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                       WORKER CLUSTER (apps/worker)                              │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │                         PROCESSING PIPELINE                              │   │
+│  │                                                                          │   │
+│  │  SignalIngestProcessor                                                   │   │
+│  │  ├─ Write signal snapshot → TimescaleDB (vehicle_signals hypertable)     │   │
+│  │  ├─ Update Redis cache (vehicle:signal:{id}, TTL 60s)                    │   │
+│  │  └─ Emit job → queue:health-recompute                                    │   │
+│  │                                                                          │   │
+│  │  FaultProcessor                                                          │   │
+│  │  ├─ Upsert fault in PostgreSQL (vehicle_faults table)                    │   │
+│  │  ├─ Run dedupeAlerts() for consolidation                                 │   │
+│  │  └─ Emit job → queue:health-recompute                                    │   │
+│  │                                                                          │   │
+│  │  HealthProcessor                                                         │   │
+│  │  ├─ Run computeHealthScore() (existing signal-trust logic)               │   │
+│  │  ├─ Write health snapshot → TimescaleDB (vehicle_health_snapshots)       │   │
+│  │  ├─ Update Redis cache (vehicle:health:{id}, TTL 60s)                    │   │
+│  │  ├─ Compare with previous score → detect status change events            │   │
+│  │  └─ Emit job → queue:priority-rerank                                     │   │
+│  │                                                                          │   │
+│  │  PriorityProcessor                                                       │   │
+│  │  ├─ Run buildPriorityQueue() for affected vehicles (existing logic)      │   │
+│  │  ├─ Update Redis sorted set (queue:priority)                             │   │
+│  │  ├─ Write priority snapshot → TimescaleDB (priority_snapshots)           │   │
+│  │  ├─ Emit job → queue:ai-reasoning (for top 20 vehicles)                  │   │
+│  │  └─ Emit job → queue:depot-match + queue:tech-match (top 16)             │   │
+│  │                                                                          │   │
+│  │  AIReasoningProcessor                                                    │   │
+│  │  ├─ Call Kimi-K2.5 via LangChain (priority reasoning chain)              │   │
+│  │  ├─ Store AI assessment alongside heuristic score in PostgreSQL          │   │
+│  │  ├─ Cache AI response in Redis (ai:priority:{vehicleId}, TTL 300s)       │   │
+│  │  └─ Publish event → Redis pub/sub channel                                │   │
+│  │                                                                          │   │
+│  │  DepotMatchProcessor                                                     │   │
+│  │  ├─ Run recommendDepots() (existing heuristic logic)                     │   │
+│  │  ├─ Optionally augment with AI depot reasoning chain                     │   │
+│  │  └─ Cache in Redis (vehicle:depot-match:{id}, TTL 120s)                  │   │
+│  │                                                                          │   │
+│  │  TechMatchProcessor                                                      │   │
+│  │  ├─ Run recommendTechnicians() (existing heuristic logic)                │   │
+│  │  ├─ Optionally augment with AI technician reasoning chain                │   │
+│  │  └─ Cache in Redis (vehicle:tech-match:{id}, TTL 120s)                   │   │
+│  │                                                                          │   │
+│  │  NotificationProcessor                                                   │   │
+│  │  ├─ Build SSE payload → publish to Redis pub/sub (channel:dashboard)     │   │
+│  │  ├─ Send webhook to registered endpoints                                 │   │
+│  │  └─ Store in notification_log table                                      │   │
+│  │                                                                          │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────┬───────────────────────────────────────────────────────────┘
+                      │
+        ┌─────────────┴─────────────┐
+        ▼                           ▼
+┌───────────────────┐    ┌──────────────────────┐
+│  PostgreSQL 16    │    │  Redis 7             │
+│  + TimescaleDB    │    │                      │
+│                   │    │  • Priority sorted   │
+│  • vehicles       │    │    set               │
+│  • depots         │    │  • Health cache      │
+│  • technicians    │    │  • Signal cache      │
+│  • parts_catalog  │    │  • AI response cache │
+│  • depot_inventory│    │  • Session store     │
+│  • service_reqs   │    │  • BullMQ backing    │
+│  • service_history│    │  • Pub/sub channels  │
+│  • decision_logs  │    │  • Dispatch locks    │
+│  • vehicle_faults │    │  • Rate limit        │
+│  • reward_signals │    │    counters          │
+│                   │    │                      │
+│  HYPERTABLES:     │    └──────────────────────┘
+│  • vehicle_signals│
+│  • health_snapshots│
+│  • priority_snaps │
+└───────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          API SERVER (apps/api)                                   │
+│                                                                                 │
+│  ┌────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ Auth       │  │ REST Routes  │  │ SSE Stream   │  │ Bull Board           │  │
+│  │ Middleware │  │ (Express)    │  │ Engine       │  │ /admin/queues        │  │
+│  │            │  │              │  │              │  │                      │  │
+│  │ NextAuth   │  │ /vehicles    │  │ Subscribes   │  │ Job monitoring       │  │
+│  │ JWT verify │  │ /orchestr..  │  │ to Redis     │  │ dashboard            │  │
+│  │ RBAC check │  │ /depots      │  │ pub/sub      │  │                      │  │
+│  │ Org scope  │  │ /service-..  │  │ channels     │  │ (protected by        │  │
+│  │            │  │ /ai          │  │ and pushes   │  │  platform_admin      │  │
+│  │            │  │ /analytics   │  │ to connected │  │  role)               │  │
+│  │            │  │ /admin       │  │ SSE clients  │  │                      │  │
+│  └────────────┘  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│                                                                                 │
+│  HOT-PATH READS: Redis first → PostgreSQL fallback                             │
+│  WRITES: PostgreSQL (source of truth) → invalidate Redis cache                 │
+│  SSE: Redis pub/sub → fan-out to all connected browser clients                 │
+└────────────────────────────────┬────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                    ENTERPRISE DASHBOARD (apps/web)                               │
+│                                                                                 │
+│  Next.js 14 App Router + shadcn/ui + Tailwind CSS + Recharts + Framer Motion   │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐    │
+│  │                        PAGE ARCHITECTURE                                │    │
+│  │                                                                         │    │
+│  │  /login              → Auth page (NextAuth.js)                          │    │
+│  │  /                   → Fleet Command Center (overview)                  │    │
+│  │  /triage             → AI Priority Queue + Reasoning Panel              │    │
+│  │  /triage/[vehicleId] → Vehicle Deep Dive                                │    │
+│  │  /dispatch           → AI Dispatch Agent Interface                      │    │
+│  │  /workflow           → Service Request Kanban Board                     │    │
+│  │  /depots             → Depot Network Map + Capacity                     │    │
+│  │  /depots/[depotId]   → Depot Detail (bays, techs, inventory)            │    │
+│  │  /technicians        → Technician Roster + Workload                     │    │
+│  │  /intelligence       → Decision Intelligence + RL Dashboard             │    │
+│  │  /alerts             → Alert Feed + Escalations                         │    │
+│  │  /settings           → Org settings, weights, API keys, users           │    │
+│  │                                                                         │    │
+│  └─────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                 │
+│  REAL-TIME: SSE EventSource → Zustand store → React re-render                  │
+│  MUTATIONS: React Query useMutation → optimistic updates → SSE confirmation    │
+│  CHARTS: Recharts (line, area, bar, radar, pie) + custom gauges                │
+│  ANIMATIONS: Framer Motion for transitions, list reordering, modals            │
+│  MAPS: Leaflet or Mapbox GL JS for fleet/depot geographic views                │
+│  THEME: Dark/light mode toggle, persisted in localStorage                      │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
 
-> Research finding: "Without this layer, every deployment becomes a brittle custom project."
+### Technology Stack (Locked)
+
+| Layer | Technology | Version | Rationale |
+|---|---|---|---|
+| **Language** | TypeScript | 5.x | Full-stack consistency |
+| **Runtime** | Node.js | 22 LTS | Stable, async-first |
+| **API** | Express.js | 4.x | Already in use, proven |
+| **Frontend** | Next.js (App Router) | 15.x | Already in use |
+| **UI Components** | **shadcn/ui** | latest | Radix primitives + Tailwind, fully customizable, not a dependency — you own the code |
+| **Styling** | **Tailwind CSS** | 3.x | Utility-first, works perfectly with shadcn/ui |
+| **Charts** | **Recharts** | 2.x | React-native charting, composable, supports animations |
+| **Animations** | **Framer Motion** | 11.x | Layout animations, list reordering, route transitions |
+| **Maps** | **Leaflet** + react-leaflet | 1.9 / 4.x | Free, no API key needed, perfect for fleet/depot visualization |
+| **State (client)** | **Zustand** | 5.x | Tiny, fast, SSE-friendly global state management |
+| **Data fetching** | **TanStack Query** (React Query) | 5.x | Caching, optimistic updates, retry, background refetch |
+| **Forms** | **React Hook Form** + Zod | 7.x | Performant forms with schema validation |
+| **Icons** | **Lucide React** | latest | Already in use, 1500+ icons |
+| **DB** | PostgreSQL 16 + TimescaleDB | 16 / 2.x | Relational + time-series in one engine |
+| **Cache** | Redis | 7.x | Hot path, pub/sub, BullMQ backing store, sessions |
+| **Job Queue** | BullMQ | 5.x | Reliable background processing with retry, DLQ, concurrency |
+| **ORM** | Prisma | 6.x | Schema-first, type-safe, migration management |
+| **AI Framework** | **LangChain.js** | 0.3.x | LLM orchestration, tool-calling agents, structured output |
+| **LLM** | **Kimi-K2.5** (Moonshot AI) | latest | OpenAI-compatible API, 256K context, tool calling, $0.60/M input |
+| **Auth** | **NextAuth.js** (Auth.js v5) | 5.x | Session management, JWT, provider extensibility |
+| **Monorepo** | Turborepo + pnpm | latest | Already in use |
+| **Container** | Docker + Docker Compose | latest | Local dev infra, production images |
+| **Cloud** | Microsoft Azure | — | AKS, Azure DB for PG, Azure Cache for Redis |
+| **IaC** | Terraform | 1.x | Azure infrastructure provisioning |
+| **CI/CD** | GitHub Actions | — | Automated lint, test, build, deploy |
 
 ---
 
-### Sub-phase 0.1 — Project Scaffold (Week 1)
+## OEM Cloud Data Flow
 
-**Build:**
+### How Telemetry Gets From a Vehicle to Our Dashboard
 
-- Turborepo monorepo with pnpm workspaces
-- Express API app with router/middleware structure
-  - Request validation (zod)
-  - Error handling middleware
-  - Request logging (pino)
-  - CORS, helmet, rate limiting
-- Next.js web app with basic layout shell
-- BullMQ worker app
-- Shared packages skeleton (`@kaz/db`, `@kaz/shared`, `@kaz/ui`)
-- Docker Compose for local dev (PG + TimescaleDB extension + Redis)
-- GitHub Actions CI pipeline (lint, typecheck, test, build)
-- Terraform base for Azure (Resource Group, Azure Database for PG, Azure Cache for Redis)
-- ESLint + Prettier + Husky pre-commit hooks
-- Environment config system (dotenv + zod validation)
-
-**Demo 0.1:**
-
-Monorepo runs locally. CI passes green. All apps start. API returns health check at
-`GET /health`. Docker Compose brings up the full local stack with one command.
-
----
-
-### Sub-phase 0.2 — Database Foundation (Week 1-2)
-
-**Build:**
-
-Core PostgreSQL schema via Drizzle ORM:
-
-**Core tables:**
+This is the real-world data path. Every OEM telematics system follows the same general pattern, even though the specifics differ.
 
 ```
-organizations       Multi-tenant OEM accounts
-users                Auth, roles, org membership
-vehicles             VIN, make, model, year, build_number, software_version, oem_id
-oem_connections      OEM source config, adapter type, credentials, status
-signal_definitions   Signal name, unit, range, source system, normalization rules
-dtc_codes            Code, system, subsystem, severity, description, known_causes
-service_history      Vehicle, event_type, timestamp, depot, technician, outcome
-parts_catalog        Part number, name, system, subsystem, cost, lead_time
-depots               ID, name, location, capacity, bay_count, operating_hours
-technicians          ID, name, depot_id, skill_certifications, availability
+VEHICLE (on-road)
+│
+│  TCU (Telematics Control Unit) embedded in vehicle
+│  Collects: CAN bus signals, GPS, DTC codes, driver behavior
+│  Transmits: MQTT / cellular (4G/5G) every 10-60 seconds
+│
+▼
+OEM TELEMATICS CLOUD (their infrastructure, not ours)
+│
+│  Examples:
+│  • Tata Motors Fleet Edge (connected.tatamotors.com)
+│  • Ashok Leyland iAlert (ialert.ashokleyland.com)
+│  • Mahindra DiGiSENSE
+│  • Eicher LIVE (VECV)
+│  • BharatBenz Truckonnect (Daimler India)
+│  • Volvo Dynafleet
+│  • VW Rio/MAN (later)
+│
+│  What they store:
+│  • GPS position + speed + heading
+│  • Engine parameters (RPM, coolant temp, oil pressure, fuel level)
+│  • Diagnostic Trouble Codes (DTCs)
+│  • Trip summaries
+│  • Driver behavior events (harsh braking, speeding)
+│  • Vehicle health alerts
+│
+│  How they expose it (3 common patterns):
+│
+├──── PATTERN A: REST API (Pull-based) ────────────────────────
+│     Most common. OEM provides a REST API with OAuth2 auth.
+│     We poll at intervals (every 30s–5min depending on SLA).
+│     Example: GET /api/vehicles/{vin}/signals?since={timestamp}
+│     Pagination, rate limits, API key management required.
+│
+├──── PATTERN B: MQTT Broker (Push-based, real-time) ──────────
+│     OEM publishes signals to an MQTT topic per vehicle/fleet.
+│     We subscribe to topics: oem/{fleetId}/vehicles/{vin}/signals
+│     Lowest latency. Best for real-time health monitoring.
+│     Requires persistent MQTT client connection management.
+│
+├──── PATTERN C: Webhook (Push-based, event-driven) ───────────
+│     OEM sends HTTP POST to our endpoint when events occur
+│     (new DTC, health alert, trip completed, geofence breach).
+│     Best for fault events and alerts. Not for continuous signals.
+│     Requires webhook registration, signature verification.
+│
+└──── PATTERN D: File-based / Batch ───────────────────────────
+      OEM drops CSV/JSON files to SFTP or cloud storage daily.
+      Least common for real-time, but some legacy OEMs use this.
+      We poll storage, parse, and ingest in batch jobs.
 ```
 
-**TimescaleDB hypertables (time-series):**
+### Our OEM Adapter Architecture
 
 ```
-vehicle_signals      vehicle_id, signal_name, value, timestamp  (partitioned by time)
-vehicle_events       vehicle_id, event_type, dtc_code, severity, timestamp
-vehicle_trips        vehicle_id, start, end, distance, route_hash
+packages/oem-adapters/
+├── core/
+│   └── src/
+│       ├── index.ts              # Abstract OEMAdapter interface
+│       ├── types.ts              # RawSignal, RawFault, RawVehicle, OEMConfig
+│       ├── normalizer.ts         # Normalize any OEM format → our standard format
+│       ├── rate-limiter.ts       # Per-OEM rate limit tracking
+│       └── health-check.ts      # Connection health monitoring
+│
+├── mock/                         # EXISTING — enhanced for continuous streaming
+│   └── src/index.ts             # Mock OEM that generates realistic telemetry
+│
+├── rest-poller/                  # Generic REST API adapter (Pattern A)
+│   └── src/
+│       ├── index.ts             # Polling loop: fetch → normalize → push to queue
+│       ├── auth.ts              # OAuth2 client credentials flow
+│       └── pagination.ts       # Cursor/offset pagination handling
+│
+├── mqtt-subscriber/              # Generic MQTT adapter (Pattern B)
+│   └── src/
+│       ├── index.ts             # MQTT.js client: connect, subscribe, handle messages
+│       ├── topic-router.ts      # Route messages by topic pattern to correct handler
+│       └── reconnect.ts        # Exponential backoff reconnection logic
+│
+└── webhook-receiver/             # Generic Webhook adapter (Pattern C)
+    └── src/
+        ├── index.ts             # Express sub-router mounted on API server
+        ├── signature.ts         # HMAC signature verification per OEM
+        └── transform.ts        # OEM-specific payload → normalized format
 ```
 
-**Redis key design:**
-
-```
-vehicle:health:{id}          Cached health score (TTL 60s)
-vehicle:location:{id}        Last known position
-queue:priority               Sorted set of vehicle priority scores
-session:{token}              User session data
-```
-
-- Seed scripts with realistic mock data (500 vehicles, 50 depots, 200 technicians)
-- Database migration pipeline via Drizzle Kit
-
-**Demo 0.2:**
-
-Database running with seed data. Drizzle Studio shows all tables populated. API can
-query vehicles and signals. TimescaleDB time-bucketed queries working.
-
----
-
-### Sub-phase 0.3 — OEM Adapter + Mock Simulator (Week 2-3)
-
-**Build:**
-
-Abstract OEM adapter interface (`@kaz/oem-adapters/core`):
+### The OEM Adapter Interface (Production Version)
 
 ```typescript
+// packages/oem-adapters/core/src/types.ts
+
+interface OEMConfig {
+  oemId: string                    // "tata_fleet_edge" | "ashok_leyland_ialert" | ...
+  connectionType: "rest" | "mqtt" | "webhook" | "mock"
+  credentials: {
+    apiKey?: string
+    clientId?: string
+    clientSecret?: string
+    tokenUrl?: string
+    mqttBrokerUrl?: string
+    mqttUsername?: string
+    mqttPassword?: string
+    webhookSecret?: string
+  }
+  pollIntervalMs?: number          // For REST adapters (default: 30000)
+  batchSize?: number               // For REST adapters (default: 100)
+  topicPattern?: string            // For MQTT adapters
+  signalMapping: SignalMapping     // OEM field names → our field names
+}
+
+interface SignalMapping {
+  coolantTemp: string              // e.g., "engine.coolant_temperature_celsius"
+  oilPressure: string              // e.g., "engine.oil_pressure_kpa"
+  batteryVoltage: string           // e.g., "electrical.battery_voltage"
+  turboBoost: string               // e.g., "engine.turbo_boost_bar"
+  brakeWear: string                // e.g., "chassis.brake_pad_wear_percent"
+  exhaustTemp: string              // e.g., "exhaust.gas_temperature_celsius"
+  fuelLevel: string                // e.g., "fuel.level_percent"
+  speed: string                    // e.g., "motion.speed_kmh"
+  mileage: string                  // e.g., "odometer.total_km"
+  latitude: string                 // e.g., "gps.latitude"
+  longitude: string                // e.g., "gps.longitude"
+}
+
+// What comes out of normalization — OEM-agnostic
+interface NormalizedSignal {
+  vehicleId: string                // Our internal ID (mapped from VIN)
+  vin: string                      // Original VIN from OEM
+  timestamp: string                // ISO 8601
+  coolantTemp: number              // Always Celsius
+  oilPressure: number              // Always kPa
+  batteryVoltage: number           // Always Volts
+  turboBoost: number               // Always bar
+  brakeWear: number                // Always 0-100%
+  exhaustTemp: number              // Always Celsius
+  fuelLevel: number                // Always 0-100%
+  speed: number                    // Always km/h
+  mileage: number                  // Always km
+  coordinates: { lat: number; lng: number }
+  source: string                   // OEM adapter ID
+  rawHash: string                  // SHA-256 of raw payload for dedup
+}
+
+interface NormalizedFault {
+  vehicleId: string
+  vin: string
+  dtcCode: string                  // ISO 15031 format (P0420, C1234, etc.)
+  severity: "info" | "warning" | "critical" | "safety"
+  subsystem: SubsystemKey
+  title: string
+  description: string
+  occurredAt: string
+  source: string
+}
+
 interface OEMAdapter {
-  connect(config: OEMConfig): Promise<void>
-  fetchVehicles(): AsyncIterable<RawVehicle>
-  fetchSignals(vehicleId: string, since: Date): AsyncIterable<RawSignal>
-  fetchDTCs(vehicleId: string, since: Date): AsyncIterable<RawDTC>
-  subscribeToEvents(handler: EventHandler): Unsubscribe
-  disconnect(): Promise<void>
+  name: string
+  connectionType: OEMConfig["connectionType"]
+
+  // Lifecycle
+  initialize(config: OEMConfig): Promise<void>
+  start(): Promise<void>           // Begin polling/subscribing
+  stop(): Promise<void>            // Graceful shutdown
+  healthCheck(): Promise<{ healthy: boolean; latencyMs: number; lastDataAt: string }>
+
+  // Events — adapter emits these, ingestion gateway consumes them
+  on(event: "signals", handler: (signals: NormalizedSignal[]) => void): void
+  on(event: "faults", handler: (faults: NormalizedFault[]) => void): void
+  on(event: "error", handler: (error: Error) => void): void
+  on(event: "connected" | "disconnected", handler: () => void): void
 }
 ```
 
-Mock OEM adapter (`@kaz/oem-adapters/mock`):
-
-- 500 mock vehicles (mix of truck, bus, van, passenger types)
-- Realistic signal patterns:
-  - Engine coolant temp, oil pressure, battery voltage, fuel level
-  - Exhaust gas temp, turbo boost, transmission temp, brake wear
-  - Ambient temp, altitude, speed, RPM
-- Injected fault scenarios:
-  - Gradual degradation (e.g., turbo efficiency dropping 0.5% per day)
-  - Sudden failure (immediate critical DTC)
-  - Intermittent faults (appears and disappears)
-  - Correlated multi-system faults (cooling issue -> engine issue)
-- Configurable fleet health distribution:
-  - 80% healthy, 15% degrading, 5% critical
-- Simulator app that streams data continuously at configurable rate
-
-Data ingestion pipeline:
+### Data Flow Sequence (Signal → Dashboard Update)
 
 ```
-OEM Adapter -> Raw Signal Queue (BullMQ) -> Normalization Worker -> TimescaleDB
+1. OEM cloud has new signal data for VEH-042 (coolant temp spiked to 104°C)
+
+2. OEM Adapter (REST Poller or MQTT Subscriber) receives the raw data
+   ├─ Normalizes: OEM "engine.coolant_temperature_celsius" → our "coolantTemp"
+   ├─ Unit converts if needed (some OEMs report in Fahrenheit)
+   ├─ Dedup check: SHA-256 hash → Redis SET lookup → not a duplicate
+   └─ Pushes normalized signal to BullMQ queue:telemetry-ingest
+
+3. Worker: SignalIngestProcessor picks up the job
+   ├─ Writes to TimescaleDB: INSERT INTO vehicle_signals (...)
+   ├─ Updates Redis: SET vehicle:signal:VEH-042 {json} EX 60
+   └─ Emits job → queue:health-recompute { vehicleId: "VEH-042" }
+
+4. Worker: HealthProcessor picks up the job
+   ├─ Reads latest signal from Redis (or TimescaleDB fallback)
+   ├─ Reads active faults from PostgreSQL
+   ├─ Runs computeHealthScore() → overall: 52.3, status: "critical"
+   ├─ Compares with previous: was "watch" (67.1) → now "critical" (52.3) = STATUS CHANGE
+   ├─ Writes to TimescaleDB: INSERT INTO vehicle_health_snapshots (...)
+   ├─ Updates Redis: SET vehicle:health:VEH-042 {json} EX 60
+   └─ Emits job → queue:priority-rerank { vehicleId: "VEH-042", statusChanged: true }
+
+5. Worker: PriorityProcessor picks up the job
+   ├─ Runs buildPriorityQueue() for VEH-042 → score: 78.4 (was 52.1)
+   ├─ Updates Redis sorted set: ZADD queue:priority 78.4 VEH-042
+   ├─ Vehicle jumped from position #31 to position #5 in the queue
+   ├─ Writes to TimescaleDB: INSERT INTO priority_snapshots (...)
+   ├─ Emits job → queue:ai-reasoning { vehicleId: "VEH-042" }
+   └─ Emits job → queue:depot-match + queue:tech-match { vehicleId: "VEH-042" }
+
+6. Worker: AIReasoningProcessor picks up the job (async, non-blocking)
+   ├─ Builds LangChain prompt with vehicle data, health, faults, service history
+   ├─ Calls Kimi-K2.5 API: POST https://api.moonshot.ai/v1/chat/completions
+   │   model: "kimi-k2.5"
+   │   thinking: { type: "disabled" }  (fast mode for real-time decisions)
+   │   tools: [vehicle_lookup, service_history, fleet_stats]
+   ├─ Parses structured output (Zod schema validation)
+   │   {
+   │     adjustedScore: 82.1,
+   │     urgency: "urgent",
+   │     riskFactors: ["Coolant spike to 104°C — 12°C above threshold",
+   │                   "This vehicle had cooling intervention 45 days ago — possible recurring issue"],
+   │     recommendation: "Immediate dispatch recommended. Prior cooling repair may not have
+   │                      addressed root cause. Suggest extended diagnostics at Pune depot."
+   │   }
+   ├─ Stores AI assessment in PostgreSQL: INSERT INTO decision_logs (...)
+   └─ Updates Redis cache: SET ai:priority:VEH-042 {json} EX 300
+
+7. Worker: NotificationProcessor (triggered by status change in step 4)
+   ├─ Builds SSE event payload:
+   │   {
+   │     type: "vehicle_status_change",
+   │     vehicleId: "VEH-042",
+   │     previousStatus: "watch",
+   │     newStatus: "critical",
+   │     health: { overall: 52.3, weakestSubsystem: "cooling", ... },
+   │     priority: { score: 78.4, rank: 5, aiAssessment: { urgency: "urgent", ... } },
+   │     timestamp: "2026-03-16T14:23:45.123Z"
+   │   }
+   ├─ Publishes to Redis: PUBLISH channel:dashboard {json}
+   └─ Sends webhook to registered endpoints (if any)
+
+8. API Server: SSE stream handler
+   ├─ Redis subscriber receives the published event
+   └─ Fans out to all connected EventSource clients: data: {json}\n\n
+
+9. Dashboard (browser):
+   ├─ EventSource receives the SSE event
+   ├─ Zustand store updates: vehicles, priorityQueue, healthByVehicle
+   ├─ React re-renders:
+   │   ├─ VEH-042 card flashes red with pulse animation (Framer Motion)
+   │   ├─ Priority queue table re-sorts with layout animation
+   │   ├─ VEH-042 slides from position #31 to #5 with smooth transition
+   │   ├─ Toast notification: "⚠️ VEH-042 entered CRITICAL status"
+   │   ├─ AI assessment badge appears: "🔴 Urgent — recurring cooling issue"
+   │   └─ Alert bell icon in header gets a red badge count increment
+   └─ Total latency from signal → dashboard update: < 3 seconds
+
+10. User clicks VEH-042 in the priority queue:
+    ├─ Vehicle detail panel slides open (Framer Motion)
+    ├─ Shows: subsystem radar chart, signal sparklines, fault history
+    ├─ AI reasoning panel expands: full explanation from Kimi-K2.5
+    └─ "AI Dispatch" button is prominently available
 ```
-
-**Demo 0.3:**
-
-Simulator running and streaming 500 vehicles' telemetry into TimescaleDB in real time.
-API endpoint `GET /api/v1/vehicles/:id/signals?last=1h` returns live data. Worker
-logs show ingestion throughput.
 
 ---
 
-### Sub-phase 0.4 — Signal Trust Core (Week 3-4)
+## Kimi-K2.5 AI Integration Architecture
+
+### API Configuration
+
+```
+Base URL:     https://api.moonshot.ai/v1
+Model:        kimi-k2.5
+Context:      256K tokens
+API Style:    OpenAI-compatible (chat/completions endpoint)
+Tool Calling: Supported (tools array + tool_choice: "auto")
+Thinking:     Disable for real-time decisions (type: "disabled")
+              Enable for complex dispatch analysis (type: "enabled")
+Pricing:      $0.10/M input (cache hit), $0.60/M input (cache miss), $3.00/M output
+```
+
+### Environment Variables
+
+```bash
+# Required — Kimi-K2.5 API access
+KIMI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx    # From platform.moonshot.ai/console/api-keys
+KIMI_BASE_URL=https://api.moonshot.ai/v1    # Global endpoint
+KIMI_MODEL=kimi-k2.5                        # Model identifier
+
+# AI behavior configuration
+AI_ENABLED=true                              # Feature flag — false = pure heuristic mode
+AI_CACHE_TTL_SECONDS=300                     # Cache AI responses for 5 minutes
+AI_MAX_RETRIES=3                             # Retry on transient failures
+AI_TIMEOUT_MS=15000                          # Max wait per AI call (15 seconds)
+AI_THINKING_MODE=disabled                    # "disabled" for fast, "enabled" for deep reasoning
+AI_MAX_TOOL_STEPS=8                          # Max tool-calling loop iterations
+```
+
+### Package Structure
+
+```
+packages/ai/                    @kaz/ai
+├── src/
+│   ├── index.ts                # Public API — exportAll
+│   │
+│   ├── client.ts               # LangChain ChatOpenAI configured for Kimi-K2.5
+│   │   │
+│   │   │  import { ChatOpenAI } from "@langchain/openai"
+│   │   │
+│   │   │  export const createKimiClient = () => new ChatOpenAI({
+│   │   │    openAIApiKey: process.env.KIMI_API_KEY,
+│   │   │    configuration: {
+│   │   │      baseURL: process.env.KIMI_BASE_URL,
+│   │   │    },
+│   │   │    modelName: process.env.KIMI_MODEL ?? "kimi-k2.5",
+│   │   │    temperature: 0.6,       // Kimi-K2.5 non-thinking fixed value
+│   │   │    maxTokens: 4096,
+│   │   │    timeout: 15000,
+│   │   │    maxRetries: 3,
+│   │   │  })
+│   │   │
+│   │   └── Includes: retry logic, token tracking, cost calculation, fallback handling
+│   │
+│   ├── chains/                 # LangChain LCEL chains (each is a focused reasoning pipeline)
+│   │   │
+│   │   ├── priority-reasoning.ts
+│   │   │   │
+│   │   │   │  PURPOSE: Evaluate whether the heuristic priority ranking is correct.
+│   │   │   │           Detect edge cases, recurring issues, non-obvious risk factors.
+│   │   │   │
+│   │   │   │  INPUT:
+│   │   │   │    vehicle: Vehicle + current signals + active faults + health score
+│   │   │   │    heuristicScore: number (from existing buildPriorityQueue)
+│   │   │   │    heuristicBreakdown: PriorityBreakdown (existing 5-factor breakdown)
+│   │   │   │    serviceHistory: last 10 service records for this vehicle
+│   │   │   │    fleetContext: { avgHealth, criticalCount, openRequests, queueDepth }
+│   │   │   │
+│   │   │   │  SYSTEM PROMPT:
+│   │   │   │    "You are a fleet service prioritization expert for commercial vehicles
+│   │   │   │     operating in India. You are given a vehicle's telemetry, health scores,
+│   │   │   │     fault codes, service history, and a heuristic priority score.
+│   │   │   │
+│   │   │   │     Your job is to evaluate the heuristic ranking and provide:
+│   │   │   │     1. Whether the vehicle should be escalated or de-escalated
+│   │   │   │     2. Non-obvious risk factors the heuristics might miss
+│   │   │   │     3. A natural language recommendation for the fleet manager
+│   │   │   │
+│   │   │   │     Consider: recurring failure patterns, seasonal effects (monsoon,
+│   │   │   │     extreme heat), route criticality, service history quality, and
+│   │   │   │     whether prior repairs actually resolved the underlying issue.
+│   │   │   │
+│   │   │   │     Be concise. Be specific. Cite actual numbers from the data."
+│   │   │   │
+│   │   │   │  OUTPUT (Zod-parsed):
+│   │   │   │    {
+│   │   │   │      adjustedScore: number,          // AI-adjusted priority (0-100)
+│   │   │   │      adjustment: number,             // Delta from heuristic
+│   │   │   │      urgency: "routine" | "elevated" | "urgent" | "emergency",
+│   │   │   │      riskFactors: string[],          // Specific, data-cited risks
+│   │   │   │      recommendation: string,         // 2-3 sentence action recommendation
+│   │   │   │      confidence: number,             // 0-1
+│   │   │   │      shouldEscalate: boolean         // True if human attention needed NOW
+│   │   │   │    }
+│   │   │   │
+│   │   │   └── Uses LangChain: ChatPromptTemplate → kimiClient → StructuredOutputParser
+│   │   │
+│   │   ├── depot-reasoning.ts
+│   │   │   │
+│   │   │   │  PURPOSE: Evaluate heuristic depot recommendations with contextual reasoning.
+│   │   │   │           Consider depot performance history, parts supply chain risks,
+│   │   │   │           and logistical factors the scoring formula can't capture.
+│   │   │   │
+│   │   │   │  OUTPUT:
+│   │   │   │    {
+│   │   │   │      recommendedDepotId: string,
+│   │   │   │      rerankedDepots: { depotId, adjustedScore, reasoning }[],
+│   │   │   │      partsRisk: string | null,
+│   │   │   │      logisticsNote: string | null,
+│   │   │   │      confidence: number
+│   │   │   │    }
+│   │   │   │
+│   │   │   └── Enriched with: depot avg turnaround, first-time-fix rate,
+│   │   │       recent workload trend, parts stock trend for this fault type
+│   │   │
+│   │   ├── technician-reasoning.ts
+│   │   │   │
+│   │   │   │  PURPOSE: Evaluate technician recommendations with performance context.
+│   │   │   │
+│   │   │   │  OUTPUT:
+│   │   │   │    {
+│   │   │   │      recommendedTechnicianId: string,
+│   │   │   │      reasoning: string,
+│   │   │   │      skillGapWarning: string | null,
+│   │   │   │      estimatedRepairHours: number,
+│   │   │   │      confidence: number
+│   │   │   │    }
+│   │   │   │
+│   │   │   └── Enriched with: tech's history on this exact DTC code,
+│   │   │       recent workload (burnout risk), skill gap analysis
+│   │   │
+│   │   ├── dispatch-reasoning.ts
+│   │   │   │
+│   │   │   │  PURPOSE: Full dispatch decision — this is a LangChain AGENT
+│   │   │   │           that orchestrates a multi-step decision by calling tools.
+│   │   │   │
+│   │   │   │  AGENT TOOLS:
+│   │   │   │    - vehicle_lookup(vehicleId) → full vehicle data
+│   │   │   │    - depot_lookup(depotId) → depot + capacity + perf metrics
+│   │   │   │    - parts_check(depotId, subsystem) → stock levels
+│   │   │   │    - tech_lookup(techId) → profile + perf history
+│   │   │   │    - service_history(vehicleId) → last 20 service records
+│   │   │   │    - fleet_stats() → fleet health distribution + open requests
+│   │   │   │    - similar_cases(subsystem, dtcCode) → past cases with outcomes
+│   │   │   │
+│   │   │   │  AGENT PROMPT:
+│   │   │   │    "You are the service orchestration AI for kazindustries.
+│   │   │   │     A vehicle has been flagged for service. Use your tools to
+│   │   │   │     gather the information you need, then produce a complete
+│   │   │   │     dispatch plan: which depot, which technician, what parts
+│   │   │   │     to stage, estimated timeline, and what to watch for.
+│   │   │   │     Explain your reasoning at each step."
+│   │   │   │
+│   │   │   │  OUTPUT:
+│   │   │   │    {
+│   │   │   │      dispatchPlan: {
+│   │   │   │        depotId: string,
+│   │   │   │        depotReasoning: string,
+│   │   │   │        technicianId: string,
+│   │   │   │        techReasoning: string,
+│   │   │   │        partsToStage: string[],
+│   │   │   │        estimatedRepairHours: number,
+│   │   │   │        estimatedTotalCost: number,
+│   │   │   │        urgencyLevel: string,
+│   │   │   │        watchPoints: string[],    // "Check cooling hose — prior repair may have missed a micro-crack"
+│   │   │   │        alternativePlan: { ... } | null
+│   │   │   │      },
+│   │   │   │      agentTrace: string[],       // Step-by-step reasoning log
+│   │   │   │      toolCallCount: number,
+│   │   │   │      confidence: number,
+│   │   │   │      totalTokensUsed: number
+│   │   │   │    }
+│   │   │   │
+│   │   │   └── Uses LangChain: AgentExecutor with tool-calling, max 8 iterations
+│   │   │
+│   │   └── escalation-reasoning.ts
+│   │       │
+│   │       │  PURPOSE: Periodic scan of the queue + pipeline for anomalies
+│   │       │           that need human attention. Runs every 5 minutes.
+│   │       │
+│   │       │  DETECTS:
+│   │       │    - SLA breach risk (vehicle in queue too long)
+│   │       │    - Batch patterns (multiple vehicles from same build batch degrading)
+│   │       │    - Capacity crunch (depot overloaded, no alternative)
+│   │       │    - Rapid degradation (health dropping >10 points in 30 minutes)
+│   │       │    - Parts shortage developing for a trending fault type
+│   │       │    - Technician overload (>80% capacity at a depot)
+│   │       │
+│   │       │  OUTPUT:
+│   │       │    {
+│   │       │      escalations: {
+│   │       │        type: string,
+│   │       │        severity: "info" | "warning" | "critical",
+│   │       │        title: string,
+│   │       │        description: string,
+│   │       │        affectedEntities: string[],
+│   │       │        suggestedAction: string
+│   │       │      }[]
+│   │       │    }
+│   │       │
+│   │       └── Runs as a scheduled BullMQ repeatable job
+│   │
+│   ├── tools/                  # LangChain tools (functions the AI agent can call)
+│   │   ├── vehicle-lookup.ts    # DynamicTool: fetch vehicle + signals + health + faults
+│   │   ├── depot-lookup.ts      # DynamicTool: fetch depot + capacity + performance
+│   │   ├── parts-check.ts       # DynamicTool: check parts availability at depot
+│   │   ├── tech-lookup.ts       # DynamicTool: fetch technician profile + history
+│   │   ├── service-history.ts   # DynamicTool: fetch past services for vehicle
+│   │   ├── fleet-stats.ts       # DynamicTool: fleet-wide health/queue statistics
+│   │   └── similar-cases.ts    # DynamicTool: find similar past cases and their outcomes
+│   │
+│   ├── prompts/
+│   │   ├── system.ts            # System prompts for each chain
+│   │   └── few-shot-bank.ts    # Best/worst decision examples for in-context learning
+│   │
+│   ├── output-schemas.ts       # Zod schemas for all structured AI outputs
+│   │
+│   └── utils/
+│       ├── token-tracker.ts     # Track token usage per chain, per day, per org
+│       ├── cost-calculator.ts   # Calculate cost from token counts
+│       ├── cache.ts             # Redis-backed response cache with TTL
+│       └── fallback.ts         # Graceful degradation when AI is unavailable
+│
+├── package.json
+└── tsconfig.json
+```
+
+### Fallback Strategy (AI Down → System Still Works)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                      DECISION FLOW                                   │
+│                                                                      │
+│   Is AI_ENABLED=true?                                                │
+│   ├── NO  → Use heuristic scoring only (existing logic). Done.       │
+│   └── YES → Try AI chain:                                            │
+│             ├── Success (< 15s) → Merge AI assessment with heuristic │
+│             │                     Store both. Show both on dashboard. │
+│             ├── Timeout (> 15s) → Use heuristic only for now.        │
+│             │                     Queue AI job for retry (3 attempts) │
+│             │                     Dashboard shows "AI: pending..."    │
+│             └── Error/Rate Limit → Use heuristic only.               │
+│                                    Log error. Increment metrics.      │
+│                                    Dashboard shows "AI: unavailable"  │
+│                                                                      │
+│   THE SYSTEM NEVER BLOCKS ON AI. HEURISTICS ARE THE FAST PATH.      │
+│   AI IS AN ASYNCHRONOUS ENRICHMENT LAYER.                            │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Enterprise Dashboard Architecture
+
+### Design Philosophy
+
+This is NOT a plain text dashboard showing numbers in tables. This is an **operational command center** that a fleet manager uses 8 hours a day. Every pixel must earn its place.
+
+**Design references:**
+- Stripe Dashboard (clean hierarchy, excellent data density)
+- Linear (keyboard-first, smooth animations, dark mode)
+- Vercel Dashboard (real-time updates, status indicators)
+- Datadog (operational dashboards, live charts, alerting UX)
+
+### UI Stack
+
+```
+shadcn/ui                   Component primitives (Button, Card, Dialog, Sheet,
+                            DropdownMenu, Command, Table, Tabs, Badge, Tooltip,
+                            Avatar, ScrollArea, Separator, Skeleton, Toast,
+                            Popover, Select, Checkbox, Switch, Slider, Form...)
+
+Tailwind CSS               Utility-first styling. Dark mode via class strategy.
+                            Custom theme extending shadcn defaults.
+
+Recharts                   Charts: LineChart, AreaChart, BarChart, RadarChart,
+                            PieChart, ComposedChart. Custom tooltips, animations.
+
+Framer Motion              Layout animations (list reordering when priority changes),
+                            page transitions, modal enter/exit, card interactions,
+                            number counters (AnimatedNumber component).
+
+react-leaflet              Fleet map (vehicle pins) + depot map (capacity pins).
+                            Custom markers with health-colored badges.
+
+Zustand                    Global state: vehicles, priorityQueue, healthByVehicle,
+                            serviceRequests, alerts, aiAssessments, user, theme.
+                            Updated by SSE events.
+
+TanStack Query             Server data fetching with caching, optimistic mutations,
+                            background refetching, retry, error handling.
+
+React Hook Form + Zod      All forms: service completion, settings, filters,
+                            dispatch confirmation, weight adjustment.
+
+Lucide React               Icons throughout (already in use).
+
+cmdk                       Command palette (Cmd+K) for quick navigation,
+                            vehicle search, action triggering.
+
+Sonner                     Toast notifications (beautiful, stackable, dismissable).
+
+nuqs                       URL query state (filters, sort, pagination in URL —
+                            shareable, bookmarkable dashboard views).
+```
+
+### Color System & Theme
+
+```css
+/* Light mode */
+--background:    hsl(0 0% 100%)        /* White */
+--foreground:    hsl(224 71% 4%)        /* Near-black */
+--card:          hsl(0 0% 100%)
+--muted:         hsl(220 14% 96%)
+--accent:        hsl(249 76% 67%)       /* Indigo — primary brand */
+
+/* Status colors (semantic) */
+--healthy:       hsl(160 60% 45%)       /* Teal-green */
+--watch:         hsl(38 92% 50%)        /* Amber */
+--critical:      hsl(346 77% 50%)       /* Rose-red */
+--info:          hsl(217 91% 60%)       /* Blue */
+
+/* AI accent */
+--ai-glow:       hsl(270 76% 60%)       /* Purple — used for AI badges, borders */
+--ai-muted:      hsl(270 76% 60% / 0.08)
+
+/* Dark mode */
+--background:    hsl(224 71% 4%)        /* Near-black */
+--foreground:    hsl(213 31% 91%)       /* Light gray */
+--card:          hsl(224 50% 8%)        /* Slightly lighter than bg */
+--muted:         hsl(223 47% 11%)
+```
+
+### Page-by-Page Design Specification
+
+---
+
+#### 1. `/login` — Authentication Page
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│                    ┌──────────────────────┐                     │
+│                    │                      │                     │
+│                    │   ⬡ kazindustries    │                     │
+│                    │                      │                     │
+│                    │  ┌────────────────┐  │                     │
+│                    │  │ Email          │  │                     │
+│                    │  └────────────────┘  │                     │
+│                    │  ┌────────────────┐  │                     │
+│                    │  │ Password       │  │                     │
+│                    │  └────────────────┘  │                     │
+│                    │                      │                     │
+│                    │  ┌────────────────┐  │                     │
+│                    │  │  Sign in    →  │  │                     │
+│                    │  └────────────────┘  │                     │
+│                    │                      │                     │
+│                    │  ── or continue ──   │                     │
+│                    │                      │                     │
+│                    │  [ Azure AD SSO ]    │                     │
+│                    │                      │                     │
+│                    └──────────────────────┘                     │
+│                                                                 │
+│    Background: subtle animated grid pattern (CSS only)          │
+│    Card: glassmorphism with subtle border glow                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 2. `/` — Fleet Command Center (Overview)
+
+This is the "home base" — the screen the fleet manager sees first thing in the morning.
+
+```
+┌──────┬──────────────────────────────────────────────────────────────────┐
+│      │  ⬡ kazindustries            [Cmd+K Search]  🔔 3  [Avatar ▾]   │
+│      ├──────────────────────────────────────────────────────────────────┤
+│  S   │                                                                  │
+│  I   │  FLEET COMMAND CENTER                              ☀️/🌙 Toggle  │
+│  D   │                                                                  │
+│  E   │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
+│  B   │  │ 96         │ │ 12         │ │ 87.2%      │ │ 68%        │   │
+│  A   │  │ vehicles   │ │ need       │ │ first-time │ │ bay        │   │
+│  R   │  │ monitored  │ │ service ▲3 │ │ fix rate ▲ │ │ util.  ▼2% │   │
+│      │  │ ●●● trend  │ │ ●●● trend  │ │ ●●● trend  │ │ ●●● trend  │   │
+│  ┌─┐ │  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
+│  │◆│ │                                                                  │
+│  │ │ │  ┌──────────────────────────────────┬───────────────────────┐   │
+│  │O│ │  │                                  │  PRIORITY QUEUE       │   │
+│  │v│ │  │     FLEET MAP                    │  (top 10)             │   │
+│  │e│ │  │                                  │                       │   │
+│  │r│ │  │  [Leaflet map with vehicle       │  1. VEH-042 ●crit    │   │
+│  │v│ │  │   pins colored by health         │     Cooling 52.3     │   │
+│  │i│ │  │   status: green/amber/red.       │     🤖 "Urgent"      │   │
+│  │e│ │  │   Depot pins with capacity       │     [Dispatch →]     │   │
+│  │w│ │  │   badges. Click pin = popover    │                       │   │
+│  │ │ │  │   with vehicle/depot summary]    │  2. VEH-017 ●crit    │   │
+│  │ │ │  │                                  │     Brakes 48.7      │   │
+│  │T│ │  │  Zoom: India map, centered       │     🤖 "Emergency"   │   │
+│  │r│ │  │  on fleet distribution           │     [Dispatch →]     │   │
+│  │i│ │  │                                  │                       │   │
+│  │a│ │  │  Cluster view at low zoom,       │  3. VEH-091 ●watch   │   │
+│  │g│ │  │  individual pins at high zoom    │     Turbo 61.2       │   │
+│  │e│ │  │                                  │     🤖 "Elevated"    │   │
+│  │ │ │  │                                  │     [Dispatch →]     │   │
+│  │W│ │  └──────────────────────────────────┤                       │   │
+│  │o│ │                                     │  ...                  │   │
+│  │r│ │  ┌───────────────┬──────────────┐  │                       │   │
+│  │k│ │  │ HEALTH        │ ACTIVE       │  │  [View full queue →]  │   │
+│  │f│ │  │ DISTRIBUTION  │ ALERTS       │  └───────────────────────┘   │
+│  │l│ │  │               │              │                               │
+│  │o│ │  │ [Donut chart] │ ⚠ VEH-042   │  ┌───────────────────────┐   │
+│  │w│ │  │               │   cooling    │  │ AI ESCALATIONS        │   │
+│  │ │ │  │  72 Healthy   │   spike      │  │                       │   │
+│  │ │ │  │  16 Watch     │              │  │ 🔴 Batch pattern:     │   │
+│  │D│ │  │   8 Critical  │ ⚠ VEH-017   │  │   3× BATCH-24Q2      │   │
+│  │e│ │  │               │   brake      │  │   turbo degradation   │   │
+│  │p│ │  │               │   wear       │  │   [Investigate →]     │   │
+│  │o│ │  │               │              │  │                       │   │
+│  │t│ │  │               │ ● VEH-008   │  │ 🟡 Capacity crunch:   │   │
+│  │s│ │  │               │   exhaust    │  │   Pune depot at 90%   │   │
+│  │ │ │  │               │   temp       │  │   utilization          │   │
+│  │A│ │  │               │              │  │   [View depot →]      │   │
+│  │l│ │  │               │ [View all →] │  │                       │   │
+│  │e│ │  └───────────────┴──────────────┘  └───────────────────────┘   │
+│  │r│ │                                                                  │
+│  │t│ │  ┌─────────────────────────────────────────────────────────┐   │
+│  │s│ │  │ LIVE ACTIVITY FEED                                 ● Live│   │
+│  │ │ │  │                                                         │   │
+│  │ │ │  │ 14:23  VEH-042 entered CRITICAL status (cooling: 52.3) │   │
+│  │I│ │  │ 14:21  Service REQ-047 completed. VEH-031 health → 94  │   │
+│  │n│ │  │ 14:18  Telemetry pulse. 3 vehicles re-ranked.          │   │
+│  │t│ │  │ 14:15  VEH-017 dispatch to Pune depot (AI recommended) │   │
+│  │e│ │  │                                                         │   │
+│  │l│ │  └─────────────────────────────────────────────────────────┘   │
+│  └─┘ │                                                                  │
+└──────┴──────────────────────────────────────────────────────────────────┘
+
+SIDEBAR NAVIGATION (left, collapsible):
+  ◆ Command Center          (/ — this page)
+  ⊘ Triage Queue            (/triage)
+  ⇢ AI Dispatch             (/dispatch)
+  ≡ Workflow Board          (/workflow)
+  ⊞ Depot Network           (/depots)
+  ⊕ Technicians             (/technicians)
+  ◈ Decision Intelligence   (/intelligence)
+  △ Alerts                  (/alerts)
+  ─── separator ───
+  ⊙ Settings                (/settings)
+```
+
+**Interactive behaviors:**
+- **Map pins** — hover shows tooltip with vehicle ID + health. Click opens a Sheet (shadcn/ui) with full vehicle detail
+- **Priority queue cards** — each card has a subtle left border colored by health status. AI assessment badge (purple glow) shows urgency with a one-line summary. "Dispatch" button opens the AI dispatch interface
+- **Metric cards** — each has a sparkline trend (last 24h) using Recharts mini `AreaChart`. The delta (▲3, ▼2%) uses Framer Motion `AnimatePresence` to animate number changes
+- **Health donut** — Recharts `PieChart` with animated segments. Click a segment to filter the map to only those vehicles
+- **Alert feed** — auto-scrolls with new items animating in from the top (Framer Motion `AnimatePresence`). Each alert is clickable → navigates to vehicle detail
+- **AI escalation cards** — purple border/glow (the AI accent). Each has a clear call-to-action button
+- **Live pulse** — green dot pulses when SSE is connected. Red dot + "Reconnecting..." when disconnected
+
+---
+
+#### 3. `/triage` — AI Priority Queue
+
+The main operational view. Where the fleet manager decides what to act on.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  TRIAGE QUEUE                                    [Filters ▾] [Search]   │
+│                                                                          │
+│  ┌─ BULK ACTIONS ──────────────────────────────────────────────────┐    │
+│  │ □ Select all    [Batch Dispatch]  [Export CSV]  96 vehicles     │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌─ TABLE ─────────────────────────────────────────────────────────┐    │
+│  │ # │ Vehicle   │ Health │ Score │ Status  │ AI Assessment │ Act. │    │
+│  │───┼───────────┼────────┼───────┼─────────┼───────────────┼──────│    │
+│  │ 1 │ VEH-042   │  52.3  │ 82.1  │●CRITICAL│ 🔴 Urgent     │ [⇢] │    │
+│  │   │ RidgeRun. │ ▼10.2  │ ▲30.0 │ cooling │ Recurring     │      │    │
+│  │   │ Pune C-2  │        │       │         │ cooling issue  │      │    │
+│  │───┼───────────┼────────┼───────┼─────────┼───────────────┼──────│    │
+│  │ 2 │ VEH-017   │  48.7  │ 79.3  │●CRITICAL│ 🔴 Emergency  │ [⇢] │    │
+│  │   │ CargoMax  │ ▼5.8   │ ▲12.4 │ brakes  │ Safety-crit.  │      │    │
+│  │   │ Delhi C-1 │        │       │         │ brake wear     │      │    │
+│  │───┼───────────┼────────┼───────┼─────────┼───────────────┼──────│    │
+│  │ 3 │ VEH-091   │  61.2  │ 68.5  │●WATCH   │ 🟡 Elevated   │ [⇢] │    │
+│  │   │ Atlas H.  │ ▼3.1   │ ▲8.2  │ turbo   │ Boost trend   │      │    │
+│  │   │ Jaipur C3 │        │       │         │ declining      │      │    │
+│  │───┼───────────┼────────┼───────┼─────────┼───────────────┼──────│    │
+│  │   │ ...       │        │       │         │               │      │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌─ EXPANDED ROW (click a row to expand) ─────────────────────────┐    │
+│  │                                                                 │    │
+│  │  VEH-042 — RidgeRunner — Pune Corridor 2                       │    │
+│  │                                                                 │    │
+│  │  ┌─────────────────┐  ┌──────────────────────────────────────┐ │    │
+│  │  │ SUBSYSTEM RADAR │  │ HEURISTIC BREAKDOWN                  │ │    │
+│  │  │                 │  │                                      │ │    │
+│  │  │   [RadarChart   │  │  Safety urgency    ████████░░  72.4  │ │    │
+│  │  │    showing all  │  │  Failure proximity ██████████  91.2  │ │    │
+│  │  │    8 subsystems │  │  Business impact   ██████░░░░  58.3  │ │    │
+│  │  │    with current │  │  Downtime cost     ████████░░  68.7  │ │    │
+│  │  │    health as    │  │  Service window    ███░░░░░░░  32.1  │ │    │
+│  │  │    filled area  │  │                                      │ │    │
+│  │  │    and baseline │  │  Heuristic score: 78.4               │ │    │
+│  │  │    as outline]  │  │  AI adjusted:     82.1 (▲ 3.7)      │ │    │
+│  │  └─────────────────┘  └──────────────────────────────────────┘ │    │
+│  │                                                                 │    │
+│  │  ┌─ AI REASONING ─────────────────────────────── 🤖 Kimi-K2.5 ┐ │  │
+│  │  │                                                              │ │  │
+│  │  │  "This vehicle should be ESCALATED from score 78.4 to 82.1. │ │  │
+│  │  │                                                              │ │  │
+│  │  │  Risk factors identified:                                    │ │  │
+│  │  │  • Coolant temp spiked to 104°C — 12°C above threshold.     │ │  │
+│  │  │    This is a 3.2σ deviation from this vehicle's 30-day avg. │ │  │
+│  │  │  • Service history shows a cooling intervention 45 days ago  │ │  │
+│  │  │    (REQ-031, Pune depot, Tech Rajesh K). The repair may not  │ │  │
+│  │  │    have addressed the root cause — this looks like a         │ │  │
+│  │  │    recurring failure pattern.                                 │ │  │
+│  │  │  • This vehicle operates on Pune Corridor 2, which has 14%   │ │  │
+│  │  │    higher ambient temperatures than fleet average.            │ │  │
+│  │  │                                                              │ │  │
+│  │  │  Recommendation: Immediate dispatch to Pune depot for        │ │  │
+│  │  │  extended cooling system diagnostics. Do NOT assign same     │ │  │
+│  │  │  technician as last time — consider Mira Rao for fresh       │ │  │
+│  │  │  diagnostic perspective."                                    │ │  │
+│  │  │                                                              │ │  │
+│  │  │  Confidence: 87%          Tokens used: 1,847                 │ │  │
+│  │  └──────────────────────────────────────────────────────────────┘ │  │
+│  │                                                                 │    │
+│  │  ┌────────────────────────┐  ┌────────────────────────┐        │    │
+│  │  │ 🤖 AI Dispatch         │  │ ⚡ Quick Dispatch       │        │    │
+│  │  │    (full agent run)    │  │    (heuristic only)    │        │    │
+│  │  └────────────────────────┘  └────────────────────────┘        │    │
+│  │                                                                 │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key interactions:**
+- **Row click** → expands with Framer Motion `AnimatePresence` height animation
+- **AI Reasoning panel** — purple gradient border (subtle glow), `🤖 Kimi-K2.5` badge
+- **AI Dispatch button** — opens full-screen dispatch interface (see `/dispatch` page)
+- **Quick Dispatch** — uses heuristic-only matching, instant, no AI wait
+- **Table sorting** — click column headers. Sort animation on rows (Framer Motion `layoutId`)
+- **Filters** — shadcn/ui `Popover` with checkboxes: status (healthy/watch/critical), region, depot, subsystem
+- **Search** — instant filter by vehicle ID, VIN, model, route name
+- **Keyboard** — J/K to navigate rows, Enter to expand, D to dispatch, Esc to collapse
+
+---
+
+#### 4. `/dispatch` — AI Dispatch Agent Interface
+
+This is the star feature. A full-screen interface where the AI agent runs a multi-step dispatch decision.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  AI DISPATCH — VEH-042                              [Cancel]  [Accept]  │
+│                                                                          │
+│  ┌─ AGENT TRACE (live streaming) ──────────────────────────────────┐    │
+│  │                                                                  │    │
+│  │  🤖 Starting dispatch analysis for VEH-042...                    │    │
+│  │                                                                  │    │
+│  │  Step 1: Fetching vehicle data                          ✓ 0.3s  │    │
+│  │  → RidgeRunner, Pune Corridor 2, cooling subsystem critical     │    │
+│  │                                                                  │    │
+│  │  Step 2: Checking service history                       ✓ 0.4s  │    │
+│  │  → Found prior cooling repair 45 days ago (REQ-031)             │    │
+│  │  → Same DTC code P0217 — this is a RECURRING issue              │    │
+│  │                                                                  │    │
+│  │  Step 3: Evaluating Pune Response Hub                   ✓ 0.2s  │    │
+│  │  → 3/10 bays open, cooling specialty ✓, COOL-SENS-15 in stock  │    │
+│  │                                                                  │    │
+│  │  Step 4: Evaluating Bengaluru Response Hub              ✓ 0.2s  │    │
+│  │  → 5/12 bays open, cooling specialty ✓, but 487km away         │    │
+│  │                                                                  │    │
+│  │  Step 5: Checking technician availability at Pune       ✓ 0.3s  │    │
+│  │  → Mira Rao: cooling certified, 92% FTF, 1/5 workload ✓       │    │
+│  │  → Rajesh K: cooling certified, 94% FTF, BUT handled prior     │    │
+│  │    repair that may have missed root cause — SKIPPING            │    │
+│  │                                                                  │    │
+│  │  Step 6: Searching similar past cases                   ✓ 0.5s  │    │
+│  │  → 3 similar P0217 recurrences found in fleet history           │    │
+│  │  → 2 of 3 were resolved by replacing coolant pump (not sensor)  │    │
+│  │                                                                  │    │
+│  │  Step 7: Generating dispatch plan                       ✓ 1.2s  │    │
+│  │                                                                  │    │
+│  │  Total: 7 steps, 3.1 seconds, 2,341 tokens              ● Done │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌─ DISPATCH PLAN ─────────────────────────────────────────────────┐    │
+│  │                                                                  │    │
+│  │  📍 DEPOT: Pune Response Hub                                     │    │
+│  │     42km away • 3 open bays • cooling specialty                 │    │
+│  │     ETA: 1.1 hours                                               │    │
+│  │                                                                  │    │
+│  │  👤 TECHNICIAN: Mira Rao                                         │    │
+│  │     Cooling certified • 92% first-time-fix • 1/5 workload      │    │
+│  │     "Assigned instead of Rajesh K (prior repair may have        │    │
+│  │      missed root cause — fresh perspective recommended)"         │    │
+│  │                                                                  │    │
+│  │  🔧 PARTS TO STAGE:                                              │    │
+│  │     ✓ COOL-SENS-15  Coolant temperature sensor    (in stock: 4) │    │
+│  │     ✓ COOL-PUMP-04  Coolant circulation pump      (in stock: 2) │    │
+│  │     ⚠ Note: "Similar cases suggest pump replacement, not just   │    │
+│  │        sensor. Stage both parts."                                │    │
+│  │                                                                  │    │
+│  │  ⏱ ESTIMATED: 4.5 hours repair time • ₹12,400 total cost        │    │
+│  │                                                                  │    │
+│  │  ⚠ WATCH POINTS:                                                 │    │
+│  │     • Inspect coolant hose from prior repair for micro-cracks   │    │
+│  │     • Check thermostat — may be sticking in hot conditions      │    │
+│  │     • Request extended post-repair monitoring (48h telemetry)    │    │
+│  │                                                                  │    │
+│  │  📋 ALTERNATIVE PLAN:                                             │    │
+│  │     If Pune is at capacity: Nagpur Response Hub (168km,          │    │
+│  │     4.4h ETA, cooling capability, COOL-PUMP-04 needs transfer)  │    │
+│  │                                                                  │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌───────────────────────────────┐  ┌────────────────────────────────┐ │
+│  │  ✓ Accept & Dispatch          │  │  ✏️ Modify & Dispatch          │ │
+│  │    (execute this plan)        │  │    (change depot/tech/parts)   │ │
+│  └───────────────────────────────┘  └────────────────────────────────┘ │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key interactions:**
+- **Agent trace** — streams in real-time as the AI agent calls tools. Each step appears with a typing animation and a spinner that becomes a checkmark when done
+- **Accept & Dispatch** — creates the service request with all pre-filled data. Optimistic UI update. Toast: "VEH-042 dispatched to Pune Response Hub"
+- **Modify & Dispatch** — opens a Sheet (shadcn/ui) where the user can change depot, technician, or parts before confirming
+- **The entire trace is stored** in `decision_logs` for audit and RL training
+
+---
+
+#### 5. `/workflow` — Service Workflow Kanban Board
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  SERVICE WORKFLOW                        [Calendar view] [List view]    │
+│                                                                          │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐    │
+│  │DETECTED 2│ │ASSIGNED 4│ │PARTS     │ │SCHEDULED │ │IN PROG.  │    │
+│  │          │ │          │ │CONFIRMED │ │    3     │ │    2     │    │
+│  │ ┌──────┐ │ │ ┌──────┐ │ │    1     │ │ ┌──────┐ │ │ ┌──────┐ │    │
+│  │ │REQ-  │ │ │ │REQ-  │ │ │ ┌──────┐ │ │ │REQ-  │ │ │ │REQ-  │ │    │
+│  │ │052   │ │ │ │049   │ │ │ │REQ-  │ │ │ │045   │ │ │ │041   │ │    │
+│  │ │VEH042│ │ │ │VEH017│ │ │ │048   │ │ │ │VEH008│ │ │ │VEH023│ │    │
+│  │ │●crit │ │ │ │●crit │ │ │ │VEH091│ │ │ │●watch│ │ │ │●watch│ │    │
+│  │ │cool. │ │ │ │brake │ │ │ │●watch│ │ │ │exh.  │ │ │ │turbo │ │    │
+│  │ │      │ │ │ │      │ │ │ │turbo │ │ │ │      │ │ │ │      │ │    │
+│  │ │[Adv.]│ │ │ │[Adv.]│ │ │ │      │ │ │ │[Adv.]│ │ │ │[Done]│ │    │
+│  │ └──────┘ │ │ └──────┘ │ │ │[Adv.]│ │ │ └──────┘ │ │ └──────┘ │    │
+│  │          │ │          │ │ └──────┘ │ │          │ │          │    │
+│  │ ┌──────┐ │ │ ┌──────┐ │ │          │ │ ┌──────┐ │ │ ┌──────┐ │    │
+│  │ │REQ-  │ │ │ │REQ-  │ │ │          │ │ │REQ-  │ │ │ │REQ-  │ │    │
+│  │ │053   │ │ │ │050   │ │ │          │ │ │046   │ │ │ │042   │ │    │
+│  │ └──────┘ │ │ └──────┘ │ │          │ │ └──────┘ │ │ └──────┘ │    │
+│  │          │ │          │ │          │ │          │ │          │    │
+│  │          │ │ ┌──────┐ │ │          │ │ ┌──────┐ │ │          │    │
+│  │          │ │ │REQ-  │ │ │          │ │ │REQ-  │ │ │          │    │
+│  │          │ │ │051   │ │ │          │ │ │047   │ │ │          │    │
+│  │          │ │ └──────┘ │ │          │ │ └──────┘ │ │          │    │
+│  │          │ │          │ │          │ │          │ │          │    │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘    │
+│                                                                          │
+│  Each card: click to open detail Sheet with full timeline,              │
+│  AI dispatch reasoning, assigned depot/tech, parts list.                │
+│                                                                          │
+│  "Done" button opens COMPLETION FORM (feeds RL loop).                   │
+│  "Advance" button moves card to next column with animation.             │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Completion Form** (opens when "Complete" is clicked):
+
+```
+┌─ COMPLETE SERVICE — REQ-041 ────────────────────────────────────┐
+│                                                                  │
+│  What was actually wrong?                                        │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ [Dropdown: subsystem + free text]                        │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  Was the initial diagnosis correct?    ○ Yes  ○ Partially  ○ No │
+│                                                                  │
+│  Parts actually used:                                            │
+│  ☑ TRB-KIT-88  Turbocharger repair kit                          │
+│  ☐ TRB-HOSE-14 Boost hose replacement set                      │
+│  ☑ [+ Add part]                                                  │
+│                                                                  │
+│  Actual repair time:   [  3.5  ] hours                           │
+│                                                                  │
+│  First-time fix?       ○ Yes  ○ No (requires return visit)      │
+│                                                                  │
+│  Was this the right depot?    ★★★★☆                              │
+│  Was this the right tech?     ★★★★★                              │
+│  Was the priority correct?    ★★★★☆                              │
+│                                                                  │
+│  Technician notes:                                               │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ Turbo wastegate actuator was sticking. Replaced kit.     │   │
+│  │ Also found minor boost hose wear — recommend monitoring. │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  ┌──────────────────────┐                                       │
+│  │  ✓ Complete Service   │                                       │
+│  └──────────────────────┘                                       │
+│                                                                  │
+│  This data feeds the reinforcement learning loop.                │
+│  Better data = smarter AI decisions over time.                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6. `/intelligence` — Decision Intelligence Dashboard
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  DECISION INTELLIGENCE                              [Last 30 days ▾]    │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐     │
+│  │                   DECISION QUALITY TREND                       │     │
+│  │                                                                │     │
+│  │  100% ─┐                                                      │     │
+│  │        │                                    ╱──── AI+Heuristic │     │
+│  │   80% ─┤                              ╱───╱                   │     │
+│  │        │                         ╱───╱                         │     │
+│  │   60% ─┤                    ╱───╱                              │     │
+│  │        │               ╱───╱                                   │     │
+│  │   40% ─┤          ╱───╱ ─────────── Heuristic Only             │     │
+│  │        │     ╱───╱                                             │     │
+│  │   20% ─┤╱───╱                                                  │     │
+│  │        └────┬────┬────┬────┬────┬────┬────┬────                │     │
+│  │           Week 1    Week 2    Week 3    Week 4                 │     │
+│  │                                                                │     │
+│  │  The AI+Heuristic line should diverge upward from heuristic   │     │
+│  │  only as the system learns from completed service outcomes.    │     │
+│  └────────────────────────────────────────────────────────────────┘     │
+│                                                                          │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────────┐     │
+│  │ Priority    │ │ Depot Match │ │ Tech Assign  │ │ Human        │     │
+│  │ Accuracy    │ │ Score       │ │ Score        │ │ Override     │     │
+│  │             │ │             │ │              │ │ Rate         │     │
+│  │   78% ▲    │ │   82% ▲    │ │   75% ▲     │ │   12% ▼     │     │
+│  │   ●●● trend│ │   ●●● trend│ │   ●●● trend │ │   ●●● trend │     │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────────┘     │
+│                                                                          │
+│  ┌──────────────────────────────────┬─────────────────────────────┐     │
+│  │ BEST DECISIONS                   │ WORST DECISIONS              │     │
+│  │ (highest reward scores)          │ (lowest reward scores)       │     │
+│  │                                  │                              │     │
+│  │ 1. REQ-031: VEH-008 exhaust     │ 1. REQ-027: VEH-055 engine  │     │
+│  │    AI predicted 4.2h, actual 4h  │    Wrong depot — no parts   │     │
+│  │    First-time fix ✓              │    Required transfer → 2d   │     │
+│  │    Reward: 0.94                  │    Reward: 0.31             │     │
+│  │    [View decision chain →]       │    [View decision chain →]  │     │
+│  │                                  │                              │     │
+│  │ 2. REQ-035: VEH-012 turbo       │ 2. REQ-029: VEH-067 brakes  │     │
+│  │    AI escalated correctly — the  │    Over-prioritized. Vehicle │     │
+│  │    heuristic had it at #18,      │    was routine maintenance,  │     │
+│  │    AI moved it to #4. Prevented  │    not urgent. Wasted depot  │     │
+│  │    roadside breakdown.           │    capacity.                 │     │
+│  │    Reward: 0.91                  │    Reward: 0.38             │     │
+│  │    [View decision chain →]       │    [View decision chain →]  │     │
+│  └──────────────────────────────────┴─────────────────────────────┘     │
+│                                                                          │
+│  ┌─ CONFIDENCE CALIBRATION ───────────────────────────────────────┐     │
+│  │                                                                 │     │
+│  │  When AI says 90% confident, is it right 90% of the time?      │     │
+│  │                                                                 │     │
+│  │  [Calibration plot: predicted probability vs actual frequency]  │     │
+│  │                                                                 │     │
+│  │  Perfect calibration = diagonal line.                           │     │
+│  │  Above diagonal = overconfident. Below = underconfident.        │     │
+│  └─────────────────────────────────────────────────────────────────┘     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Component Library (shadcn/ui + Custom)
+
+```
+apps/web/
+├── app/
+│   ├── layout.tsx                      # Root layout: ThemeProvider, Toaster, QueryClientProvider
+│   ├── (auth)/
+│   │   └── login/page.tsx              # Login page
+│   ├── (dashboard)/
+│   │   ├── layout.tsx                  # Dashboard layout: Sidebar + TopBar + CommandPalette
+│   │   ├── page.tsx                    # Fleet Command Center
+│   │   ├── triage/
+│   │   │   ├── page.tsx               # AI Priority Queue
+│   │   │   └── [vehicleId]/page.tsx   # Vehicle Deep Dive
+│   │   ├── dispatch/page.tsx          # AI Dispatch Agent Interface
+│   │   ├── workflow/page.tsx          # Service Kanban Board
+│   │   ├── depots/
+│   │   │   ├── page.tsx               # Depot Network Map + List
+│   │   │   └── [depotId]/page.tsx     # Depot Detail
+│   │   ├── technicians/page.tsx       # Technician Roster
+│   │   ├── intelligence/page.tsx      # Decision Intelligence Dashboard
+│   │   ├── alerts/page.tsx            # Alert Feed + Escalations
+│   │   └── settings/page.tsx          # Settings
+│   └── globals.css                    # Tailwind base + shadcn/ui theme overrides
+│
+├── components/
+│   ├── ui/                            # shadcn/ui primitives (installed via CLI)
+│   │   ├── button.tsx
+│   │   ├── card.tsx
+│   │   ├── dialog.tsx
+│   │   ├── sheet.tsx
+│   │   ├── dropdown-menu.tsx
+│   │   ├── command.tsx                # Cmd+K command palette
+│   │   ├── table.tsx
+│   │   ├── tabs.tsx
+│   │   ├── badge.tsx
+│   │   ├── tooltip.tsx
+│   │   ├── avatar.tsx
+│   │   ├── scroll-area.tsx
+│   │   ├── separator.tsx
+│   │   ├── skeleton.tsx
+│   │   ├── popover.tsx
+│   │   ├── select.tsx
+│   │   ├── checkbox.tsx
+│   │   ├── switch.tsx
+│   │   ├── slider.tsx
+│   │   ├── form.tsx
+│   │   ├── input.tsx
+│   │   ├── textarea.tsx
+│   │   ├── label.tsx
+│   │   ├── progress.tsx
+│   │   ├── sonner.tsx                 # Toast notifications
+│   │   └── ... (more as needed)
+│   │
+│   ├── layout/
+│   │   ├── sidebar.tsx                # Collapsible sidebar with nav items + footer
+│   │   ├── top-bar.tsx                # Search, notifications bell, user avatar menu
+│   │   ├── command-palette.tsx        # Cmd+K global search + actions
+│   │   └── theme-toggle.tsx           # Dark/light mode switch
+│   │
+│   ├── fleet/
+│   │   ├── fleet-map.tsx              # Leaflet map with vehicle + depot pins
+│   │   ├── vehicle-pin.tsx            # Custom map marker (health-colored circle)
+│   │   ├── depot-pin.tsx              # Custom map marker (capacity badge)
+│   │   ├── health-donut.tsx           # Recharts PieChart (healthy/watch/critical)
+│   │   ├── metric-card.tsx            # Stat card with sparkline + trend delta
+│   │   └── animated-number.tsx        # Framer Motion number counter animation
+│   │
+│   ├── triage/
+│   │   ├── priority-table.tsx         # Sortable, filterable vehicle table
+│   │   ├── priority-row.tsx           # Expandable row with radar chart + AI panel
+│   │   ├── subsystem-radar.tsx        # Recharts RadarChart (8 subsystems)
+│   │   ├── heuristic-breakdown.tsx    # Horizontal bar breakdown (5 factors)
+│   │   ├── ai-reasoning-panel.tsx     # Purple-bordered AI explanation panel
+│   │   ├── ai-badge.tsx               # AI urgency badge (🔴🟡🟢 + label)
+│   │   └── signal-sparklines.tsx      # Mini line charts for recent signal values
+│   │
+│   ├── dispatch/
+│   │   ├── dispatch-agent.tsx         # Full AI dispatch interface
+│   │   ├── agent-trace.tsx            # Step-by-step streaming trace display
+│   │   ├── dispatch-plan-card.tsx     # Formatted dispatch plan output
+│   │   ├── plan-modifier-sheet.tsx    # Sheet to modify depot/tech/parts before confirm
+│   │   └── dispatch-confirm-dialog.tsx # Final confirmation dialog
+│   │
+│   ├── workflow/
+│   │   ├── kanban-board.tsx           # Kanban columns by service status
+│   │   ├── kanban-card.tsx            # Service request card (draggable)
+│   │   ├── service-detail-sheet.tsx   # Full service request detail
+│   │   ├── completion-form.tsx        # Structured outcome recording form (feeds RL)
+│   │   └── timeline.tsx              # Service request timeline (vertical steps)
+│   │
+│   ├── depot/
+│   │   ├── depot-network-map.tsx      # Map with capacity-colored depot pins
+│   │   ├── depot-card.tsx             # Depot summary card
+│   │   ├── bay-gauge.tsx              # Capacity gauge (circular progress)
+│   │   ├── depot-detail.tsx           # Full depot detail view
+│   │   └── inventory-table.tsx        # Parts inventory per depot
+│   │
+│   ├── intelligence/
+│   │   ├── quality-trend-chart.tsx    # Line chart: reward score over time
+│   │   ├── ai-vs-heuristic.tsx        # Comparison chart
+│   │   ├── override-analytics.tsx     # Human override rate + analysis
+│   │   ├── calibration-plot.tsx       # Predicted vs actual probability
+│   │   ├── best-worst-decisions.tsx   # Top/bottom decision cards with drill-down
+│   │   └── learning-velocity.tsx      # How fast is the system improving
+│   │
+│   ├── alerts/
+│   │   ├── alert-feed.tsx             # Scrollable alert list with live updates
+│   │   ├── alert-card.tsx             # Individual alert with severity styling
+│   │   ├── escalation-card.tsx        # AI escalation with purple glow
+│   │   └── notification-bell.tsx      # Header bell with badge count
+│   │
+│   └── shared/
+│       ├── status-dot.tsx             # Colored dot indicator (health status)
+│       ├── health-badge.tsx           # Health score badge (number + color)
+│       ├── subsystem-tag.tsx          # Subsystem label tag
+│       ├── empty-state.tsx            # Illustrated empty state placeholder
+│       ├── loading-skeleton.tsx       # Skeleton loaders for each card type
+│       ├── error-boundary.tsx         # Error boundary with retry button
+│       └── keyboard-shortcuts.tsx     # Global keyboard shortcut handler
+│
+├── hooks/
+│   ├── use-sse.ts                     # SSE connection management + Zustand updates
+│   ├── use-vehicles.ts                # TanStack Query: fetch vehicles
+│   ├── use-priority-queue.ts          # TanStack Query: fetch priority queue
+│   ├── use-service-requests.ts        # TanStack Query + mutations
+│   ├── use-dispatch.ts                # AI dispatch mutation + streaming trace
+│   ├── use-depots.ts                  # TanStack Query: fetch depots
+│   ├── use-technicians.ts             # TanStack Query: fetch technicians
+│   ├── use-keyboard.ts                # Keyboard shortcut registration
+│   └── use-theme.ts                   # Theme toggle (localStorage + class)
+│
+├── stores/
+│   └── dashboard-store.ts             # Zustand store: all real-time state
+│       │
+│       │  State shape:
+│       │  {
+│       │    vehicles: Map<string, VehicleRecord>,
+│       │    priorityQueue: PriorityEntry[],
+│       │    healthByVehicle: Map<string, HealthScore>,
+│       │    aiAssessments: Map<string, AIAssessment>,
+│       │    serviceRequests: ServiceRequest[],
+│       │    alerts: Alert[],
+│       │    escalations: Escalation[],
+│       │    livePulse: LivePulse[],
+│       │    sseConnected: boolean,
+│       │    lastEventAt: string | null,
+│       │  }
+│       │
+│       │  Updated by: SSE events → store.getState().handleEvent(event)
+│       │  Consumed by: React components via useStore(selector)
+│       │
+│       └── Zustand with immer middleware for immutable updates
+│
+├── lib/
+│   ├── api-client.ts                  # Typed fetch wrapper for all API calls
+│   ├── query-client.ts                # TanStack Query client config
+│   ├── format.ts                      # Number/date/duration formatters
+│   └── cn.ts                          # clsx + twMerge utility (shadcn standard)
+│
+├── tailwind.config.ts                 # Tailwind config with shadcn/ui theme
+├── components.json                    # shadcn/ui configuration file
+└── next.config.mjs
+```
+
+---
+
+## Authentication & Authorization
+
+### NextAuth.js (Auth.js v5) Configuration
+
+```typescript
+// apps/web/auth.ts
+import NextAuth from "next-auth"
+import Credentials from "next-auth/providers/credentials"
+import AzureAD from "next-auth/providers/azure-ad"
+import { PrismaAdapter } from "@auth/prisma-adapter"
+import { prisma } from "@kaz/db"
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    Credentials({
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      authorize: async (credentials) => {
+        // Verify against users table (bcrypt hashed passwords)
+        // Return user with role and organizationId
+      },
+    }),
+    AzureAD({
+      clientId: process.env.AZURE_AD_CLIENT_ID,
+      clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
+      tenantId: process.env.AZURE_AD_TENANT_ID,
+    }),
+  ],
+  session: { strategy: "jwt" },
+  callbacks: {
+    jwt({ token, user }) {
+      if (user) {
+        token.role = user.role
+        token.organizationId = user.organizationId
+      }
+      return token
+    },
+    session({ session, token }) {
+      session.user.role = token.role
+      session.user.organizationId = token.organizationId
+      return session
+    },
+  },
+})
+```
+
+### Role-Based Access Control
+
+| Role | See | Do |
+|---|---|---|
+| `platform_admin` | Everything across all orgs | All actions. Manage orgs, users, system settings |
+| `fleet_manager` | All vehicles, depots, service requests in their org | Dispatch, approve assignments, view AI insights, manage weights |
+| `depot_manager` | Vehicles assigned to their depot, their depot's data | Accept/reject assignments, advance workflow, complete services |
+| `technician` | Only their assigned work | View assignment details, mark work steps, record completion |
+| `viewer` | Dashboards, read-only | No actions. Useful for executives, analysts |
+
+### API Key Authentication (for OEM adapters and webhooks)
+
+```
+POST /api/v1/ingest/signals
+Authorization: Bearer kaz_live_xxxxxxxxxxxxxxxxxxxx
+
+Each API key is scoped to:
+  - organizationId (tenant isolation)
+  - allowedEndpoints (e.g., only ingest/*)
+  - rateLimit (requests per minute)
+  - expiresAt (optional expiration)
+```
+
+---
+
+## Phase-by-Phase Build Plan
+
+### Phase Overview
+
+| Phase | Focus | Duration | Key Deliverable |
+|---|---|---|---|
+| **Phase 1** | Docker + Database + Repository Layer | 1–2 weeks | In-memory → persistent PostgreSQL + Redis |
+| **Phase 2** | Real Worker + Simulator Pipeline | 1–2 weeks | Stub apps → real streaming BullMQ pipeline |
+| **Phase 3** | AI Decision Engine (LangChain + Kimi-K2.5) | 2–3 weeks | Heuristic → AI-augmented decisions with tool-calling agent |
+| **Phase 4** | Reinforcement Learning Feedback Loop | 2–3 weeks | Static weights → self-improving decisions from outcomes |
+| **Phase 5** | Enterprise Dashboard (shadcn/ui + Tailwind) | 2–3 weeks | Single-file demo → full enterprise command center |
+| **Phase 6** | Auth + Multi-Tenancy + Testing | 1–2 weeks | Open access → production-grade security + 80%+ test coverage |
+| **Phase 7** | Cloud Deployment + CI/CD | 1–2 weeks | Local Docker → Azure AKS production |
+
+**Total: 10–16 weeks to production-ready Service Orchestration**
+
+---
+
+### PHASE 1: Docker + Database + Repository Layer
+
+**Duration:** 1–2 weeks
+
+**Goal:** Replace `DemoStore` (in-memory) with real PostgreSQL + TimescaleDB + Redis, all running in Docker Compose.
+
+#### Sub-phase 1.1 — Docker Compose Local Stack
 
 **Build:**
 
-**Signal normalization engine** (`@kaz/signal-trust`):
+```yaml
+# infra/docker/docker-compose.yml
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: kazindustries
+      POSTGRES_USER: kaz
+      POSTGRES_PASSWORD: kaz_local_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kaz -d kazindustries"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-- Unit conversion and range validation
-- Missing data detection and interpolation strategies
-- Signal quality scoring per vehicle (completeness, freshness, consistency)
-- Outlier detection and flagging (statistical z-score + domain rules)
-- Signal freshness tracking (stale data alerts)
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redisdata:/var/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-**DTC mapping engine** (`@kaz/dtc-registry`):
+volumes:
+  pgdata:
+  redisdata:
+```
 
-- ISO 15031 DTC parser (P/B/C/U codes)
-- OEM-specific DTC extension support
-- DTC-to-subsystem mapping (engine, transmission, brakes, electrical, exhaust, etc.)
-- DTC severity classification: informational / warning / critical / safety
-- Known cause/remedy lookup table
-- DTC relationship mapping (which DTCs commonly appear together)
+- Script: `pnpm infra:up` → `docker compose -f infra/docker/docker-compose.yml up -d`
+- Script: `pnpm infra:down` → stop everything
+- `.env.local` template with all connection strings
 
-**VIN decoder:**
+**Demo:** `pnpm infra:up` brings up PG + Redis. `psql` connects. `redis-cli ping` returns PONG.
 
-- WMI (World Manufacturer Identifier) parsing -> manufacturer
-- VDS (Vehicle Descriptor Section) -> model, engine, body type
-- VIS (Vehicle Identifier Section) -> year, plant, serial
-- Build number and software version linking
+#### Sub-phase 1.2 — Prisma Schema + Migrations
 
-**Alert de-duplication engine:**
+Finalize the Prisma schema for all service orchestration tables:
 
-- Time-window based grouping (same DTC within N minutes = one alert)
-- Same-root-cause clustering (related DTCs grouped into one incident)
-- Escalation rules (DTC fires N times in M hours -> upgrade severity)
-- Alert lifecycle: `NEW -> ACKNOWLEDGED -> INVESTIGATING -> RESOLVED`
+| Table | Key Columns |
+|---|---|
+| `organizations` | id, name, settings (JSONB), created_at |
+| `users` | id, email, password_hash, role, organization_id |
+| `vehicles` | id, vin, make, model, year, region, route, build_batch, software_version, coordinates, depot_affinity_id, organization_id |
+| `depots` | id, name, city, region, coordinates, specialties (SubsystemKey[]), total_bays, occupied_bays, organization_id |
+| `technicians` | id, name, depot_id, certifications (SubsystemKey[]), current_load, max_load, first_time_fix_rate |
+| `parts_catalog` | part_number, name, subsystem, lead_days, price |
+| `depot_inventory` | depot_id, part_number, quantity, reorder_point |
+| `vehicle_faults` | id, vehicle_id, dtc_code, subsystem, severity, title, description, occurred_at, occurrences, active |
+| `service_requests` | id, vehicle_id, priority_score, weakest_subsystem, depot_id, technician_id, required_part_numbers, status, timeline (JSONB), created_at, scheduled_for |
+| `service_history` | id, vehicle_id, depot_id, technician_id, subsystem, outcome, resolved_at, first_time_fix |
+| `decision_logs` | id, decision_type, vehicle_id, input_snapshot (JSONB), heuristic_output (JSONB), ai_output (JSONB), final_decision (JSONB), human_override, override_reason, created_at |
+| `reward_signals` | id, decision_log_id, reward_score, reward_breakdown (JSONB), created_at |
+| `oem_connections` | id, oem_id, connection_type, credentials (encrypted JSONB), signal_mapping (JSONB), organization_id, status |
+| `api_keys` | id, key_hash, organization_id, allowed_endpoints, rate_limit, expires_at, created_at |
+| `suppliers` | id, name, component_types, active_batches |
+| `notification_log` | id, type, payload (JSONB), sent_at |
 
-**Vehicle health score calculator:**
+**TimescaleDB hypertables** (created via raw SQL migration):
 
-- Composite score (0-100) from:
-  - Signal quality weight
-  - Active DTC severity weight
-  - Service recency weight
-  - Degradation trend weight
-- Per-subsystem scoring:
-  - Engine, Transmission, Brakes, Electrical, Exhaust/Aftertreatment,
-    Cooling, Fuel, Steering, Suspension, Body/Cabin
-- Trend direction per subsystem: improving / stable / degrading
-- Score history stored in TimescaleDB for trend analysis
+| Hypertable | Columns | Partition |
+|---|---|---|
+| `vehicle_signals` | vehicle_id, timestamp, coolant_temp, oil_pressure, battery_voltage, turbo_boost, brake_wear, exhaust_temp, fuel_level, speed, mileage, lat, lng | By time (7 days) |
+| `vehicle_health_snapshots` | vehicle_id, timestamp, overall, status, trend, weakest_subsystem, subsystem_scores (JSONB) | By time (7 days) |
+| `priority_snapshots` | vehicle_id, timestamp, score, breakdown (JSONB) | By time (7 days) |
 
-**Auth system:**
+**Redis key schema:**
 
-- NextAuth.js with credential provider (email/password)
-- Azure AD provider stub (for OEM SSO in later phases)
-- Role-based access control:
-  - `platform_admin` — full system access
-  - `oem_admin` — org-scoped admin
-  - `depot_manager` — depot-scoped operations
-  - `technician` — assigned work only
-  - `viewer` — read-only dashboards
-- Multi-tenant isolation (all queries scoped to organization)
-- API key management for programmatic/webhook access
-- JWT tokens with refresh rotation
+| Key | Type | TTL | Purpose |
+|---|---|---|---|
+| `vehicle:signal:{id}` | STRING (JSON) | 60s | Latest signal snapshot cache |
+| `vehicle:health:{id}` | STRING (JSON) | 60s | Latest health score cache |
+| `vehicle:priority:{id}` | STRING (JSON) | 60s | Latest priority breakdown cache |
+| `ai:priority:{id}` | STRING (JSON) | 300s | AI reasoning cache |
+| `vehicle:depot-match:{id}` | STRING (JSON) | 120s | Depot recommendations cache |
+| `vehicle:tech-match:{id}` | STRING (JSON) | 120s | Technician recommendations cache |
+| `queue:priority` | SORTED SET | persistent | Real-time priority ranking |
+| `depot:capacity:{id}` | STRING | 30s | Live bay availability |
+| `lock:dispatch:{vehicleId}` | STRING | 30s | Distributed dispatch lock |
+| `dedup:signal:{hash}` | SET member | 300s | Signal deduplication |
+| `session:{token}` | STRING (JSON) | 24h | User session |
+| `channel:dashboard` | PUB/SUB | — | SSE event broadcast |
+| `ratelimit:api:{keyId}` | STRING (counter) | 60s | API rate limiting |
 
-**Demo 0.4 — Phase 0 Final (THE FIRST "WOW" DEMO):**
+**Demo:** `pnpm db:migrate` runs migrations. `pnpm db:seed` populates with same 96 vehicles, 6 depots, 50 technicians. Prisma Studio shows all tables.
 
-- Login to web dashboard
-- See 500 simulated vehicles with health scores (0-100)
-- Each vehicle shows:
-  - Normalized signal charts (last 24h)
-  - Active DTCs with mapped descriptions and severity badges
-  - Subsystem health breakdown (engine: 92, brakes: 87, exhaust: 45...)
-  - Health trend graph (improving/degrading)
-- Signal quality indicators visible per vehicle
-- De-duplicated alerts feed (not 500 raw DTCs but 30 meaningful alerts)
-- VIN decoded and linked to build/model info
-- Fleet-wide health distribution chart
+#### Sub-phase 1.3 — Repository Layer (Replace DemoStore)
 
-**Raw noisy data goes in. Clean, scored, explainable fleet comes out.**
+New `packages/db/src/repositories/` directory:
+
+```
+VehicleRepository       findAll, findById, updateCoordinates, upsertSignals
+DepotRepository         findAll, findById, updateCapacity, getAvailableBays
+TechnicianRepository    findAll, findByDepot, updateWorkload
+PartsRepository         getCatalog, getInventory, reservePart, releasePart
+ServiceRequestRepo      create, findById, findOpen, updateStatus, complete
+ServiceHistoryRepo      create, findByVehicle, getOutcomeStats
+SignalRepository        insertSnapshot, getLatest, getRange (TimescaleDB)
+HealthRepository        insertScore, getLatest, getTrend (TimescaleDB)
+PriorityRepository      upsertScore (Redis ZADD), getQueue, getVehicleRank
+DecisionLogRepo         create, findByVehicle, findByType, getRewardStats
+```
+
+- API server switches from `DemoStore` to repository layer
+- All existing endpoints return the same response shapes (backward compatible)
+- Redis for hot-path reads, PostgreSQL for persistence, TimescaleDB for time-series
+
+**Demo:** All 25+ existing API endpoints work exactly as before, but data persists across restarts.
 
 ---
 
-## PHASE 1: Service Orchestration Layer
+### PHASE 2: Real Worker + Simulator Pipeline
 
-**Duration:** 8 weeks (2-3 devs)
+**Duration:** 1–2 weeks
 
-**Goal:** The AI dispatcher. Answers: *"Which vehicles need attention first, where
-should they be serviced, are parts available, and which technician should handle it?"*
+**Goal:** Replace stubs with real BullMQ streaming pipeline.
 
-> Research finding: "This should be the starting module. It is the best balance of
-> urgency, measurable ROI, and implementation speed."
+#### Sub-phase 2.1 — Continuous Simulator
 
----
+- Runs as a long-lived process
+- Configurable tick interval (default: 10s) and fleet size
+- Each tick: applies `applyMockTick()`, publishes to BullMQ queues
+- Fault scenario profiles (gradual, sudden, intermittent, cascade)
+- Graceful shutdown on SIGTERM
 
-### Sub-phase 1.1 — Vehicle Priority Engine (Week 5-6)
+#### Sub-phase 2.2 — Background Worker
 
-**Build:**
+All 8 processors from the architecture diagram:
+- SignalIngestProcessor → FaultProcessor → HealthProcessor → PriorityProcessor → AIReasoningProcessor → DepotMatchProcessor → TechMatchProcessor → NotificationProcessor
+- Pipeline flow via job chaining
+- Concurrency controls, retry with backoff, dead letter queue
+- Bull Board at `/admin/queues` for monitoring
 
-Priority scoring algorithm — ranks vehicles by weighted composite:
+#### Sub-phase 2.3 — SSE Overhaul
 
-| Factor              | Description                                              | Default Weight |
-| ------------------- | -------------------------------------------------------- | -------------- |
-| Safety urgency      | Brake/steering/tire DTCs weighted highest                | 30%            |
-| Failure proximity   | Degradation trend velocity (how fast is it getting worse)| 25%            |
-| Business impact     | Cargo value, route criticality, SLA obligations          | 20%            |
-| Downtime cost       | Estimated cost per hour of this vehicle off-road         | 15%            |
-| Service window      | Time until next natural stop (depot visit, driver rest)  | 10%            |
+Replace `setInterval` with Redis pub/sub-driven SSE:
+- Worker publishes events to Redis channel
+- API subscribes and fans out to SSE clients
+- Event types: health_update, priority_change, fault_event, service_update, dispatch_event
+- Client reconnection with backoff
 
-- Configurable priority weights per organization
-- Priority queue in Redis sorted set for real-time ranking
-- Priority change events pushed via WebSocket (Server-Sent Events)
-- Manual override capability (depot manager can bump a vehicle)
-
-API endpoints:
-
-```
-GET    /api/v1/orchestration/priority-queue       Paginated, filterable queue
-GET    /api/v1/orchestration/vehicles/:id/priority Single vehicle priority breakdown
-PATCH  /api/v1/orchestration/vehicles/:id/priority Manual override
-GET    /api/v1/orchestration/priority-queue/stream SSE real-time updates
-```
-
-**Demo 1.1:**
-
-Dashboard shows a ranked priority queue of all 500 vehicles. Click any vehicle to
-see **why** it's ranked where it is (visual breakdown of each scoring factor).
-Queue re-ranks in real-time as simulator generates new signals. Degrading vehicles
-climb the queue visibly.
+**Demo:** Simulator → Worker → DB → API → SSE → Dashboard. Kill worker, restart — no data lost.
 
 ---
 
-### Sub-phase 1.2 — Depot & Workshop Management (Week 6-7)
+### PHASE 3: AI Decision Engine (LangChain + Kimi-K2.5)
 
-**Build:**
+**Duration:** 2–3 weeks
 
-Depot management module:
+**Goal:** LangChain + Kimi-K2.5 integration. AI-augmented priority, depot, tech matching. Full dispatch agent.
 
-- Depot profiles: location (lat/lng), operating hours, specializations
-- Service bay tracking: total, occupied, available, out-of-service
-- Bay type classification: general, engine, electrical, body, inspection, EV
-- Real-time capacity calculation (available bays / total bays)
-- Depot load forecast (upcoming bookings vs capacity over next 7 days)
+#### Sub-phase 3.1 — LangChain + Kimi-K2.5 Client Setup
 
-Vehicle-to-depot matching algorithm:
+- `packages/ai` package with ChatOpenAI configured for Kimi-K2.5 API
+- Base URL: `https://api.moonshot.ai/v1`, model: `kimi-k2.5`
+- Thinking mode: disabled for real-time (temperature fixed at 0.6)
+- Token tracking, cost monitoring, response caching, fallback handling
 
-- Nearest depot by vehicle last-known location (haversine distance)
-- Depot capability match (can this depot handle this fault type?)
-- Depot load balancing (avoid overloading the closest depot)
-- Estimated travel time / distance
-- Returns top 3 depot recommendations with reasoning
+#### Sub-phase 3.2 — AI-Augmented Priority Engine
 
-Dashboard views:
+- Heuristic runs synchronously (fast path, always available)
+- AI runs asynchronously via BullMQ job
+- AI reviews top 20 vehicles per tick
+- Dashboard shows both scores + AI reasoning panel
 
-- Depot network map (pins with capacity color coding)
-- Individual depot detail page:
-  - Capacity utilization gauge
-  - Incoming vehicle queue
-  - Bay allocation board (Kanban-style: Available / Occupied / Maintenance)
-  - Upcoming schedule
-- Network-wide depot comparison table
+#### Sub-phase 3.3 — AI-Augmented Depot + Technician Matching
 
-API endpoints:
+- Depot reasoning chain with performance context
+- Technician reasoning chain with DTC-specific history
+- Full dispatch agent with 7 LangChain tools
 
-```
-GET    /api/v1/depots                       List all depots
-GET    /api/v1/depots/:id                   Depot detail + current capacity
-GET    /api/v1/depots/:id/bays              Bay status list
-PATCH  /api/v1/depots/:id/bays/:bayId       Update bay status
-GET    /api/v1/depots/:id/schedule          Upcoming schedule
-GET    /api/v1/orchestration/vehicles/:id/depot-match   Top 3 depot recommendations
-```
+#### Sub-phase 3.4 — AI Escalation Detection
 
-**Demo 1.2:**
+- Periodic escalation scan (every 5 minutes)
+- Detects: SLA risk, batch patterns, capacity crunch, rapid degradation
+- Escalation cards on dashboard with purple AI styling
 
-Dashboard shows depot network on a map. Each depot displays real-time capacity.
-Click a vehicle in the priority queue to see its top 3 recommended depots with
-distance, capacity, capability match, and reasoning.
+**Demo:** "AI Dispatch" button runs the full agent. 7 tool calls in 3-5 seconds. Complete dispatch plan with reasoning. "Why not Rajesh K?" is explained.
 
 ---
 
-### Sub-phase 1.3 — Parts Availability Engine (Week 7-8)
+### PHASE 4: Reinforcement Learning Feedback Loop
 
-**Build:**
+**Duration:** 2–3 weeks
 
-Parts inventory model:
+**Goal:** Every completed service generates reward signal that improves future decisions.
 
-- Per-depot stock levels (part_number, depot_id, quantity, reorder_point)
-- Part-to-fault mapping: which DTCs/failure modes require which parts
-- Reorder points and lead times per part
-- Alternative/substitute parts mapping
-- Part criticality classification (safety-critical, operational, cosmetic)
+#### Sub-phase 4.1 — Decision Logging + Outcome Recording
 
-Parts availability check:
+- `decision_logs` table captures: input → heuristic output → AI output → human decision
+- Enhanced completion form captures: actual fault, diagnosis accuracy, parts used, repair time, ratings
+- Decision audit trail: click any past decision to see the full chain
 
-- Per service recommendation:
-  - "Vehicle X needs part Y -> Depot A has 3, Depot B has 0, warehouse has 12"
-- Integrates into depot matching (depots without required parts rank lower)
-- Part reservation system (soft-lock when vehicle is assigned to depot)
-- Reservation expiry (auto-release if service not started within N hours)
+#### Sub-phase 4.2 — Reward Signal Computation
 
-Parts pre-positioning engine:
+Three reward functions (priority, depot, technician) — each weighted composite of:
+- Diagnosis accuracy, urgency calibration, first-time-fix, turnaround efficiency, etc.
+- Rewards stored in `reward_signals` table, linked to `decision_logs`
+- Aggregate statistics computed as materialized views
 
-- Analyze fleet-wide fault trends
-- Predict which parts will be needed at which depots in next 7-14 days
-- Generate pre-positioning suggestions:
-  - "DTC P0217 trending in Region North -> move 15x coolant sensors to Depot 7"
-- Suggestion acceptance/rejection tracking
+#### Sub-phase 4.3 — AI Self-Improvement
 
-API endpoints:
+- Prompt enrichment with historical outcomes (few-shot examples from best/worst decisions)
+- Dynamic weight adjustment proposals (AI suggests, human approves)
+- Pattern learning ("coolant temp > 98°C + oil pressure < 35 → likely engine bearing, not cooling")
+- Confidence calibration tracking
 
-```
-GET    /api/v1/parts                                  Part catalog
-GET    /api/v1/parts/:partNumber/availability          Stock across all depots
-GET    /api/v1/depots/:id/inventory                    Depot inventory
-POST   /api/v1/parts/reservations                      Reserve parts for service
-DELETE /api/v1/parts/reservations/:id                  Release reservation
-GET    /api/v1/orchestration/parts/pre-positioning     Pre-positioning suggestions
-```
+#### Sub-phase 4.4 — Reward Dashboard
 
-**Demo 1.3:**
+Decision Intelligence page (`/intelligence`) with:
+- Quality trend charts, AI vs heuristic comparison, override analytics
+- Best/worst decision drill-down, confidence calibration plots, learning velocity
 
-Vehicle priority queue now shows parts status alongside depot recommendation.
-Green = all parts in stock at recommended depot. Yellow = some parts need transfer.
-Red = parts backordered. Pre-positioning suggestion cards appear when fault trends
-are detected.
+**Demo:** After 50+ completed services, AI accuracy visibly improves. Before/after comparison shows value.
 
 ---
 
-### Sub-phase 1.4 — Technician Assignment (Week 8-9)
+### PHASE 5: Enterprise Dashboard (shadcn/ui + Tailwind)
 
-**Build:**
+**Duration:** 2–3 weeks
 
-Technician profiles:
+**Goal:** Transform the 674-line single-file demo into the full enterprise command center described above.
 
-- Skill certifications: engine, transmission, electrical, diagnostics,
-  aftertreatment, EV/hybrid, body, general maintenance
-- Current workload (active assignments count)
-- Schedule/availability calendar
-- Historical metrics:
-  - Fix rate per fault type
-  - Average repair time per fault type
-  - First-time-fix percentage
-  - Customer satisfaction scores (if available)
+#### Sub-phase 5.1 — Foundation
 
-Assignment algorithm:
+- Install and configure shadcn/ui + Tailwind CSS
+- Set up theme (light/dark mode, color system, typography)
+- Build layout components: Sidebar, TopBar, CommandPalette
+- Set up Zustand store, TanStack Query, SSE hook
+- Install Recharts, Framer Motion, react-leaflet
 
-- Match technician skills to required fault type
-- Filter by availability in the proposed service window
-- Rank by:
-  - Skill match score (certified in exact subsystem = highest)
-  - Historical success rate for similar faults
-  - Current workload (fairness distribution)
-  - Depot assignment (prefer technicians already at the recommended depot)
-- Generate recommendation with confidence score and reasoning
+#### Sub-phase 5.2 — Fleet Command Center (`/`)
 
-Technician workload dashboard:
+- Fleet map with Leaflet (vehicle pins + depot pins)
+- Metric cards with sparkline trends
+- Health distribution donut chart
+- Priority queue preview (top 10)
+- AI escalation cards
+- Live activity feed
+- All with real-time SSE updates and animations
 
-- Current assignments per technician
-- Upcoming queue
-- Skill utilization metrics (are we under-using specialized skills?)
-- Workload distribution fairness chart
+#### Sub-phase 5.3 — Triage Queue (`/triage`)
 
-API endpoints:
+- Full sortable/filterable/searchable priority table
+- Expandable rows with radar chart + heuristic breakdown + AI reasoning panel
+- AI urgency badges with purple glow styling
+- Keyboard navigation (J/K/Enter/Esc/D)
 
-```
-GET    /api/v1/technicians                             List technicians
-GET    /api/v1/technicians/:id                         Technician profile + stats
-GET    /api/v1/technicians/:id/assignments             Current and upcoming work
-GET    /api/v1/orchestration/vehicles/:id/tech-match   Recommended technician(s)
-```
+#### Sub-phase 5.4 — AI Dispatch (`/dispatch`)
 
-**Demo 1.4:**
+- Full-screen dispatch agent interface
+- Streaming agent trace (tool calls animate in)
+- Dispatch plan card with all details
+- Accept / Modify / Cancel actions
+- Decision stored for RL training
 
-Service recommendation for a priority vehicle now includes:
-"Recommended technician: Rajesh K. (Depot 3) because: certified in aftertreatment
-systems, 94% first-time-fix rate on P0420 faults, currently 2/5 workload capacity."
-Technician dashboard shows workload distribution across the depot network.
+#### Sub-phase 5.5 — Workflow Board (`/workflow`)
 
----
+- Kanban board with drag-and-drop (or button-based advancement)
+- Service detail Sheet with timeline
+- Completion form with structured outcome recording
 
-### Sub-phase 1.5 — Service Workflow Engine (Week 9-10)
+#### Sub-phase 5.6 — Supporting Pages
 
-**Build:**
+- `/depots` — network map + capacity gauges
+- `/technicians` — roster + workload distribution
+- `/intelligence` — decision quality dashboard (from Phase 4)
+- `/alerts` — alert feed + escalations
+- `/settings` — org config, priority weights, API keys, user management
 
-Service request lifecycle state machine:
+#### Sub-phase 5.7 — Polish
 
-```
-DETECTED -> PRIORITIZED -> DEPOT_ASSIGNED -> PARTS_CONFIRMED ->
-TECHNICIAN_ASSIGNED -> SCHEDULED -> IN_PROGRESS -> COMPLETED -> CLOSED
-```
-
-- Transition rules and validations per state
-- Auto-creation from priority engine when threshold exceeded
-- Manual creation by depot managers
-- Assignment acceptance/rejection by depot manager
-- Rescheduling and reassignment capabilities
-
-Completion recording (the feedback loop):
-
-- What was actually wrong? (confirmed fault vs detected fault)
-- What parts were actually used?
-- How long did repair take?
-- Was the initial diagnosis correct?
-- Was it a first-time-fix or repeat visit?
-- Technician notes (free text)
-
-**Outcome feedback loop:**
-
-- Service outcomes feed back into:
-  - Priority scoring accuracy (was the urgency rating correct?)
-  - DTC-to-fault mapping refinement
-  - Technician skill ratings
-  - Parts consumption patterns
-  - Health score model calibration
-
-SLA tracking:
-
-- Time from detection to depot assignment
-- Time from assignment to service start
-- Time from service start to completion
-- Total detection-to-resolution time
-- SLA breach alerting
-
-Notification system:
-
-- WebSocket / SSE real-time updates on dashboard
-- Email notifications for assignments, escalations, SLA breaches
-- Webhook support for external system integration
-- Notification preferences per user role
-
-API endpoints:
-
-```
-GET    /api/v1/service-requests                    List (filterable by status, depot, etc.)
-POST   /api/v1/service-requests                    Create manually
-GET    /api/v1/service-requests/:id                Detail view
-PATCH  /api/v1/service-requests/:id/status         Transition state
-POST   /api/v1/service-requests/:id/complete       Record completion + outcome
-GET    /api/v1/service-requests/:id/timeline       Full audit trail
-POST   /api/v1/webhooks                            Register external webhook
-```
-
-**Demo 1.5:**
-
-Full service orchestration workflow end-to-end:
-
-1. Simulator generates a degrading vehicle (turbo efficiency dropping)
-2. Signal Trust Layer detects degradation, scores health dropping
-3. Priority engine ranks it #3 in the queue with reasoning
-4. System recommends Depot 7 (nearest with capability + parts + capacity)
-5. Parts availability confirmed (turbo kit in stock)
-6. Recommended technician: Rajesh K. (aftertreatment specialist)
-7. Depot manager accepts assignment on dashboard
-8. Technician completes service, records outcome
-9. Vehicle health score jumps back to 95
-10. Dashboard shows complete audit trail with timestamps
-
----
-
-### Sub-phase 1.6 — Orchestration Dashboard Polish (Week 11-12)
-
-**Build:**
-
-**Fleet Overview page:**
-
-- Map view with vehicle positions and health-colored pins
-- Fleet health distribution donut chart
-- Active alerts feed (scrolling, filterable)
-- Key metric cards:
-  - Vehicles needing service (count + trend)
-  - Average turnaround time (hours + trend)
-  - First-time-fix rate (% + trend)
-  - Bay utilization (% + trend)
-  - Open service requests by status
-
-**Priority Queue page:**
-
-- Sortable, filterable, searchable table
-- Quick-action buttons (assign, override, dismiss)
-- Inline vehicle health preview on hover
-- Bulk operations (assign multiple vehicles to same depot)
-
-**Vehicle Detail page:**
-
-- Signal timeline charts (interactive, zoomable)
-- DTC history timeline
-- Service history table
-- Health trend graph (30/60/90 day)
-- Current recommendation card
-- Subsystem health radar chart
-
-**Depot Management page:**
-
-- Map + list toggle view
-- Bay allocation Kanban board (drag-and-drop)
-- Capacity forecast chart
-- Incoming vehicle queue
-- Depot performance metrics
-
-**Service Workflow Board:**
-
-- Kanban view by status
-- Calendar view for scheduled services
-- List view with advanced filters
-- Service request detail modal
-
-**Reports page:**
-
-- Service turnaround time trends (line chart)
-- Bay utilization by depot (bar chart)
-- Parts consumption by category (pie chart)
-- Technician workload distribution (bar chart)
-- Fleet health trend (area chart)
-- Date range selectors, export to CSV/PDF
-
-**Settings page:**
-
-- Priority weight configuration (sliders)
-- Notification preferences
-- Depot configuration
-- User management
-- API key management
-- OEM connection management
-
-**UI polish:**
-
-- Dark mode toggle
-- Responsive design (tablet-friendly for depot managers)
-- Loading skeletons
+- Dark mode toggle (class-based Tailwind)
+- Responsive design (md/lg breakpoints for tablet)
+- Loading skeletons for all async sections
 - Error boundaries with retry
-- Keyboard shortcuts for power users
-- Toast notifications for real-time events
+- Toast notifications (Sonner)
+- Cmd+K command palette
+- Number animation (Framer Motion)
+- Empty states with illustrations
 
-**Demo 1.6 — Phase 1 Final ("PILOT-READY"):**
-
-A complete, polished platform that a depot manager or service head could use daily.
-This is the demo you show an OEM for a **paid pilot**. Every screen drives a decision.
-No vanity dashboards — every view leads to an action.
+**Demo:** A beautiful, engaging, interactive dashboard that a fleet manager opens in the morning and uses all day. Every click leads to an action. AI reasoning is visible and transparent. The system feels alive — vehicles move on the map, health scores pulse, the queue re-sorts with smooth animations.
 
 ---
 
-## PHASE 2: Telemetry Forensics
+### PHASE 6: Auth + Multi-Tenancy + Testing
 
-**Duration:** 7 weeks (3-4 devs)
+**Duration:** 1–2 weeks
 
-**Goal:** The AI detective. Answers: *"Why are these failures happening across vehicle
-cohorts, routes, suppliers, and batches? What is the smallest containment action?"*
+**Goal:** Production-grade security and test coverage.
 
-> Research finding: "Telemetry Forensics is strategically valuable and hard to copy
-> once it works." Uses service and repair data already accumulated from Phase 1.
+#### Sub-phase 6.1 — Authentication + RBAC
 
----
+- NextAuth.js v5 with Credentials + Azure AD providers
+- JWT sessions stored in Redis
+- RBAC middleware on all API routes
+- Role-based UI (hide actions user can't perform)
+- Login page with email/password + SSO button
 
-### Sub-phase 2.1 — Cohort Analysis Engine (Week 13-15)
+#### Sub-phase 6.2 — Multi-Tenancy
 
-**Build:**
+- Organization model + `organization_id` on all data tables
+- Query scoping middleware (all queries filtered by org)
+- API key management per organization
 
-Vehicle cohorting system — group vehicles by any combination of:
+#### Sub-phase 6.3 — Test Coverage
 
-- Build batch / manufacturing date range
-- Software version
-- Component supplier (requires supplier metadata ingestion)
-- Operating region / route type
-- Duty cycle profile (highway, urban, mixed, off-road)
-- Model variant / configuration
-- Service depot affiliation
-- Fleet operator
+| Type | Tool | Target |
+|---|---|---|
+| Unit tests | Vitest | Signal trust, orchestration, AI output parsers, utils |
+| Integration tests | Vitest + Testcontainers | Repositories against real PG/Redis in Docker |
+| API tests | Supertest | All endpoints — happy path, auth, validation |
+| AI chain tests | Vitest + LangChain mock | Structured output parsing, fallback behavior |
+| E2E smoke | Playwright (minimal) | Login → command center → dispatch → complete |
 
-Cohort comparison analytics:
+80%+ coverage on core business logic packages.
 
-- Fault rate per cohort vs fleet-wide baseline
-- Mean time between failures (MTBF) per cohort
-- Signal pattern differences between cohorts
-- Distribution comparison (histograms, box plots)
-
-Statistical rigor:
-
-- Chi-squared test for fault rate differences
-- Mann-Whitney U test for signal distribution differences
-- Bonferroni correction for multiple comparisons
-- Confidence intervals on all comparisons
-- Minimum sample size warnings
-
-Anomalous cohort auto-detection:
-
-- Background job scans all natural cohorts daily
-- Flags cohorts that deviate significantly from baseline
-- Ranks anomalies by severity and affected vehicle count
-- Example output: "Batch 2024-Q3 has 3.2x more P0420 faults than fleet average
-  (p < 0.001, n=142 vehicles)"
-
-Dashboard:
-
-- Cohort explorer: create custom cohorts with filter builder
-- Side-by-side cohort comparison view
-- Auto-detected anomalous cohorts feed
-- Drill-down: click a cohort to see its full fault profile
-
-API endpoints:
-
-```
-POST   /api/v1/forensics/cohorts                 Create custom cohort
-GET    /api/v1/forensics/cohorts                  List cohorts
-GET    /api/v1/forensics/cohorts/:id              Cohort detail + statistics
-GET    /api/v1/forensics/cohorts/:id/compare      Compare to baseline or another cohort
-GET    /api/v1/forensics/anomalies                Auto-detected anomalous cohorts
-```
-
-**Demo 2.1:**
-
-Dashboard shows 5-8 auto-detected anomalous cohorts from simulated data. Click
-"Batch 2024-Q3 vehicles" to see its fault profile vs fleet baseline. Clear
-visualization: "This batch has 3.2x aftertreatment failures, statistically
-significant."
+**Demo:** `pnpm test` runs full suite, all green. Coverage report shows 80%+ on `signal-trust`, `orchestration`, `ai`.
 
 ---
 
-### Sub-phase 2.2 — Failure Pattern Detection (Week 15-17)
+### PHASE 7: Cloud Deployment + CI/CD
 
-**Build:**
+**Duration:** 1–2 weeks
 
-**Temporal pattern mining:**
+**Goal:** Azure production infrastructure.
 
-- DTC sequence analysis:
-  - "P0171 followed by P0300 within 14 days in 67% of cases"
-  - Sequential pattern mining on DTC event streams
-- Signal degradation pattern matching:
-  - Template-based matching (known degradation curves)
-  - Dynamic Time Warping for similar-but-shifted patterns
-- Seasonal/environmental correlation:
-  - Temperature, humidity, altitude vs fault rate
-  - Monsoon season patterns, extreme heat patterns
+#### Sub-phase 7.1 — CI/CD (GitHub Actions)
 
-**Spatial pattern mining:**
+- `ci.yml` — lint, typecheck, unit tests on every push
+- `test.yml` — full test suite on push to `main`
+- `deploy-staging.yml` — auto-deploy to staging on merge to `main`
+- `deploy-prod.yml` — manual trigger / tag for production
+- Multi-stage Docker builds for API, worker, simulator, web
 
-- Route-correlated failures:
-  - Specific roads, terrain types, altitude changes
-  - Fuel station correlation (fuel quality issues)
-- Region-level failure clustering
-- Heatmap generation for geographic fault distribution
+#### Sub-phase 7.2 — Terraform (Azure)
 
-**Cross-system correlation:**
+| Resource | Azure Service | Spec |
+|---|---|---|
+| Kubernetes | AKS | 2-3 node pool, autoscaling |
+| Database | Azure Database for PostgreSQL Flexible Server | TimescaleDB extension, 4 vCores / 16GB |
+| Cache | Azure Cache for Redis | Standard C1, 1GB |
+| Container Registry | Azure Container Registry | Basic tier |
+| Ingress | AKS LoadBalancer + NGINX Ingress | Azure-assigned public IP / FQDN (no custom domain needed) |
+| TLS | Let's Encrypt via cert-manager | Auto-renewing certs on Azure-provided FQDN |
+| Monitoring | Azure Monitor + Application Insights | Logs, metrics, traces, alerts |
+| Secrets | Azure Key Vault | All API keys, DB credentials, KIMI_API_KEY |
 
-- Inter-subsystem fault correlation:
-  - "Aftertreatment failures correlate with fuel quality signals in Region X"
-  - "Turbo failures 2x more common in vehicles with software < v3.2"
-  - "Battery drain correlates with specific alternator supplier batch"
-- Correlation strength scoring (Pearson, Spearman, mutual information)
-- Spurious correlation filtering (require temporal precedence + domain plausibility)
+Kubernetes deployments:
 
-**Pattern management:**
+| Service | Replicas | HPA | Resources |
+|---|---|---|---|
+| `api` | 2 | 2–5 (CPU-based) | 512Mi RAM, 250m CPU |
+| `worker` | 2 | 2–4 (queue depth) | 1Gi RAM, 500m CPU |
+| `simulator` | 1 | — | 256Mi RAM, 100m CPU |
+| `web` | 2 | 2–4 (CPU-based) | 256Mi RAM, 100m CPU |
 
-- Pattern confidence scoring
-- False-positive rate tracking
-- Pattern library: confirmed patterns become reusable detection rules
-- Pattern status lifecycle: `DETECTED -> UNDER_REVIEW -> CONFIRMED -> ACTIVE -> RETIRED`
+- NGINX Ingress with TLS termination
+- Pod Disruption Budgets for zero-downtime deploys
+- Network policies for pod-to-pod security
+- ConfigMaps + Secrets from Key Vault
 
-Dashboard:
+#### Sub-phase 7.3 — Production Hardening
 
-- Pattern visualization: connected chains showing DTC/signal sequences
-- Geographic heatmap of failure patterns
-- Cross-system correlation matrix
-- Pattern library browser
+| Area | Implementation |
+|---|---|
+| **Rate limiting** | Per-endpoint, per-API-key quotas via Redis counters |
+| **Request validation** | Zod schemas on all inputs — reject malformed requests |
+| **Error handling** | Structured JSON error responses, no stack traces in production |
+| **Logging** | Pino structured JSON, correlation IDs per request → Azure Monitor |
+| **Metrics** | Prometheus-compatible: request latency, queue depth, AI response time, error rate |
+| **Alerting** | Azure Monitor alerts: high error rate, queue backup, AI latency spike, DB pool exhaustion |
+| **Health checks** | `/health` checks DB + Redis + BullMQ + AI provider connectivity |
+| **Graceful shutdown** | SIGTERM: drain connections, finish in-progress jobs, then exit |
+| **Database** | Connection pooling (Prisma pool), query timeouts, slow query logging |
+| **Security** | Helmet headers, CORS whitelist, input sanitization, dependency audit |
 
-API endpoints:
+**Demo (Phase 7 Final — "PRODUCTION"):**
 
-```
-GET    /api/v1/forensics/patterns                  Detected patterns
-GET    /api/v1/forensics/patterns/:id              Pattern detail + evidence
-PATCH  /api/v1/forensics/patterns/:id/status       Confirm/reject pattern
-GET    /api/v1/forensics/correlations              Cross-system correlations
-GET    /api/v1/forensics/heatmap                   Geographic failure heatmap data
-```
+The full Service Orchestration platform running on Azure:
 
-**Demo 2.2:**
-
-Interactive failure pattern visualization. Shows: "P0171 (lean mixture) -> P0300
-(misfire) -> P0420 (catalyst efficiency) — this chain appears in 67% of
-aftertreatment failures, predominantly in Region North." Geographic heatmap
-highlights concentration.
-
----
-
-### Sub-phase 2.3 — Root Cause Analysis & Investigation Workflow (Week 17-19)
-
-**Build:**
-
-**Investigation workflow:**
-
-```
-PATTERN_DETECTED -> INVESTIGATION_OPENED -> EVIDENCE_COLLECTED ->
-ROOT_CAUSE_IDENTIFIED -> CONTAINMENT_RECOMMENDED -> ACTION_TAKEN -> VERIFIED
-```
-
-**Evidence collection engine:**
-
-- Auto-pulls relevant data when investigation opens:
-  - Affected vehicles list with VINs
-  - Signal timelines for affected vs unaffected vehicles
-  - DTC history for affected cohort
-  - Service records for affected vehicles
-  - Build/batch/supplier metadata
-  - Environmental context (region, season, duty cycle)
-- Structures evidence into a coherent package
-- Cites specific VINs and data points (not just anomaly scores)
-
-**Containment recommendation engine:**
-
-Classifies recommended response type:
-
-| Response Type       | When to use                                    |
-| ------------------- | ---------------------------------------------- |
-| Monitor             | Low confidence, small cohort, low severity     |
-| Service campaign    | Medium cohort, fixable at depot, non-safety     |
-| Software update     | Root cause is calibration/software related      |
-| Supplier escalation | Root cause traces to supplier batch/component   |
-| Training bulletin   | Root cause is operational/driver behavior       |
-| Safety recall       | Safety-critical, large cohort, high confidence  |
-
-For each recommendation:
-
-- Estimated affected vehicle count
-- Estimated cost of action vs cost of inaction
-- Urgency classification
-- Generated affected VIN list
-- Suggested timeline
-
-**Supplier scorecard:**
-
-- Fault rates by component supplier
-- Trend tracking per supplier (improving/worsening)
-- Comparative view: multiple suppliers for same component type
-- Batch-level drill-down within supplier
-
-**Investigation report generator:**
-
-- Auto-generated structured report (markdown + PDF export)
-- Sections: summary, methodology, evidence, root cause, recommendation, affected VINs
-- Cites specific data evidence (not just "AI detected an anomaly")
-- Suitable for: management review, regulatory filing, supplier negotiation
-
-Dashboard:
-
-- Investigation board (Kanban by status)
-- Investigation detail page with evidence viewer
-- Supplier scorecard page
-- Report viewer + export
-
-API endpoints:
-
-```
-POST   /api/v1/forensics/investigations            Open investigation
-GET    /api/v1/forensics/investigations             List investigations
-GET    /api/v1/forensics/investigations/:id         Investigation detail
-PATCH  /api/v1/forensics/investigations/:id/status  Transition status
-GET    /api/v1/forensics/investigations/:id/evidence Evidence package
-GET    /api/v1/forensics/investigations/:id/report  Generated report
-GET    /api/v1/forensics/suppliers/scorecards       Supplier scorecards
-```
-
-**Demo 2.3 — Phase 2 Final:**
-
-Complete forensics workflow:
-
-1. System detects anomalous cohort (Batch 2024-Q3, aftertreatment faults)
-2. Investigation opened automatically
-3. Evidence collected: 142 affected VINs, signal timelines, DTC chains,
-   supplier metadata showing Component Supplier B's batch #4471
-4. Root cause identified: supplier batch quality deviation
-5. Containment recommendation: service campaign for 142 vehicles,
-   supplier escalation for batch #4471
-6. Report generated with full evidence citations
-7. Supplier scorecard updated showing Supplier B's declining trend
+- Accessible via Azure-provided FQDN (e.g., `http://<aks-lb-ip>` or `https://kaz-orch-aks.eastus.cloudapp.azure.com`)
+- Auto-scaling under load
+- Monitored with alerts
+- CI/CD deploying on every merge to `main`
+- Database backed up automatically
+- AI decisions flowing through LangChain + Kimi-K2.5
+- RL feedback loop capturing outcomes and improving over time
+- Enterprise dashboard with dark mode, keyboard shortcuts, AI dispatch agent, real-time animations
 
 ---
 
-## PHASE 3: Predictive Warranty Shield
+## What Comes Next (Out of Scope for This Plan)
 
-**Duration:** 11 weeks (3-5 devs)
+Once the Service Orchestration platform is production-ready:
 
-**Goal:** Predict which vehicles are heading toward expensive warranty events
-and find the cheapest intervention window before the failure occurs.
+### → Telemetry Forensics Module
 
-> Research finding: "Shield is the highest-value module but also the hardest to
-> validate quickly. Build it after you already have data quality, service workflows,
-> and closed-loop feedback."
+The forensics package (`@kaz/forensics`) already has significant in-memory logic:
+cohort analysis, DTC sequence mining, cross-system correlation, investigation workflow,
+supplier scorecards, geographic heatmaps. Next step: persist in the database, connect to
+the real telemetry pipeline, add AI-powered root cause analysis using the same LangChain +
+Kimi-K2.5 infrastructure built in Phase 3.
 
----
+### → Predictive Warranty Shield Module
 
-### Sub-phase 3.1 — Historical Failure Labeling (Week 20-23)
+With the RL feedback loop generating structured outcome data from every completed service,
+you'll have the labeled training data needed for predictive models. The warranty shield can
+predict which vehicles will fail before they do, and recommend proactive interventions that
+avoid warranty claims.
 
-**Build:**
-
-**Warranty event data model:**
-
-```
-warranty_claims      Vehicle, component, failure_mode, cost, date, resolution
-goodwill_repairs     Vehicle, component, cost, date, reason
-campaigns            Campaign_id, type, affected_VINs, cost, status
-interventions        Vehicle, type, date, cost, was_proactive, outcome
-```
-
-**Outcome labeling pipeline:**
-
-- Link warranty claims to prior telemetry signals
-  - For each claim: look back N days in signal/DTC history
-  - Label the "pre-failure window" (signals before failure)
-- Build training datasets:
-  - Positive examples: vehicles that failed (with pre-failure signal window)
-  - Negative examples: similar vehicles that did NOT fail
-  - Time-aligned feature snapshots
-- Handle class imbalance (failures are rare events)
-  - SMOTE or similar oversampling for training
-  - Maintain natural distribution for evaluation
-
-**Failure mode catalog:**
-
-- Top 20 most expensive failure modes ranked by:
-  - Total warranty cost
-  - Frequency
-  - Average cost per claim
-  - Trend direction (increasing/decreasing)
-- Cost distribution per failure mode
-- Time-to-failure distribution (Weibull analysis)
-- Training readiness per failure mode (enough labeled data? enough features?)
-
-**Data quality dashboard:**
-
-- Label completeness metrics per failure mode
-- Training set size indicators (minimum threshold markers)
-- Data freshness tracking
-- Feature availability matrix (which signals available for which vehicles)
-
-**Demo 3.1:**
-
-Dashboard showing warranty cost landscape:
-- Top 20 failure modes ranked by total cost (bar chart)
-- Click a failure mode to see its cost distribution and time-to-failure curve
-- Training readiness indicators: "Turbo failure — 847 labeled events, 14 features
-  available, READY for model training"
-- "EGR valve — 23 labeled events, INSUFFICIENT data"
-
----
-
-### Sub-phase 3.2 — Prediction Models (Week 23-27)
-
-**Build:**
-
-**Feature engineering pipeline:**
-
-Signal aggregation features (per vehicle, per time window):
-
-- Mean, std, min, max, median of each signal
-- Trend slope (linear regression over window)
-- Rate of change (first derivative)
-- Volatility (coefficient of variation)
-- Signal quality features (missing data ratio, outlier ratio)
-
-DTC features:
-
-- DTC count by severity in last 7/30/90 days
-- DTC recency (days since last critical DTC)
-- DTC diversity (unique DTC codes in window)
-- Specific high-risk DTC presence flags
-
-Service history features:
-
-- Days since last service
-- Cumulative repair count (total and by subsystem)
-- Was last repair a repeat visit?
-- Service regularity score
-
-Duty cycle features:
-
-- Average daily distance
-- Load profile percentiles
-- Terrain mix (highway/urban/off-road ratios)
-- Operating temperature range
-- Idle time ratio
-
-Vehicle metadata features:
-
-- Age (months since registration)
-- Total mileage
-- Software version recency
-- Build batch
-
-**Model infrastructure:**
-
-- Feature store (precomputed, versioned feature snapshots in PostgreSQL)
-- Model training pipeline (Node.js orchestration + Python model training via subprocess)
-- Model types:
-  - Gradient boosted classifier (XGBoost via Python): P(failure in next N days)
-  - Survival analysis (Cox PH or Random Survival Forest): time-to-failure estimate
-  - Isolation Forest: anomaly detection for unknown failure modes
-- Model versioning and experiment tracking (MLflow or custom)
-- Model evaluation framework:
-  - Precision/recall at various thresholds
-  - Calibration curves
-  - Time-dependent AUC
-  - Lift charts
-- A/B testing framework for model comparison
-
-**Prediction API:**
-
-```
-GET /api/v1/warranty/vehicles/:id/risk
-```
-
-Response:
-
-```json
-{
-  "vehicleId": "VIN123",
-  "overallRiskScore": 0.73,
-  "riskLevel": "HIGH",
-  "componentRisks": [
-    {
-      "component": "turbocharger",
-      "failureProbability": 0.81,
-      "estimatedDaysToFailure": 45,
-      "confidence": 0.72,
-      "topContributingFactors": [
-        { "feature": "turbo_boost_pressure_trend", "impact": -0.23 },
-        { "feature": "exhaust_gas_temp_volatility", "impact": 0.18 },
-        { "feature": "mileage_since_last_service", "impact": 0.12 }
-      ]
-    }
-  ]
-}
-```
-
-**False positive management:**
-
-- Configurable alert thresholds per failure mode
-- Alert fatigue metrics (how many predictions per week?)
-- Precision/recall trade-off controls in settings
-- "Snooze" capability for known-acceptable situations
-
-API endpoints:
-
-```
-GET    /api/v1/warranty/fleet-risk                Fleet-wide risk overview
-GET    /api/v1/warranty/vehicles/:id/risk         Per-vehicle risk breakdown
-GET    /api/v1/warranty/risk-distribution         Risk score distribution
-GET    /api/v1/warranty/models                    Active models and versions
-GET    /api/v1/warranty/models/:id/performance    Model performance metrics
-```
-
-**Demo 3.2:**
-
-Fleet risk heatmap — every vehicle colored by warranty risk (green/yellow/orange/red).
-Click a vehicle to see component-level risk breakdown with confidence scores.
-"Turbo failure probability: 81% within 45 days. Top factor: boost pressure
-declining at -0.23 kPa/day." Model performance dashboard shows precision/recall
-curves.
-
----
-
-### Sub-phase 3.3 — Intervention Optimizer (Week 27-30)
-
-**Build:**
-
-**Intervention window calculator:**
-
-- For each at-risk vehicle + component:
-  - Estimated days to failure (from survival model)
-  - Next scheduled service date
-  - Next natural stop (route endpoint, driver rest)
-  - Proactive intervention cost vs warranty claim cost
-  - Optimal intervention date (balances urgency, cost, logistics)
-- Window visualization: timeline showing current date, intervention window, and
-  predicted failure date
-
-**Cost-benefit analyzer:**
-
-| Metric                     | Calculation                              |
-| -------------------------- | ---------------------------------------- |
-| Proactive repair cost      | Parts + labor + downtime for planned fix |
-| Warranty claim cost        | Parts + labor + towing + downtime + goodwill |
-| Net savings per vehicle    | Claim cost - proactive cost              |
-| Fleet-wide savings         | Sum across all intervened vehicles       |
-| ROI                        | Fleet savings / platform cost            |
-
-- Fleet-wide savings projection dashboard
-- Historical savings tracker (predicted vs actual)
-- ROI calculator for executive reporting
-
-**Campaign builder:**
-
-- Select failure mode -> see all at-risk vehicles ranked by risk
-- Define intervention type:
-  - Proactive replacement
-  - Inspection + conditional replacement
-  - Software update
-  - Monitoring-only
-- Set risk threshold (e.g., only vehicles with P(failure) > 0.7)
-- Generate affected VIN list with:
-  - Risk score
-  - Recommended intervention date
-  - Nearest capable depot
-  - Estimated cost
-- Track campaign execution:
-  - VINs intervened vs outstanding
-  - Actual costs vs estimates
-  - Post-intervention health score changes
-
-**Warranty cost avoidance tracker:**
-
-- Running tally of prevented warranty costs
-- Per-campaign savings breakdown
-- Model accuracy tracking:
-  - Of vehicles we predicted would fail and intervened: how many would have failed?
-  - Of vehicles we predicted would NOT fail: how many actually failed? (misses)
-- Monthly/quarterly warranty cost trend vs baseline
-
-Dashboard:
-
-- Fleet risk heatmap
-- Intervention timeline (Gantt-style per vehicle)
-- Campaign management board
-- Savings tracker with running totals
-- Model accuracy scorecard
-- Executive summary view (ROI-focused)
-
-API endpoints:
-
-```
-GET    /api/v1/warranty/interventions/windows     Intervention windows for at-risk vehicles
-POST   /api/v1/warranty/campaigns                 Create campaign
-GET    /api/v1/warranty/campaigns                 List campaigns
-GET    /api/v1/warranty/campaigns/:id             Campaign detail + progress
-PATCH  /api/v1/warranty/campaigns/:id/vehicles/:vid  Update vehicle intervention status
-GET    /api/v1/warranty/savings                   Cost avoidance tracker
-GET    /api/v1/warranty/executive-summary         Executive ROI summary
-```
-
-**Demo 3.3 — Phase 3 Final:**
-
-End-to-end warranty prevention:
-
-1. System predicts turbo failures in 47 vehicles within 60 days
-2. Intervention window calculated: optimal window is 15-30 days from now
-3. Cost analysis: proactive fix = avg 35K/vehicle, warranty claim = avg 2.8L/vehicle
-4. Campaign created: "Turbo Proactive Replacement Q2-2027"
-5. VIN list generated with risk scores, recommended dates, nearest depots
-6. Campaign tracks execution as vehicles are serviced
-7. Savings tracker shows: 1.15 Cr avoided across 47 vehicles
-8. Model accuracy: 89% of flagged vehicles showed confirmed degradation
-
----
-
-## PHASE 4+: Platform Extensions (Ongoing)
-
-Built after core modules prove value with paying customers.
-
----
-
-### 4.1 — Parts Demand & Depot Stock AI
-
-- Use fault predictions + service forecasts to project parts demand 30-60-90 days out
-- Auto-generate purchase order suggestions
-- Optimize stock allocation across depot network
-- Reduce stock-outs and excess inventory simultaneously
-- Integration with OEM parts ordering systems
-
-### 4.2 — Recall Precision Engine
-
-- Extension of Telemetry Forensics
-- Identify exact VIN cohorts affected by a quality issue
-- Reduce shotgun recalls by 40-60% (target only truly affected vehicles)
-- Regulatory report generation (SIAM / MoRTH format for India)
-- Recall campaign tracking and completion monitoring
-
-### 4.3 — Dealer Technician Copilot
-
-- AI assistant for technicians during diagnosis and repair
-- Knowledge base: repair manuals, TSBs, known issues, past repair patterns
-- Diagnostic step suggestion based on vehicle symptoms + history
-- Similar past repair lookup ("3 other technicians fixed this P0420 by...")
-- Voice interface for hands-free workshop use (later)
-- Feedback loop: technician ratings improve suggestions
-
-### 4.4 — EV Battery & eAxle Warranty Intelligence
-
-- Specialized prediction models for:
-  - Battery State of Health degradation
-  - Thermal management anomalies
-  - Charging behavior impact on longevity
-  - eAxle vibration patterns
-- Critical as electric CV/bus fleets scale in India
-- Different failure modes and cost structures than ICE
-
-### 4.5 — VW Group OEM Adapter
-
-- Real integration with VW Group APIs:
-  - WeConnect (VW)
-  - myAudi Connect
-  - Skoda Connect
-- VW-specific DTC mappings (VAG diagnostic codes)
-- VW service interval protocols
-- VW parts catalog integration
-- VW dealer network mapping
-
-### 4.6 — Telemetry ROI / Selective Logging
-
-- Decide which signals to collect at higher/lower frequency
-- Adaptive sampling: healthy vehicle = low frequency, degrading = high frequency
-- Cloud cost optimization (less data transfer for healthy fleet)
-- Signal value scoring: which signals actually improve predictions?
-- Cost-per-prediction tracking
-
----
-
-## Azure Infrastructure
-
-```
-Azure Resource Group: kazindustries-{env}
-│
-├── Azure Database for PostgreSQL Flexible Server
-│   └── TimescaleDB extension enabled
-│   └── 4 vCores / 16 GB RAM (production)
-│
-├── Azure Cache for Redis
-│   └── Standard C1 (production)
-│
-├── Azure Container Apps
-│   ├── api          (Express API server)
-│   ├── worker       (BullMQ background jobs)
-│   └── simulator    (dev/staging only)
-│
-├── Azure Static Web Apps
-│   └── web          (Next.js dashboard)
-│
-├── Azure Blob Storage
-│   ├── reports      (generated investigation reports, PDF exports)
-│   ├── models       (ML model artifacts)
-│   └── exports      (CSV/data exports)
-│
-├── Azure Key Vault
-│   └── Secrets, API keys, OEM credentials
-│
-├── Azure Monitor + Application Insights
-│   └── Logs, metrics, traces, alerts
-│
-├── Azure Service Bus (Phase 2+)
-│   └── Cross-service messaging, event-driven workflows
-│
-├── Azure Container Registry
-│   └── Docker images for all services
-│
-└── Azure Front Door (production)
-    └── CDN, WAF, global load balancing
-```
-
-**Environments:**
-
-| Environment | Purpose                    | Infra level              |
-| ----------- | -------------------------- | ------------------------ |
-| local       | Developer machine          | Docker Compose           |
-| dev         | Integration testing        | Minimal Azure resources  |
-| staging     | Pre-production, demos      | Production-like          |
-| production  | Live customer deployments  | Full HA, monitoring      |
-
----
-
-## Key Principles (Non-Negotiable)
-
-1. **No hardware.** Sit above existing telematics.
-2. **No generic dashboards.** Every screen must drive a decision or action.
-3. **Signal Trust Layer is invisible but sacred.** It makes deployments repeatable.
-4. **Working demo at every sub-phase.** No "trust me it works in the backend."
-5. **Outcome feedback loops.** Every service completion feeds back into accuracy.
-6. **Multi-tenant from day 1.** Organization-scoped data isolation.
-7. **OEM-agnostic adapter pattern.** New OEMs = new adapter, not new platform.
-8. **Explainability over accuracy.** Every score, ranking, and prediction cites evidence.
-9. **Productize the invisible data layer.** The moat is signal normalization, cohorting,
-   and workflow memory — not the UI.
-10. **One narrow use case first.** Win Service Orchestration, then expand.
-
----
-
-## Success Metrics by Phase
-
-| Phase | Key Metric                          | Target              |
-| ----- | ----------------------------------- | -------------------- |
-| 0     | Signal ingestion throughput         | 10K signals/sec      |
-| 0     | Health score computation latency    | < 2 seconds          |
-| 1     | Service request turnaround time     | Measurably reduced   |
-| 1     | First-time-fix rate                 | Tracked, trending up |
-| 1     | Bay utilization                     | Tracked, optimized   |
-| 2     | Mean time to root cause             | Measurably reduced   |
-| 2     | Containment action precision        | > 80%                |
-| 3     | Prediction precision (P > 0.7)      | > 75%                |
-| 3     | Warranty cost avoidance             | Measurably positive  |
-| 3     | False positive rate                 | < 15%                |
+**The Service Orchestration platform must be built first because it generates the data
+that Forensics and Warranty Shield need to function.**
 
 ---
 
 ## Risk Register
 
-| Risk                                   | Mitigation                                         |
-| -------------------------------------- | -------------------------------------------------- |
-| OEM refuses data access                | OEM-agnostic adapter; start with mock data          |
-| Every deployment becomes custom work   | Signal Trust Layer standardization; reusable core   |
-| OEM builds it in-house                 | Speed, specialization, cross-system decisioning     |
-| Prediction models fail validation      | Start with simple heuristics; ML is an upgrade      |
-| Long enterprise sales cycles           | Paid pilots with clear scope and timeline           |
-| Team scaling challenges                | Modular architecture; packages can be owned by pods |
-| Data quality is too poor               | Signal Trust Layer; quality scoring; fail gracefully |
-| Scope creep                            | Phase gates; demo gates; one module at a time       |
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| Kimi-K2.5 API rate limits or outages | Medium | Medium | Fallback to heuristic-only mode. Cache AI responses. Consider secondary LLM provider |
+| AI recommendations are poor initially | High | Low | Heuristics are the primary path. AI is advisory-only until confidence improves. Human override always available |
+| RL feedback loop needs volume to work | High | Medium | Start heuristic-only. RL improves over time. Need 50+ completions for meaningful improvement |
+| Database migration complexity | Low | Medium | Prisma Migrate handles versioning. Test against staging before production |
+| Docker resource requirements | Low | Low | Minimal footprint: PG + Redis + apps. Any dev machine handles it |
+| Azure costs | Medium | Medium | Start with minimal tiers. Scale based on actual load. Monitor costs weekly |
+| Scope creep into Forensics/Warranty | Medium | High | Hard boundary: this plan is orchestration only. Those modules start AFTER this plan is complete |
+| Dashboard performance with many vehicles | Medium | Medium | Virtualized lists (TanStack Virtual), pagination, SSE filtering by viewport |
+| OEM API access delays | High | Medium | Mock adapter provides full functionality for dev/demo/staging. Real adapters added per-OEM |
 
 ---
 
-*Last updated: 15 March 2026*
-*Status: APPROVED — Ready for Phase 0 implementation*
+## Key Principles
+
+1. **Heuristics first, AI second.** The system works perfectly without AI. AI enriches — it never blocks the critical path.
+2. **Every decision is auditable.** Full chain: input data → heuristic score → AI recommendation → human decision → outcome → reward. Complete transparency.
+3. **The system gets smarter over time.** Every completed service makes future decisions better. This is the core differentiator.
+4. **Docker-first, cloud-last.** One command to start locally. No cloud dependency for development.
+5. **The dashboard drives action, not vanity.** Every screen leads to a decision. No decorative charts. Every pixel earns its place.
+6. **AI is visible and explainable.** The purple-accented AI panels show exactly what the AI thinks and why. Users trust systems they can understand.
+7. **Fail gracefully, always.** AI down → heuristics. Redis down → PostgreSQL. DB slow → serve from cache. No single component takes down the system.
+8. **The data pipeline is the product.** OEM cloud → adapter → normalization → ingestion → health scoring → priority ranking → AI reasoning → dispatch → outcome → learning loop. End to end.
+
+---
+
+*This plan describes the complete architecture and build path for the kazindustries Service Orchestration platform. Each phase has a clear demo gate. No phase requires cloud infrastructure until Phase 7.*

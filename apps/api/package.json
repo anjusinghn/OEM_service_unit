@@ -9,6 +9,10 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@bull-board/api": "^6.10.0",
+    "@bull-board/express": "^6.10.0",
+    "@kaz/db": "workspace:*",
+    "@kaz/forensics": "workspace:*",
     "@kaz/oem-adapters-mock": "workspace:*",
     "@kaz/orchestration": "workspace:*",
     "@kaz/shared": "workspace:*",

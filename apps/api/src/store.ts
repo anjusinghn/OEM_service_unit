@@ -2,6 +2,13 @@ import { EventEmitter } from "node:events"
 
 import { applyMockTick, createMockState } from "@kaz/oem-adapters-mock"
 import {
+  buildForensicsSnapshot,
+  advanceInvestigation as advanceInvestigationEngine,
+  createInvestigation as createInvestigationEngine,
+  buildEvidencePackage as buildEvidenceEngine,
+  compareCohort
+} from "@kaz/forensics"
+import {
   buildPriorityQueue,
   buildSnapshot,
   createServiceRequest,
@@ -15,8 +22,11 @@ import {
   nowIso,
   type DashboardSnapshot,
   type DemoState,
+  type ForensicsSnapshot,
   type HealthScore,
+  type InvestigationStatus,
   type LivePulse,
+  type PatternStatus,
   type ServiceHistoryRecord,
   type ServiceRequest,
   type ServiceRequestStatus,
@@ -37,6 +47,7 @@ export class DemoStore {
   constructor() {
     this.state = createMockState(42)
     this.snapshot = this.computeSnapshot()
+    this.state.forensics = buildForensicsSnapshot(this.state, this.snapshot.healthByVehicle)
     this.timer = setInterval(() => this.tick(), 12_000)
   }
 
@@ -52,6 +63,7 @@ export class DemoStore {
   reset() {
     this.state = createMockState(42)
     this.snapshot = this.computeSnapshot()
+    this.state.forensics = buildForensicsSnapshot(this.state, this.snapshot.healthByVehicle)
     this.emitChange()
     return this.getDashboardPayload()
   }
@@ -66,6 +78,7 @@ export class DemoStore {
       depots: this.state.depots,
       technicians: this.state.technicians,
       serviceRequests: openRequests,
+      forensics: this.state.forensics,
       generatedAt: nowIso()
     }
   }
@@ -98,6 +111,93 @@ export class DemoStore {
 
   getServiceRequests() {
     return this.state.serviceRequests
+  }
+
+  getForensics(): ForensicsSnapshot {
+    return this.state.forensics
+  }
+
+  getCohorts() {
+    return this.state.forensics.cohorts
+  }
+
+  getCohort(cohortId: string) {
+    return this.state.forensics.cohorts.find((c) => c.id === cohortId) ?? null
+  }
+
+  getCohortComparison(cohortId: string) {
+    const cohort = this.getCohort(cohortId)
+    if (!cohort) return null
+    return compareCohort(cohort, this.state, this.snapshot.healthByVehicle)
+  }
+
+  getAnomalies() {
+    return this.state.forensics.anomalies
+  }
+
+  getPatterns() {
+    return this.state.forensics.patterns
+  }
+
+  getPattern(patternId: string) {
+    return this.state.forensics.patterns.find((p) => p.id === patternId) ?? null
+  }
+
+  updatePatternStatus(patternId: string, status: PatternStatus) {
+    const pattern = this.state.forensics.patterns.find((p) => p.id === patternId)
+    if (!pattern) return null
+    pattern.status = status
+    this.emitChange()
+    return pattern
+  }
+
+  getInvestigations() {
+    return this.state.forensics.investigations
+  }
+
+  getInvestigation(investigationId: string) {
+    return this.state.forensics.investigations.find((i) => i.id === investigationId) ?? null
+  }
+
+  openInvestigation(anomalyId?: string, patternId?: string) {
+    const anomaly = anomalyId ? this.state.forensics.anomalies.find((a) => a.id === anomalyId) ?? null : null
+    const pattern = patternId ? this.state.forensics.patterns.find((p) => p.id === patternId) ?? null : null
+    const affectedVehicleIds = anomaly
+      ? this.state.forensics.cohorts.find((c) => c.id === anomaly.cohortId)?.vehicleIds ?? []
+      : []
+
+    const investigation = createInvestigationEngine(anomaly, pattern, affectedVehicleIds)
+    this.state.forensics.investigations = [investigation, ...this.state.forensics.investigations]
+    const livePulse = this.addLivePulse("dispatch", `Investigation opened: ${investigation.title}`)
+    this.emitChange()
+    return { investigation, livePulse }
+  }
+
+  advanceInvestigationStatus(investigationId: string, status?: InvestigationStatus) {
+    const investigation = this.state.forensics.investigations.find((i) => i.id === investigationId)
+    if (!investigation) return null
+
+    const updated = advanceInvestigationEngine(investigation, status)
+    const idx = this.state.forensics.investigations.findIndex((i) => i.id === investigationId)
+    this.state.forensics.investigations[idx] = updated
+
+    const livePulse = this.addLivePulse("progress", `Investigation ${investigationId} moved to ${updated.status}.`)
+    this.emitChange()
+    return { investigation: updated, livePulse }
+  }
+
+  getEvidencePackage(investigationId: string) {
+    const investigation = this.getInvestigation(investigationId)
+    if (!investigation) return null
+    return buildEvidenceEngine(investigation, this.state, this.snapshot.healthByVehicle)
+  }
+
+  getSupplierScorecards() {
+    return this.state.forensics.supplierScorecards
+  }
+
+  getHeatmapData() {
+    return this.state.forensics.heatmapData
   }
 
   dispatchVehicle(vehicleId: string): ServiceActionResult | null {
@@ -212,6 +312,7 @@ export class DemoStore {
 
   private recompute() {
     this.snapshot = this.computeSnapshot()
+    this.state.forensics = buildForensicsSnapshot(this.state, this.snapshot.healthByVehicle)
     this.emitChange()
   }
 

@@ -1,0 +1,827 @@
+// ─────────────────────────────────────────────────────────────
+// kazindustries — Prisma Schema
+// Migrated from Drizzle ORM → Prisma ORM
+// Covers: Phase 0 (Foundation + Signal Trust) + Phase 1 (Service Orchestration)
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CORE / MULTI-TENANT
+// ═══════════════════════════════════════════════════════════════
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  users          User[]
+  vehicles       Vehicle[]
+  depots         Depot[]
+  oemConnections OemConnection[]
+  apiKeys        ApiKey[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  name           String
+  email          String   @unique
+  passwordHash   String?  @map("password_hash")
+  role           UserRole @default(VIEWER)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+enum UserRole {
+  PLATFORM_ADMIN
+  OEM_ADMIN
+  DEPOT_MANAGER
+  TECHNICIAN
+  VIEWER
+}
+
+model ApiKey {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  name           String
+  keyHash        String    @unique @map("key_hash")
+  lastUsedAt     DateTime? @map("last_used_at") @db.Timestamptz
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OEM ADAPTER CONNECTIONS
+// ═══════════════════════════════════════════════════════════════
+
+model OemConnection {
+  id             String              @id @default(cuid())
+  organizationId String              @map("organization_id")
+  adapterType    String              @map("adapter_type")
+  name           String
+  config         Json                @default("{}")
+  status         OemConnectionStatus @default(DISCONNECTED)
+  lastSyncAt     DateTime?           @map("last_sync_at") @db.Timestamptz
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("oem_connections")
+}
+
+enum OemConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  SYNCING
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VEHICLES
+// ═══════════════════════════════════════════════════════════════
+
+model Vehicle {
+  id                  String   @id @default(cuid())
+  organizationId      String?  @map("organization_id")
+  vin                 String   @unique @db.VarChar(32)
+  make                String
+  model               String
+  year                Int
+  buildBatch          String   @map("build_batch")
+  softwareVersion     String   @map("software_version")
+  region              String
+  routeName           String   @map("route_name")
+  cargoPriority       Int      @default(50) @map("cargo_priority")
+  routeCriticality    Int      @default(50) @map("route_criticality")
+  downtimeCostPerHour Int      @default(1000) @map("downtime_cost_per_hour")
+  nextStopHours       Float    @default(8) @map("next_stop_hours")
+  latitude            Float    @default(0)
+  longitude           Float    @default(0)
+  depotAffinityId     String?  @map("depot_affinity_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  affinityDepot   Depot?           @relation("VehicleAffinity", fields: [depotAffinityId], references: [id], onDelete: SetNull)
+  signals         VehicleSignal[]
+  healthSnapshots VehicleHealthSnapshot[]
+  prioritySnapshots PrioritySnapshot[]
+  events          VehicleEvent[]
+  faults          VehicleFault[]
+  serviceRequests ServiceRequest[]
+  serviceHistory  ServiceHistory[]
+  priorityEntry   PriorityEntry?
+
+  @@index([organizationId])
+  @@index([region])
+  @@index([depotAffinityId])
+  @@map("vehicles")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIGNAL TRUST LAYER — TELEMETRY
+// ═══════════════════════════════════════════════════════════════
+
+model SignalDefinition {
+  id            String  @id @default(cuid())
+  name          String  @unique
+  unit          String
+  minValue      Float?  @map("min_value")
+  maxValue      Float?  @map("max_value")
+  sourceSystem  String? @map("source_system")
+  normalization Json?
+
+  @@map("signal_definitions")
+}
+
+model VehicleSignal {
+  vehicleId      String   @map("vehicle_id")
+  timestamp      DateTime @db.Timestamptz
+  coolantTemp    Float    @map("coolant_temp")
+  oilPressure    Float    @map("oil_pressure")
+  batteryVoltage Float    @map("battery_voltage")
+  turboBoost     Float    @map("turbo_boost")
+  brakeWear      Float    @map("brake_wear")
+  exhaustTemp    Float    @map("exhaust_temp")
+  fuelLevel      Float    @map("fuel_level")
+  speed          Float
+  mileage        Float
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, timestamp])
+  @@index([vehicleId, timestamp(sort: Desc)])
+  @@index([timestamp])
+  @@map("vehicle_signals")
+}
+
+model VehicleHealthSnapshot {
+  vehicleId        String   @map("vehicle_id")
+  timestamp        DateTime @db.Timestamptz
+  healthScore      Float    @map("health_score")
+  riskLevel        String   @map("risk_level")
+  subsystemScores  Json     @default("{}") @map("subsystem_scores")
+  faultBreakdown   Json     @default("{}") @map("fault_breakdown")
+  signalBreakdown  Json?    @map("signal_breakdown")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, timestamp])
+  @@index([vehicleId, timestamp(sort: Desc)])
+  @@index([timestamp])
+  @@map("vehicle_health_snapshots")
+}
+
+model PrioritySnapshot {
+  vehicleId         String   @map("vehicle_id")
+  timestamp         DateTime @db.Timestamptz
+  score             Float
+  status            String
+  scoreBreakdown    Json     @default("{}") @map("score_breakdown")
+  reasons           Json     @default("[]")
+  overrideBreakdown Json?    @map("override_breakdown")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, timestamp])
+  @@index([vehicleId, timestamp(sort: Desc)])
+  @@index([timestamp])
+  @@map("priority_snapshots")
+}
+
+model VehicleEvent {
+  id        String      @id @default(cuid())
+  vehicleId String      @map("vehicle_id")
+  eventType String      @map("event_type")
+  dtcCode   String?     @map("dtc_code")
+  severity  DtcSeverity @default(INFO)
+  payload   Json        @default("{}")
+  timestamp DateTime    @db.Timestamptz
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, timestamp])
+  @@index([dtcCode])
+  @@map("vehicle_events")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DTC REGISTRY
+// ═══════════════════════════════════════════════════════════════
+
+model DtcCode {
+  id           String      @id @default(cuid())
+  code         String      @unique
+  system       String
+  subsystem    Subsystem
+  severity     DtcSeverity @default(INFO)
+  description  String
+  knownCauses  String[]    @map("known_causes")
+  remedies     String[]
+  relatedCodes String[]    @map("related_codes")
+
+  @@index([subsystem])
+  @@map("dtc_codes")
+}
+
+enum DtcSeverity {
+  INFO
+  WARNING
+  CRITICAL
+  SAFETY
+}
+
+enum Subsystem {
+  ENGINE
+  COOLING
+  BRAKES
+  ELECTRICAL
+  EXHAUST
+  TURBO
+  FUEL
+  TRANSMISSION
+  STEERING
+  SUSPENSION
+  BODY
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VEHICLE FAULTS (active / resolved)
+// ═══════════════════════════════════════════════════════════════
+
+model VehicleFault {
+  id          String    @id @default(cuid())
+  vehicleId   String    @map("vehicle_id")
+  dtcCode     String    @map("dtc_code")
+  subsystem   String
+  severity    String
+  title       String
+  description String
+  occurredAt  DateTime  @map("occurred_at") @db.Timestamptz
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz
+  occurrences Int       @default(1)
+  isActive    Boolean   @default(true) @map("is_active")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, isActive])
+  @@index([subsystem])
+  @@map("vehicle_faults")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ALERTS (de-duplicated, lifecycle-tracked)
+// ═══════════════════════════════════════════════════════════════
+
+model Alert {
+  id             String      @id @default(cuid())
+  vehicleId      String      @map("vehicle_id")
+  severity       String
+  title          String
+  subsystem      String
+  occurredAt     DateTime    @map("occurred_at") @db.Timestamptz
+  count          Int         @default(1)
+  status         AlertStatus @default(NEW)
+  acknowledgedAt DateTime?   @map("acknowledged_at") @db.Timestamptz
+  resolvedAt     DateTime?   @map("resolved_at") @db.Timestamptz
+
+  @@index([vehicleId])
+  @@index([status])
+  @@map("alerts")
+}
+
+enum AlertStatus {
+  NEW
+  ACKNOWLEDGED
+  INVESTIGATING
+  RESOLVED
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — DEPOTS & BAY MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+
+model Depot {
+  id             String   @id @default(cuid())
+  organizationId String?  @map("organization_id")
+  name           String
+  city           String
+  region         String
+  latitude       Float    @default(0)
+  longitude      Float    @default(0)
+  specialties    Json     @default("[]")
+  totalBays      Int      @map("total_bays")
+  occupiedBays   Int      @default(0) @map("occupied_bays")
+  operatingHours Json?    @map("operating_hours")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization     Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  bays             Bay[]
+  technicians      Technician[]
+  inventory        InventoryItem[]
+  serviceRequests  ServiceRequest[]
+  serviceHistory   ServiceHistory[]
+  affinityVehicles Vehicle[]        @relation("VehicleAffinity")
+
+  @@index([organizationId])
+  @@index([region])
+  @@map("depots")
+}
+
+model Bay {
+  id        String    @id @default(cuid())
+  depotId   String    @map("depot_id")
+  name      String
+  type      BayType   @default(GENERAL)
+  status    BayStatus @default(AVAILABLE)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  depot Depot @relation(fields: [depotId], references: [id], onDelete: Cascade)
+
+  @@index([depotId, status])
+  @@map("bays")
+}
+
+enum BayType {
+  GENERAL
+  ENGINE
+  ELECTRICAL
+  BODY
+  INSPECTION
+  EV
+}
+
+enum BayStatus {
+  AVAILABLE
+  OCCUPIED
+  OUT_OF_SERVICE
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — PARTS & INVENTORY
+// ═══════════════════════════════════════════════════════════════
+
+model Part {
+  partNumber  String   @id @map("part_number")
+  name        String
+  subsystem   String
+  leadDays    Int      @default(1) @map("lead_days")
+  price       Float    @default(0)
+  criticality String   @default("operational")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  inventory     InventoryItem[]
+  substitutes   PartSubstitute[]  @relation("OriginalPart")
+  substituteFor PartSubstitute[]  @relation("SubstitutePart")
+  reservations  PartReservation[]
+
+  @@map("parts")
+}
+
+model PartSubstitute {
+  id                   String @id @default(cuid())
+  originalPartNumber   String @map("original_part_number")
+  substitutePartNumber String @map("substitute_part_number")
+
+  original   Part @relation("OriginalPart", fields: [originalPartNumber], references: [partNumber], onDelete: Cascade)
+  substitute Part @relation("SubstitutePart", fields: [substitutePartNumber], references: [partNumber], onDelete: Cascade)
+
+  @@unique([originalPartNumber, substitutePartNumber])
+  @@map("part_substitutes")
+}
+
+model InventoryItem {
+  id           String   @id @default(cuid())
+  depotId      String   @map("depot_id")
+  partNumber   String   @map("part_number")
+  quantity     Int      @default(0)
+  reorderPoint Int      @default(2) @map("reorder_point")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  depot Depot @relation(fields: [depotId], references: [id], onDelete: Cascade)
+  part  Part  @relation(fields: [partNumber], references: [partNumber], onDelete: Cascade)
+
+  @@unique([depotId, partNumber])
+  @@index([depotId])
+  @@map("inventory_items")
+}
+
+model PartReservation {
+  id               String            @id @default(cuid())
+  serviceRequestId String            @map("service_request_id")
+  partNumber       String            @map("part_number")
+  depotId          String            @map("depot_id")
+  quantity         Int               @default(1)
+  status           ReservationStatus @default(HELD)
+  expiresAt        DateTime          @map("expires_at") @db.Timestamptz
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+  part           Part           @relation(fields: [partNumber], references: [partNumber], onDelete: Cascade)
+
+  @@index([serviceRequestId])
+  @@index([depotId, partNumber])
+  @@map("part_reservations")
+}
+
+enum ReservationStatus {
+  HELD
+  CONSUMED
+  RELEASED
+  EXPIRED
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — TECHNICIANS
+// ═══════════════════════════════════════════════════════════════
+
+model Technician {
+  id               String   @id @default(cuid())
+  depotId          String   @map("depot_id")
+  name             String
+  certifications   Json     @default("[]")
+  currentLoad      Int      @default(0) @map("current_load")
+  maxLoad          Int      @default(5) @map("max_load")
+  firstTimeFixRate Float    @default(0.85) @map("first_time_fix_rate")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  depot           Depot            @relation(fields: [depotId], references: [id], onDelete: Cascade)
+  serviceRequests ServiceRequest[]
+  serviceHistory  ServiceHistory[]
+
+  @@index([depotId])
+  @@map("technicians")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — PRIORITY QUEUE (cached/materialized)
+// ═══════════════════════════════════════════════════════════════
+
+model PriorityEntry {
+  id               String   @id @default(cuid())
+  vehicleId        String   @unique @map("vehicle_id")
+  score            Float
+  status           String
+  safetyUrgency    Float    @default(0) @map("safety_urgency")
+  failureProximity Float    @default(0) @map("failure_proximity")
+  businessImpact   Float    @default(0) @map("business_impact")
+  downtimeCost     Float    @default(0) @map("downtime_cost")
+  serviceWindow    Float    @default(0) @map("service_window")
+  reasons          Json     @default("[]")
+  isOverridden     Boolean  @default(false) @map("is_overridden")
+  overriddenBy     String?  @map("overridden_by")
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([score(sort: Desc)])
+  @@map("priority_entries")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — SERVICE REQUESTS & WORKFLOW
+// ═══════════════════════════════════════════════════════════════
+
+model ServiceRequest {
+  id                  String               @id @default(cuid())
+  vehicleId           String               @map("vehicle_id")
+  priorityScore       Float                @map("priority_score")
+  weakestSubsystem    String               @map("weakest_subsystem")
+  depotId             String?              @map("depot_id")
+  technicianId        String?              @map("technician_id")
+  requiredPartNumbers Json                 @default("[]") @map("required_part_numbers")
+  status              ServiceRequestStatus @default(DETECTED)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  scheduledFor        DateTime?            @map("scheduled_for") @db.Timestamptz
+  completedAt         DateTime?            @map("completed_at") @db.Timestamptz
+
+  vehicle      Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  depot        Depot?            @relation(fields: [depotId], references: [id], onDelete: SetNull)
+  technician   Technician?       @relation(fields: [technicianId], references: [id], onDelete: SetNull)
+  timeline     ServiceTimeline[]
+  reservations PartReservation[]
+  slaTracking  SlaTracking?
+
+  @@index([vehicleId])
+  @@index([depotId])
+  @@index([technicianId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("service_requests")
+}
+
+enum ServiceRequestStatus {
+  DETECTED
+  PRIORITIZED
+  DEPOT_ASSIGNED
+  PARTS_CONFIRMED
+  TECHNICIAN_ASSIGNED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CLOSED
+}
+
+model ServiceTimeline {
+  id               String   @id @default(cuid())
+  serviceRequestId String   @map("service_request_id")
+  status           String
+  note             String   @default("")
+  at               DateTime @default(now()) @db.Timestamptz
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+
+  @@index([serviceRequestId])
+  @@map("service_timeline")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — SERVICE HISTORY (outcome feedback loop)
+// ═══════════════════════════════════════════════════════════════
+
+model ServiceHistory {
+  id               String   @id @default(cuid())
+  vehicleId        String   @map("vehicle_id")
+  depotId          String   @map("depot_id")
+  technicianId     String   @map("technician_id")
+  subsystem        String
+  outcome          String
+  resolvedAt       DateTime @map("resolved_at") @db.Timestamptz
+  firstTimeFix     Boolean  @default(true) @map("first_time_fix")
+  actualFault      String?  @map("actual_fault")
+  partsUsed        Json     @default("[]") @map("parts_used")
+  repairDuration   Float?   @map("repair_duration_hours")
+  diagnosisCorrect Boolean? @map("diagnosis_correct")
+  technicianNotes  String?  @map("technician_notes")
+
+  vehicle    Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  depot      Depot      @relation(fields: [depotId], references: [id], onDelete: Cascade)
+  technician Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([depotId])
+  @@index([technicianId])
+  @@index([resolvedAt])
+  @@map("service_history")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — SLA TRACKING
+// ═══════════════════════════════════════════════════════════════
+
+model SlaTracking {
+  id                  String    @id @default(cuid())
+  serviceRequestId    String    @unique @map("service_request_id")
+  detectedAt          DateTime  @map("detected_at") @db.Timestamptz
+  assignedAt          DateTime? @map("assigned_at") @db.Timestamptz
+  serviceStartedAt    DateTime? @map("service_started_at") @db.Timestamptz
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz
+  detectionToAssignMs Int?      @map("detection_to_assign_ms")
+  assignToStartMs     Int?      @map("assign_to_start_ms")
+  startToCompleteMs   Int?      @map("start_to_complete_ms")
+  totalResolutionMs   Int?      @map("total_resolution_ms")
+  breached            Boolean   @default(false)
+  breachReason        String?   @map("breach_reason")
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+
+  @@map("sla_tracking")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — WEBHOOKS & NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════
+
+model Webhook {
+  id        String   @id @default(cuid())
+  url       String
+  events    String[]
+  secret    String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("webhooks")
+}
+
+model NotificationPreference {
+  id        String  @id @default(cuid())
+  userId    String  @map("user_id")
+  channel   String
+  eventType String  @map("event_type")
+  enabled   Boolean @default(true)
+
+  @@unique([userId, channel, eventType])
+  @@map("notification_preferences")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS: COHORT ANALYSIS
+// ═══════════════════════════════════════════════════════════════
+
+model ForensicsCohort {
+  id             String   @id @default(cuid())
+  name           String
+  dimension      String
+  dimensionValue String   @map("dimension_value")
+  vehicleCount   Int      @map("vehicle_count")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  members     CohortMember[]
+  anomalies   CohortAnomaly[]
+  comparisons CohortComparison[]
+
+  @@index([dimension, dimensionValue])
+  @@map("forensics_cohorts")
+}
+
+model CohortMember {
+  id        String @id @default(cuid())
+  cohortId  String @map("cohort_id")
+  vehicleId String @map("vehicle_id")
+
+  cohort ForensicsCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, vehicleId])
+  @@index([vehicleId])
+  @@map("cohort_members")
+}
+
+model CohortComparison {
+  id                       String   @id @default(cuid())
+  cohortId                 String   @map("cohort_id")
+  baselineLabel            String   @map("baseline_label")
+  overallFaultRate         Float    @map("overall_fault_rate")
+  baselineOverallFaultRate Float    @map("baseline_overall_fault_rate")
+  avgHealthScore           Float    @map("avg_health_score")
+  baselineAvgHealthScore   Float    @map("baseline_avg_health_score")
+  statisticalSignificance  Float    @map("statistical_significance")
+  isSignificant            Boolean  @map("is_significant")
+  sampleSize               Int      @map("sample_size")
+  faultProfiles            Json     @default("[]") @map("fault_profiles")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  cohort ForensicsCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@index([cohortId])
+  @@map("cohort_comparisons")
+}
+
+model CohortAnomaly {
+  id                   String   @id @default(cuid())
+  cohortId             String   @map("cohort_id")
+  anomalyType          String   @map("anomaly_type")
+  dtcCode              String   @map("dtc_code")
+  subsystem            String
+  rateRatio            Float    @map("rate_ratio")
+  pValue               Float    @map("p_value")
+  affectedVehicleCount Int      @map("affected_vehicle_count")
+  severity             String
+  summary              String
+  detectedAt           DateTime @default(now()) @map("detected_at") @db.Timestamptz
+
+  cohort ForensicsCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@index([cohortId])
+  @@index([severity])
+  @@map("cohort_anomalies")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS: FAILURE PATTERN DETECTION
+// ═══════════════════════════════════════════════════════════════
+
+model ForensicsPattern {
+  id                 String               @id @default(cuid())
+  name               String
+  type               String
+  status             ForensicsPatternStatus @default(DETECTED)
+  confidence         Float
+  supportCount       Int                  @map("support_count")
+  totalVehicles      Int                  @map("total_vehicles")
+  supportRate        Float                @map("support_rate")
+  sequence           Json                 @default("[]")
+  affectedSubsystems Json                 @default("[]") @map("affected_subsystems")
+  affectedRegions    Json                 @default("[]") @map("affected_regions")
+  correlations       Json                 @default("[]")
+  summary            String
+  detectedAt         DateTime             @default(now()) @map("detected_at") @db.Timestamptz
+
+  investigations ForensicsInvestigation[]
+
+  @@index([status])
+  @@index([type])
+  @@map("forensics_patterns")
+}
+
+enum ForensicsPatternStatus {
+  DETECTED
+  UNDER_REVIEW
+  CONFIRMED
+  ACTIVE
+  RETIRED
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS: INVESTIGATION WORKFLOW
+// ═══════════════════════════════════════════════════════════════
+
+model ForensicsInvestigation {
+  id                   String                       @id @default(cuid())
+  patternId            String?                      @map("pattern_id")
+  title                String
+  status               ForensicsInvestigationStatus @default(PATTERN_DETECTED)
+  rootCause            String?                      @map("root_cause")
+  affectedVehicleIds   Json                         @default("[]") @map("affected_vehicle_ids")
+  affectedVehicleCount Int                          @map("affected_vehicle_count")
+  containment          Json?
+  createdAt            DateTime                     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime                     @updatedAt @map("updated_at") @db.Timestamptz
+
+  pattern  ForensicsPattern?            @relation(fields: [patternId], references: [id], onDelete: SetNull)
+  timeline ForensicsInvestigationEvent[]
+
+  @@index([patternId])
+  @@index([status])
+  @@map("forensics_investigations")
+}
+
+model ForensicsInvestigationEvent {
+  id              String   @id @default(cuid())
+  investigationId String   @map("investigation_id")
+  status          String
+  note            String   @default("")
+  at              DateTime @default(now()) @db.Timestamptz
+
+  investigation ForensicsInvestigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId])
+  @@map("forensics_investigation_events")
+}
+
+enum ForensicsInvestigationStatus {
+  PATTERN_DETECTED
+  INVESTIGATION_OPENED
+  EVIDENCE_COLLECTED
+  ROOT_CAUSE_IDENTIFIED
+  CONTAINMENT_RECOMMENDED
+  ACTION_TAKEN
+  VERIFIED
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS: SUPPLIER SCORECARDS
+// ═══════════════════════════════════════════════════════════════
+
+model SupplierInfo {
+  id             String   @id @default(cuid())
+  name           String
+  componentTypes Json     @default("[]") @map("component_types")
+  activeBatches  Json     @default("[]") @map("active_batches")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  scorecards SupplierScorecard[]
+
+  @@map("supplier_info")
+}
+
+model SupplierScorecard {
+  id                   String   @id @default(cuid())
+  supplierId           String   @map("supplier_id")
+  componentType        String   @map("component_type")
+  overallFaultRate     Float    @map("overall_fault_rate")
+  baselineFaultRate    Float    @map("baseline_fault_rate")
+  rateRatio            Float    @map("rate_ratio")
+  trend                String
+  affectedVehicleCount Int      @map("affected_vehicle_count")
+  totalVehicleCount    Int      @map("total_vehicle_count")
+  batches              Json     @default("[]")
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  supplier SupplierInfo @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@index([componentType])
+  @@map("supplier_scorecards")
+}

@@ -5,8 +5,14 @@ dist/
 coverage/
 .DS_Store
 .env
-.env.*
+.env.local
+.env.development
+.env.production
+!.env.example
 pnpm-lock.yaml
+
+# Prisma
+packages/db/prisma/migrations/**/migration_lock.toml
 
 # Separate projects
 landing/

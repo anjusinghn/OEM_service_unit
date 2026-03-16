@@ -25,6 +25,7 @@ import { MetricCard, SectionCard, StatusPill } from "@kaz/ui"
 import type {
   DashboardSnapshot,
   Depot,
+  ForensicsSnapshot,
   HealthScore,
   ServiceRequest,
   Vehicle,
@@ -45,6 +46,7 @@ type DashboardPayload = DashboardSnapshot & {
   vehicles: VehicleRecord[]
   depots: Depot[]
   serviceRequests: ServiceRequest[]
+  forensics: ForensicsSnapshot
   generatedAt: string
 }
 
@@ -53,6 +55,7 @@ const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 const NAV_ITEMS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "triage", label: "Triage", icon: Shield },
+  { id: "forensics", label: "Forensics", icon: RadioTower },
   { id: "workflow", label: "Workflow", icon: GitBranch },
   { id: "depots", label: "Depot Network", icon: Building2 },
   { id: "alerts", label: "Alerts", icon: Bell },
@@ -262,6 +265,12 @@ export function Dashboard() {
               label="Bay utilization"
               value={`${payload.overview.bayUtilization}%`}
               detail={`${payload.overview.firstTimeFixRate}% first-time-fix`}
+            />
+            <MetricCard
+              label="Forensics anomalies"
+              value={payload.forensics.anomalies.length}
+              detail={`${payload.forensics.investigations.length} open investigations`}
+              tone={payload.forensics.anomalies.length > 0 ? "watch" : "success"}
             />
           </div>
 
@@ -485,6 +494,132 @@ export function Dashboard() {
                     </article>
                   )
                 })}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="grid grid--secondary mb-28 fade-in">
+            <SectionCard
+              title="Forensics Signals"
+              eyebrow="Telemetry Forensics"
+              actions={<StatusPill tone="info">{payload.forensics.cohorts.length} cohorts</StatusPill>}
+            >
+              <div className="request-board">
+                {payload.forensics.anomalies.slice(0, 4).map((anomaly) => (
+                  <article key={anomaly.id} className="request-card">
+                    <div className="request-card__top">
+                      <div>
+                        <strong>{anomaly.cohortName}</strong>
+                        <p>{anomaly.dtcCode} &middot; {anomaly.dimensionValue}</p>
+                      </div>
+                      <StatusPill tone={anomaly.severity === "critical" ? "critical" : anomaly.severity === "high" ? "watch" : "info"}>
+                        {anomaly.severity}
+                      </StatusPill>
+                    </div>
+                    <div className="request-card__meta">
+                      <span>{anomaly.rateRatio}x baseline</span>
+                      <span>{anomaly.affectedVehicleCount} vehicles</span>
+                      <span>p={anomaly.pValue}</span>
+                    </div>
+                    <div className="request-card__timeline">
+                      <div>
+                        <strong>Summary</strong>
+                        <p>{anomaly.summary}</p>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+                {payload.forensics.anomalies.length === 0 && (
+                  <div className="empty-state">
+                    <RadioTower size={24} />
+                    <span>No anomalous cohorts detected yet.</span>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Pattern Library"
+              eyebrow="Detected Chains"
+              actions={<StatusPill tone="info">{payload.forensics.patterns.length} patterns</StatusPill>}
+            >
+              <div className="alerts-list">
+                {payload.forensics.patterns.slice(0, 5).map((pattern) => (
+                  <article className="alert-row alert-row--warning" key={pattern.id}>
+                    <div className="alert-row__icon">
+                      <Activity size={16} />
+                    </div>
+                    <div>
+                      <strong>{pattern.name}</strong>
+                      <p>{pattern.summary}</p>
+                    </div>
+                    <StatusPill tone={pattern.status === "CONFIRMED" || pattern.status === "ACTIVE" ? "success" : "watch"}>
+                      {pattern.status.toLowerCase().replace(/_/g, " ")}
+                    </StatusPill>
+                  </article>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="grid grid--secondary mb-28 fade-in">
+            <SectionCard
+              title="Investigations"
+              eyebrow="Root Cause Workflow"
+              actions={<StatusPill tone="info">{payload.forensics.investigations.length} active</StatusPill>}
+            >
+              <div className="request-board">
+                {payload.forensics.investigations.slice(0, 4).map((investigation) => (
+                  <article key={investigation.id} className="request-card">
+                    <div className="request-card__top">
+                      <div>
+                        <strong>{investigation.title}</strong>
+                        <p>{investigation.affectedVehicleCount} affected vehicles</p>
+                      </div>
+                      <StatusPill tone={investigation.status === "VERIFIED" ? "success" : "watch"}>
+                        {investigation.status.toLowerCase().replace(/_/g, " ")}
+                      </StatusPill>
+                    </div>
+                    <div className="request-card__timeline">
+                      {investigation.timeline.slice(-2).map((event) => (
+                        <div key={`${investigation.id}-${event.status}-${event.at}`}>
+                          <strong>{event.status}</strong>
+                          <p>{event.note}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+                {payload.forensics.investigations.length === 0 && (
+                  <div className="empty-state">
+                    <Shield size={24} />
+                    <span>No investigations opened yet.</span>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Supplier Scorecards"
+              eyebrow="Supplier Risk"
+              actions={<StatusPill tone="info">{payload.forensics.supplierScorecards.length} suppliers</StatusPill>}
+            >
+              <div className="depot-grid">
+                {payload.forensics.supplierScorecards.slice(0, 6).map((scorecard) => (
+                  <article className="depot-card" key={`${scorecard.supplierId}-${scorecard.componentType}`}>
+                    <div className="depot-card__top">
+                      <strong>{scorecard.supplierName}</strong>
+                      <StatusPill tone={scorecard.rateRatio > 1.5 ? "critical" : scorecard.rateRatio > 1.15 ? "watch" : "success"}>
+                        {scorecard.rateRatio}x
+                      </StatusPill>
+                    </div>
+                    <p>{scorecard.componentType}</p>
+                    <div className="depot-specialties">
+                      <span>{scorecard.affectedVehicleCount}/{scorecard.totalVehicleCount} vehicles</span>
+                      <span>{scorecard.trend}</span>
+                    </div>
+                  </article>
+                ))}
               </div>
             </SectionCard>
           </div>

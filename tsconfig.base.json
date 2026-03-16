@@ -19,6 +19,7 @@
       "@kaz/db": ["packages/db/src/index.ts"],
       "@kaz/signal-trust": ["packages/signal-trust/src/index.ts"],
       "@kaz/orchestration": ["packages/orchestration/src/index.ts"],
+      "@kaz/forensics": ["packages/forensics/src/index.ts"],
       "@kaz/ui": ["packages/ui/src/index.ts"],
       "@kaz/oem-adapters-core": ["packages/oem-adapters/core/src/index.ts"],
       "@kaz/oem-adapters-mock": ["packages/oem-adapters/mock/src/index.ts"]

@@ -210,6 +210,8 @@ export interface DemoState {
   serviceRequests: ServiceRequest[]
   serviceHistory: ServiceHistoryRecord[]
   livePulse: LivePulse[]
+  suppliers: SupplierInfo[]
+  forensics: ForensicsSnapshot
 }
 
 export interface FleetOverview {
@@ -231,4 +233,229 @@ export interface DashboardSnapshot {
   depotRecommendations: Record<string, DepotRecommendation[]>
   technicianRecommendations: Record<string, TechnicianRecommendation[]>
   livePulse: LivePulse[]
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — TELEMETRY FORENSICS
+// ═══════════════════════════════════════════════════════════════
+
+// --- Cohort Analysis (Sub-phase 2.1) ---
+
+export type CohortDimension = "buildBatch" | "softwareVersion" | "region" | "model" | "dutyCycle" | "depot"
+
+export interface Cohort {
+  id: string
+  name: string
+  dimension: CohortDimension
+  dimensionValue: string
+  vehicleIds: string[]
+  vehicleCount: number
+  createdAt: string
+}
+
+export interface CohortFaultProfile {
+  cohortId: string
+  dtcCode: string
+  subsystem: SubsystemKey
+  faultCount: number
+  faultRate: number
+  baselineFaultRate: number
+  rateRatio: number
+  mtbfDays: number
+}
+
+export interface CohortComparison {
+  cohortId: string
+  cohortName: string
+  baselineLabel: string
+  faultProfiles: CohortFaultProfile[]
+  overallFaultRate: number
+  baselineOverallFaultRate: number
+  avgHealthScore: number
+  baselineAvgHealthScore: number
+  statisticalSignificance: number
+  isSignificant: boolean
+  sampleSize: number
+}
+
+export interface CohortAnomaly {
+  id: string
+  cohortId: string
+  cohortName: string
+  dimension: CohortDimension
+  dimensionValue: string
+  anomalyType: string
+  dtcCode: string
+  subsystem: SubsystemKey
+  rateRatio: number
+  pValue: number
+  affectedVehicleCount: number
+  severity: "low" | "medium" | "high" | "critical"
+  detectedAt: string
+  summary: string
+}
+
+// --- Failure Pattern Detection (Sub-phase 2.2) ---
+
+export type PatternStatus = "DETECTED" | "UNDER_REVIEW" | "CONFIRMED" | "ACTIVE" | "RETIRED"
+
+export interface DtcSequenceStep {
+  dtcCode: string
+  subsystem: SubsystemKey
+  severity: DtcSeverity
+  medianDaysFromStart: number
+}
+
+export interface FailurePattern {
+  id: string
+  name: string
+  type: "dtc_sequence" | "signal_degradation" | "spatial" | "cross_system"
+  status: PatternStatus
+  confidence: number
+  supportCount: number
+  totalVehicles: number
+  supportRate: number
+  sequence: DtcSequenceStep[]
+  affectedSubsystems: SubsystemKey[]
+  affectedRegions: string[]
+  correlations: PatternCorrelation[]
+  detectedAt: string
+  summary: string
+}
+
+export interface PatternCorrelation {
+  factorA: string
+  factorB: string
+  correlationType: "temporal" | "spatial" | "cross_system"
+  strength: number
+  description: string
+}
+
+export interface GeographicHeatmapPoint {
+  lat: number
+  lng: number
+  intensity: number
+  dtcCode: string
+  vehicleCount: number
+  region: string
+}
+
+// --- Investigation Workflow (Sub-phase 2.3) ---
+
+export type InvestigationStatus =
+  | "PATTERN_DETECTED"
+  | "INVESTIGATION_OPENED"
+  | "EVIDENCE_COLLECTED"
+  | "ROOT_CAUSE_IDENTIFIED"
+  | "CONTAINMENT_RECOMMENDED"
+  | "ACTION_TAKEN"
+  | "VERIFIED"
+
+export type ContainmentType =
+  | "monitor"
+  | "service_campaign"
+  | "software_update"
+  | "supplier_escalation"
+  | "training_bulletin"
+  | "safety_recall"
+
+export interface Investigation {
+  id: string
+  patternId: string | null
+  anomalyId: string | null
+  title: string
+  status: InvestigationStatus
+  rootCause: string | null
+  affectedVehicleIds: string[]
+  affectedVehicleCount: number
+  containment: ContainmentRecommendation | null
+  timeline: InvestigationTimelineEvent[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InvestigationTimelineEvent {
+  status: InvestigationStatus
+  at: string
+  note: string
+}
+
+export interface EvidencePackage {
+  investigationId: string
+  affectedVehicleIds: string[]
+  signalComparisons: SignalComparison[]
+  dtcHistory: { vehicleId: string; dtcCode: string; occurredAt: string; severity: DtcSeverity }[]
+  serviceHistory: { vehicleId: string; subsystem: SubsystemKey; outcome: string; resolvedAt: string }[]
+  cohortContext: { dimension: CohortDimension; value: string; faultRate: number; baselineRate: number }[]
+  supplierContext: SupplierEvidence[]
+  environmentalContext: { region: string; faultRate: number }[]
+}
+
+export interface SignalComparison {
+  signalName: string
+  affectedAvg: number
+  baselineAvg: number
+  deviation: number
+  unit: string
+}
+
+export interface SupplierEvidence {
+  supplierName: string
+  componentType: string
+  batchId: string
+  faultRate: number
+  baselineFaultRate: number
+  rateRatio: number
+}
+
+export interface ContainmentRecommendation {
+  type: ContainmentType
+  urgency: "low" | "medium" | "high" | "critical"
+  affectedVehicleCount: number
+  estimatedCostPerVehicle: number
+  estimatedTotalCost: number
+  costOfInaction: number
+  netSavings: number
+  suggestedTimeline: string
+  reasoning: string[]
+}
+
+// --- Supplier Scorecards ---
+
+export interface SupplierInfo {
+  id: string
+  name: string
+  componentTypes: string[]
+  activeBatches: string[]
+}
+
+export interface SupplierScorecard {
+  supplierId: string
+  supplierName: string
+  componentType: string
+  overallFaultRate: number
+  baselineFaultRate: number
+  rateRatio: number
+  trend: TrendDirection
+  affectedVehicleCount: number
+  totalVehicleCount: number
+  batches: SupplierBatchScore[]
+}
+
+export interface SupplierBatchScore {
+  batchId: string
+  faultRate: number
+  vehicleCount: number
+  trend: TrendDirection
+}
+
+// --- Forensics Snapshot ---
+
+export interface ForensicsSnapshot {
+  cohorts: Cohort[]
+  anomalies: CohortAnomaly[]
+  patterns: FailurePattern[]
+  investigations: Investigation[]
+  supplierScorecards: SupplierScorecard[]
+  heatmapData: GeographicHeatmapPoint[]
 }

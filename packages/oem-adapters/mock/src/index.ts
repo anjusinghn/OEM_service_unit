@@ -6,11 +6,13 @@ import {
   createId,
   type DemoState,
   type Depot,
+  type ForensicsSnapshot,
   type InventoryItem,
   type LivePulse,
   type Part,
   type ServiceHistoryRecord,
   type SubsystemKey,
+  type SupplierInfo,
   type Technician,
   type Vehicle,
   type VehicleFault,
@@ -215,6 +217,54 @@ const createLivePulse = (): LivePulse[] => [
   }
 ]
 
+const createSuppliers = (): SupplierInfo[] => [
+  {
+    id: createId("supplier", 1),
+    name: "Precision Components Ltd",
+    componentTypes: ["turbocharger", "exhaust_sensor"],
+    activeBatches: ["BATCH-4471", "BATCH-4472", "BATCH-4476"]
+  },
+  {
+    id: createId("supplier", 2),
+    name: "Bharath Auto Parts",
+    componentTypes: ["coolant_sensor", "coolant_pump"],
+    activeBatches: ["BATCH-4521", "BATCH-4522"]
+  },
+  {
+    id: createId("supplier", 3),
+    name: "TechDrive Electronics",
+    componentTypes: ["alternator", "battery_module"],
+    activeBatches: ["BATCH-4630", "BATCH-4631", "BATCH-4634", "BATCH-4638"]
+  },
+  {
+    id: createId("supplier", 4),
+    name: "SafeStop Brakes",
+    componentTypes: ["brake_pad", "brake_line"],
+    activeBatches: ["BATCH-4710", "BATCH-4711", "BATCH-4714"]
+  },
+  {
+    id: createId("supplier", 5),
+    name: "FuelTech Systems",
+    componentTypes: ["fuel_pump", "fuel_filter"],
+    activeBatches: ["BATCH-4825", "BATCH-4826"]
+  },
+  {
+    id: createId("supplier", 6),
+    name: "TransMax India",
+    componentTypes: ["valve_body", "transmission_oil"],
+    activeBatches: ["BATCH-4950", "BATCH-4951", "BATCH-4952", "BATCH-4955"]
+  }
+]
+
+const createEmptyForensicsSnapshot = (): ForensicsSnapshot => ({
+  cohorts: [],
+  anomalies: [],
+  patterns: [],
+  investigations: [],
+  supplierScorecards: [],
+  heatmapData: []
+})
+
 export const createMockState = (seed = 42): DemoState => {
   const rng = seeded(seed)
   const depots = createDepots()
@@ -247,7 +297,9 @@ export const createMockState = (seed = 42): DemoState => {
     technicians,
     serviceRequests: [],
     serviceHistory: createServiceHistory(vehicles, depots, technicians, rng),
-    livePulse: createLivePulse()
+    livePulse: createLivePulse(),
+    suppliers: createSuppliers(),
+    forensics: createEmptyForensicsSnapshot()
   }
 }
 
@@ -302,6 +354,8 @@ export const applyMockTick = (state: DemoState, seed = Date.now()): DemoState =>
     vehicles: nextVehicles,
     signals: nextSignals,
     faults: nextFaults,
+    suppliers: state.suppliers,
+    forensics: state.forensics,
     livePulse: [nextPulse, ...state.livePulse].slice(0, 24)
   }
 }

@@ -15,7 +15,7 @@
 1. [Current State Assessment](#current-state-assessment)
 2. [Production Architecture Blueprint](#production-architecture-blueprint)
 3. [OEM Cloud Data Flow — How Telemetry Reaches Us](#oem-cloud-data-flow)
-4. [Kimi-K2.5 AI Integration Architecture](#kimi-k25-ai-integration-architecture)
+4. [OpenRouter AI Integration Architecture](#openrouter-ai-integration-architecture)
 5. [Enterprise Dashboard Architecture (shadcn/ui)](#enterprise-dashboard-architecture)
 6. [Authentication & Authorization](#authentication--authorization)
 7. [Phase-by-Phase Build Plan](#phase-by-phase-build-plan)
@@ -149,7 +149,7 @@
 │  │  └─ Emit job → queue:depot-match + queue:tech-match (top 16)             │   │
 │  │                                                                          │   │
 │  │  AIReasoningProcessor                                                    │   │
-│  │  ├─ Call Kimi-K2.5 via LangChain (priority reasoning chain)              │   │
+│  │  ├─ Call OpenRouter via LangChain (priority reasoning chain)             │   │
 │  │  ├─ Store AI assessment alongside heuristic score in PostgreSQL          │   │
 │  │  ├─ Cache AI response in Redis (ai:priority:{vehicleId}, TTL 300s)       │   │
 │  │  └─ Publish event → Redis pub/sub channel                                │   │
@@ -272,7 +272,7 @@
 | **Job Queue** | BullMQ | 5.x | Reliable background processing with retry, DLQ, concurrency |
 | **ORM** | Prisma | 6.x | Schema-first, type-safe, migration management |
 | **AI Framework** | **LangChain.js** | 0.3.x | LLM orchestration, tool-calling agents, structured output |
-| **LLM** | **Kimi-K2.5** (Moonshot AI) | latest | OpenAI-compatible API, 256K context, tool calling, $0.60/M input |
+| **LLM** | **OpenRouter `z-ai/glm-4.5-air:free`** | latest | OpenAI-compatible API routing with a free model suitable for Phase 3 development |
 | **Auth** | **NextAuth.js** (Auth.js v5) | 5.x | Session management, JWT, provider extensibility |
 | **Monorepo** | Turborepo + pnpm | latest | Already in use |
 | **Container** | Docker + Docker Compose | latest | Local dev infra, production images |
@@ -497,8 +497,8 @@ interface OEMAdapter {
 
 6. Worker: AIReasoningProcessor picks up the job (async, non-blocking)
    ├─ Builds LangChain prompt with vehicle data, health, faults, service history
-   ├─ Calls Kimi-K2.5 API: POST https://api.moonshot.ai/v1/chat/completions
-   │   model: "kimi-k2.5"
+├─ Calls OpenRouter API: POST https://openrouter.ai/api/v1/chat/completions
+│   model: "z-ai/glm-4.5-air:free"
    │   thinking: { type: "disabled" }  (fast mode for real-time decisions)
    │   tools: [vehicle_lookup, service_history, fleet_stats]
    ├─ Parses structured output (Zod schema validation)
@@ -546,19 +546,19 @@ interface OEMAdapter {
 10. User clicks VEH-042 in the priority queue:
     ├─ Vehicle detail panel slides open (Framer Motion)
     ├─ Shows: subsystem radar chart, signal sparklines, fault history
-    ├─ AI reasoning panel expands: full explanation from Kimi-K2.5
+├─ AI reasoning panel expands: full explanation from OpenRouter model output
     └─ "AI Dispatch" button is prominently available
 ```
 
 ---
 
-## Kimi-K2.5 AI Integration Architecture
+## OpenRouter AI Integration Architecture
 
 ### API Configuration
 
 ```
-Base URL:     https://api.moonshot.ai/v1
-Model:        kimi-k2.5
+Base URL:     https://openrouter.ai/api/v1
+Model:        z-ai/glm-4.5-air:free
 Context:      256K tokens
 API Style:    OpenAI-compatible (chat/completions endpoint)
 Tool Calling: Supported (tools array + tool_choice: "auto")
@@ -570,10 +570,10 @@ Pricing:      $0.10/M input (cache hit), $0.60/M input (cache miss), $3.00/M out
 ### Environment Variables
 
 ```bash
-# Required — Kimi-K2.5 API access
-KIMI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx    # From platform.moonshot.ai/console/api-keys
-KIMI_BASE_URL=https://api.moonshot.ai/v1    # Global endpoint
-KIMI_MODEL=kimi-k2.5                        # Model identifier
+# Required — OpenRouter API access
+OPENROUTER_API_KEY=sk-or-xxxxxxxxxxxxxxxxxxxx   # From openrouter.ai/keys
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=z-ai/glm-4.5-air:free
 
 # AI behavior configuration
 AI_ENABLED=true                              # Feature flag — false = pure heuristic mode
@@ -591,17 +591,17 @@ packages/ai/                    @kaz/ai
 ├── src/
 │   ├── index.ts                # Public API — exportAll
 │   │
-│   ├── client.ts               # LangChain ChatOpenAI configured for Kimi-K2.5
+│   ├── client.ts               # LangChain ChatOpenAI configured for OpenRouter
 │   │   │
 │   │   │  import { ChatOpenAI } from "@langchain/openai"
 │   │   │
-│   │   │  export const createKimiClient = () => new ChatOpenAI({
-│   │   │    openAIApiKey: process.env.KIMI_API_KEY,
+│   │   │  export const createOpenRouterClient = () => new ChatOpenAI({
+│   │   │    openAIApiKey: process.env.OPENROUTER_API_KEY,
 │   │   │    configuration: {
-│   │   │      baseURL: process.env.KIMI_BASE_URL,
+│   │   │      baseURL: process.env.OPENROUTER_BASE_URL,
 │   │   │    },
-│   │   │    modelName: process.env.KIMI_MODEL ?? "kimi-k2.5",
-│   │   │    temperature: 0.6,       // Kimi-K2.5 non-thinking fixed value
+│   │   │    modelName: process.env.OPENROUTER_MODEL ?? "z-ai/glm-4.5-air:free",
+│   │   │    temperature: 0.6,
 │   │   │    maxTokens: 4096,
 │   │   │    timeout: 15000,
 │   │   │    maxRetries: 3,
@@ -650,7 +650,7 @@ packages/ai/                    @kaz/ai
 │   │   │   │      shouldEscalate: boolean         // True if human attention needed NOW
 │   │   │   │    }
 │   │   │   │
-│   │   │   └── Uses LangChain: ChatPromptTemplate → kimiClient → StructuredOutputParser
+│   │   │   └── Uses LangChain: ChatPromptTemplate → openRouterClient → StructuredOutputParser
 │   │   │
 │   │   ├── depot-reasoning.ts
 │   │   │   │
@@ -1066,7 +1066,7 @@ The main operational view. Where the fleet manager decides what to act on.
 │  │  │    as outline]  │  │  AI adjusted:     82.1 (▲ 3.7)      │ │    │
 │  │  └─────────────────┘  └──────────────────────────────────────┘ │    │
 │  │                                                                 │    │
-│  │  ┌─ AI REASONING ─────────────────────────────── 🤖 Kimi-K2.5 ┐ │  │
+│  │  ┌─ AI REASONING ─────────────────────────── 🤖 OpenRouter AI ┐ │  │
 │  │  │                                                              │ │  │
 │  │  │  "This vehicle should be ESCALATED from score 78.4 to 82.1. │ │  │
 │  │  │                                                              │ │  │
@@ -1100,7 +1100,7 @@ The main operational view. Where the fleet manager decides what to act on.
 
 **Key interactions:**
 - **Row click** → expands with Framer Motion `AnimatePresence` height animation
-- **AI Reasoning panel** — purple gradient border (subtle glow), `🤖 Kimi-K2.5` badge
+- **AI Reasoning panel** — purple gradient border (subtle glow), `🤖 OpenRouter` badge
 - **AI Dispatch button** — opens full-screen dispatch interface (see `/dispatch` page)
 - **Quick Dispatch** — uses heuristic-only matching, instant, no AI wait
 - **Table sorting** — click column headers. Sort animation on rows (Framer Motion `layoutId`)
@@ -1592,7 +1592,7 @@ Each API key is scoped to:
 |---|---|---|---|
 | **Phase 1** | Docker + Database + Repository Layer | 1–2 weeks | In-memory → persistent PostgreSQL + Redis |
 | **Phase 2** | Real Worker + Simulator Pipeline | 1–2 weeks | Stub apps → real streaming BullMQ pipeline |
-| **Phase 3** | AI Decision Engine (LangChain + Kimi-K2.5) | 2–3 weeks | Heuristic → AI-augmented decisions with tool-calling agent |
+| **Phase 3** | AI Decision Engine (LangChain + OpenRouter) | 2–3 weeks | Heuristic → AI-augmented decisions with tool-calling agent |
 | **Phase 4** | Reinforcement Learning Feedback Loop | 2–3 weeks | Static weights → self-improving decisions from outcomes |
 | **Phase 5** | Enterprise Dashboard (shadcn/ui + Tailwind) | 2–3 weeks | Single-file demo → full enterprise command center |
 | **Phase 6** | Auth + Multi-Tenancy + Testing | 1–2 weeks | Open access → production-grade security + 80%+ test coverage |
@@ -1763,16 +1763,16 @@ Replace `setInterval` with Redis pub/sub-driven SSE:
 
 ---
 
-### PHASE 3: AI Decision Engine (LangChain + Kimi-K2.5)
+### PHASE 3: AI Decision Engine (LangChain + OpenRouter)
 
 **Duration:** 2–3 weeks
 
-**Goal:** LangChain + Kimi-K2.5 integration. AI-augmented priority, depot, tech matching. Full dispatch agent.
+**Goal:** LangChain + OpenRouter integration. AI-augmented priority, depot, tech matching. Full dispatch agent.
 
-#### Sub-phase 3.1 — LangChain + Kimi-K2.5 Client Setup
+#### Sub-phase 3.1 — LangChain + OpenRouter Client Setup
 
-- `packages/ai` package with ChatOpenAI configured for Kimi-K2.5 API
-- Base URL: `https://api.moonshot.ai/v1`, model: `kimi-k2.5`
+- `packages/ai` package with ChatOpenAI configured for OpenRouter
+- Base URL: `https://openrouter.ai/api/v1`, model: `z-ai/glm-4.5-air:free`
 - Thinking mode: disabled for real-time (temperature fixed at 0.6)
 - Token tracking, cost monitoring, response caching, fallback handling
 
@@ -1964,7 +1964,7 @@ Decision Intelligence page (`/intelligence`) with:
 | Ingress | AKS LoadBalancer + NGINX Ingress | Azure-assigned public IP / FQDN (no custom domain needed) |
 | TLS | Let's Encrypt via cert-manager | Auto-renewing certs on Azure-provided FQDN |
 | Monitoring | Azure Monitor + Application Insights | Logs, metrics, traces, alerts |
-| Secrets | Azure Key Vault | All API keys, DB credentials, KIMI_API_KEY |
+| Secrets | Azure Key Vault | All API keys, DB credentials, OPENROUTER_API_KEY |
 
 Kubernetes deployments:
 
@@ -2004,7 +2004,7 @@ The full Service Orchestration platform running on Azure:
 - Monitored with alerts
 - CI/CD deploying on every merge to `main`
 - Database backed up automatically
-- AI decisions flowing through LangChain + Kimi-K2.5
+- AI decisions flowing through LangChain + OpenRouter
 - RL feedback loop capturing outcomes and improving over time
 - Enterprise dashboard with dark mode, keyboard shortcuts, AI dispatch agent, real-time animations
 
@@ -2020,7 +2020,7 @@ The forensics package (`@kaz/forensics`) already has significant in-memory logic
 cohort analysis, DTC sequence mining, cross-system correlation, investigation workflow,
 supplier scorecards, geographic heatmaps. Next step: persist in the database, connect to
 the real telemetry pipeline, add AI-powered root cause analysis using the same LangChain +
-Kimi-K2.5 infrastructure built in Phase 3.
+OpenRouter infrastructure built in Phase 3.
 
 ### → Predictive Warranty Shield Module
 
@@ -2038,7 +2038,7 @@ that Forensics and Warranty Shield need to function.**
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Kimi-K2.5 API rate limits or outages | Medium | Medium | Fallback to heuristic-only mode. Cache AI responses. Consider secondary LLM provider |
+| OpenRouter free model limits or outages | Medium | Medium | Fallback to heuristic-only mode. Cache AI responses. Consider secondary model/provider |
 | AI recommendations are poor initially | High | Low | Heuristics are the primary path. AI is advisory-only until confidence improves. Human override always available |
 | RL feedback loop needs volume to work | High | Medium | Start heuristic-only. RL improves over time. Need 50+ completions for meaningful improvement |
 | Database migration complexity | Low | Medium | Prisma Migrate handles versioning. Test against staging before production |

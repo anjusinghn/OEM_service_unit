@@ -6,6 +6,7 @@
 export { prisma, PrismaClient } from "./schema";
 export type { Prisma } from "./schema";
 export {
+  aiReasoningQueue,
   closeQueues,
   dashboardChannel,
   depotMatchQueue,
@@ -69,6 +70,7 @@ export type {
 } from "./repositories"
 export type {
   DepotMatchJob,
+  AiReasoningJob,
   FaultEventJob,
   HealthRecomputeJob,
   NotificationJob,

@@ -2,6 +2,7 @@ import {
   depotRepository,
   partsRepository,
   prisma,
+  serviceHistoryRepository,
   serviceRequestRepository,
   technicianRepository,
   vehicleRepository,
@@ -165,13 +166,15 @@ const mapFault = (fault: Awaited<ReturnType<typeof prisma.vehicleFault.findMany>
 })
 
 export const loadOperationalState = async (): Promise<{ state: DemoState; healthByVehicle: Record<string, HealthScore> }> => {
-  const [vehicleRows, depotRows, technicianRows, partRows, inventoryRows, activeFaultRows, signalMap] = await Promise.all([
+  const [vehicleRows, depotRows, technicianRows, partRows, inventoryRows, activeFaultRows, serviceRequestRows, serviceHistoryRows, signalMap] = await Promise.all([
     vehicleRepository.findAll(),
     depotRepository.findAll(),
     technicianRepository.findAll(),
     partsRepository.getCatalog(),
     partsRepository.getInventory(),
     prisma.vehicleFault.findMany({ where: { isActive: true }, orderBy: { occurredAt: "desc" } }),
+    serviceRequestRepository.findAll(),
+    serviceHistoryRepository.findRecent(100),
     loadLatestSignals()
   ])
 
@@ -180,6 +183,33 @@ export const loadOperationalState = async (): Promise<{ state: DemoState; health
   const technicians = technicianRows.map(mapTechnician)
   const parts = partRows.map(mapPart)
   const inventory = inventoryRows.map(mapInventory)
+  const serviceRequests = serviceRequestRows.map((request) => ({
+    id: request.id,
+    vehicleId: request.vehicleId,
+    priorityScore: request.priorityScore,
+    weakestSubsystem: isSubsystemKey(request.weakestSubsystem) ? request.weakestSubsystem : "engine",
+    depotId: request.depotId,
+    technicianId: request.technicianId,
+    requiredPartNumbers: toStringArray(request.requiredPartNumbers),
+    status: request.status,
+    createdAt: request.createdAt.toISOString(),
+    scheduledFor: request.scheduledFor?.toISOString() ?? null,
+    timeline: request.timeline.map((event) => ({
+      status: event.status as DemoState["serviceRequests"][number]["status"],
+      at: event.at.toISOString(),
+      note: event.note
+    }))
+  }))
+  const serviceHistory = serviceHistoryRows.map((record) => ({
+    id: record.id,
+    vehicleId: record.vehicleId,
+    depotId: record.depotId,
+    technicianId: record.technicianId,
+    subsystem: isSubsystemKey(record.subsystem) ? record.subsystem : "engine",
+    outcome: record.outcome,
+    resolvedAt: record.resolvedAt.toISOString(),
+    firstTimeFix: record.firstTimeFix
+  }))
   const faults = Object.fromEntries(vehicles.map((vehicle) => [vehicle.id, [] as VehicleFault[]]))
   for (const fault of activeFaultRows.map(mapFault)) {
     faults[fault.vehicleId] = [...(faults[fault.vehicleId] ?? []), fault]
@@ -197,8 +227,8 @@ export const loadOperationalState = async (): Promise<{ state: DemoState; health
     parts,
     inventory,
     technicians,
-    serviceRequests: [],
-    serviceHistory: [],
+    serviceRequests,
+    serviceHistory,
     livePulse: [],
     suppliers: [],
     forensics: {

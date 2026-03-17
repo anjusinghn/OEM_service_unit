@@ -1,7 +1,8 @@
 import { Worker, type Job } from "bullmq"
 
-import { closeQueues, queueConcurrency, queueNames, type QueuePayloadMap } from "@kaz/db"
+import { aiReasoningQueue, closeQueues, enqueueJob, queueConcurrency, queueNames, type QueuePayloadMap } from "@kaz/db"
 
+import { processAiReasoning } from "./processors/ai-reasoning.js"
 import { processDepotMatch } from "./processors/depot-match.js"
 import { processFaultEvent } from "./processors/fault-events.js"
 import { processHealthRecompute } from "./processors/health-recompute.js"
@@ -39,6 +40,10 @@ const workers = [
     connection,
     concurrency: queueConcurrency[queueNames.priorityRerank]
   }),
+  new Worker<QueuePayloadMap[typeof queueNames.aiReasoning]>(queueNames.aiReasoning, processAiReasoning, {
+    connection,
+    concurrency: queueConcurrency[queueNames.aiReasoning]
+  }),
   new Worker<QueuePayloadMap[typeof queueNames.depotMatch]>(queueNames.depotMatch, processDepotMatch, {
     connection,
     concurrency: queueConcurrency[queueNames.depotMatch]
@@ -53,6 +58,14 @@ const workers = [
   })
 ]
 
+const ESCALATION_SCAN_INTERVAL_MS = Number(process.env.AI_ESCALATION_INTERVAL_MS ?? 300000)
+const escalationTimer = setInterval(() => {
+  void enqueueJob(queueNames.aiReasoning, {
+    decisionType: "escalation",
+    timestamp: new Date().toISOString()
+  })
+}, ESCALATION_SCAN_INTERVAL_MS)
+
 for (const worker of workers) {
   worker.on("completed", (job: Job<unknown>) => {
     console.log(`[worker] completed queue=${worker.name} job=${job.id}`)
@@ -65,6 +78,7 @@ for (const worker of workers) {
 
 const shutdown = async (signal: string) => {
   console.log(`[worker] shutting down on ${signal}`)
+  clearInterval(escalationTimer)
   await Promise.all(workers.map((worker) => worker.close()))
   await closeQueues()
   process.exit(0)
@@ -72,6 +86,7 @@ const shutdown = async (signal: string) => {
 
 console.log("[worker] BullMQ worker cluster ready")
 console.log(`[worker] queues=${workers.map((worker) => worker.name).join(",")}`)
+console.log(`[worker] escalationIntervalMs=${ESCALATION_SCAN_INTERVAL_MS}`)
 
 process.on("SIGINT", () => {
   void shutdown("SIGINT")

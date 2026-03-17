@@ -132,6 +132,7 @@ model Vehicle {
   serviceRequests ServiceRequest[]
   serviceHistory  ServiceHistory[]
   priorityEntry   PriorityEntry?
+  aiDecisionLogs  AiDecisionLog[]
 
   @@index([organizationId])
   @@index([region])
@@ -497,6 +498,23 @@ model PriorityEntry {
 
   @@index([score(sort: Desc)])
   @@map("priority_entries")
+}
+
+model AiDecisionLog {
+  id              String   @id @default(cuid())
+  vehicleId       String   @map("vehicle_id")
+  decisionType    String   @map("decision_type")
+  heuristicOutput Json     @map("heuristic_output")
+  aiOutput        Json?    @map("ai_output")
+  finalDecision   Json?    @map("final_decision")
+  modelName       String?  @map("model_name")
+  latencyMs       Int?     @map("latency_ms")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, decisionType, createdAt(sort: Desc)])
+  @@map("ai_decision_logs")
 }
 
 // ═══════════════════════════════════════════════════════════════

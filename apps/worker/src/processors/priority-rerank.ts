@@ -47,6 +47,15 @@ export const processPriorityRerank = async (job: Job<QueuePayloadMap[typeof queu
 
   await cacheRepository.setVehiclePriority(vehicleId, entry)
 
+  const rank = queue.findIndex((item) => item.vehicleId === vehicleId) + 1
+  if (rank > 0 && rank <= 20) {
+    await enqueueJob(queueNames.aiReasoning, {
+      decisionType: "priority",
+      vehicleId,
+      timestamp
+    })
+  }
+
   const vehicle = state.vehicles.find((item) => item.id === vehicleId)
   const health = healthByVehicle[vehicleId]
   const topDepot = vehicle && health ? recommendDepots(vehicle, state, health.weakestSubsystem)[0] : undefined

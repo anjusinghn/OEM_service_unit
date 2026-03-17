@@ -9,6 +9,7 @@
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@kaz/ai": "workspace:*",
     "@kaz/db": "workspace:*",
     "@kaz/oem-adapters-mock": "workspace:*",
     "@kaz/orchestration": "workspace:*",

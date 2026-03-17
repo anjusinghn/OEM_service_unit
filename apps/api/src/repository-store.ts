@@ -967,7 +967,7 @@ class RepositoryStore {
     }
   }
 
-  async completeRequest(requestId: string): Promise<ServiceActionResult | null> {
+  async completeRequest(requestId: string, completionInput: ServiceCompletionInput = {}): Promise<ServiceActionResult | null> {
     const existing = await serviceRequestRepository.findById(requestId)
     if (!existing) return null
 
@@ -998,7 +998,12 @@ class RepositoryStore {
       subsystem: completed.weakestSubsystem,
       outcome: `Completed ${completed.weakestSubsystem} intervention with staged orchestration workflow.`,
       resolvedAt: new Date(),
-      firstTimeFix: true
+      firstTimeFix: completionInput.firstTimeFix ?? true,
+      actualFault: completionInput.actualFault ?? null,
+      partsUsed: completionInput.partsUsed ?? [],
+      repairDuration: completionInput.repairDuration ?? null,
+      diagnosisCorrect: completionInput.diagnosisCorrect ?? null,
+      technicianNotes: completionInput.technicianNotes ?? null
     })
 
     await cacheRepository.invalidateVehicle(completed.vehicleId)
@@ -1006,6 +1011,15 @@ class RepositoryStore {
       vehicleId: completed.vehicleId,
       serviceRequestId: completed.id,
       status: completed.status
+    })
+
+    await enqueueJob(queueNames.rewardCompute, {
+      serviceRequestId: completed.id,
+      vehicleId: completed.vehicleId,
+      timestamp: nowIso(),
+      depotRating: completionInput.depotRating ?? null,
+      technicianRating: completionInput.technicianRating ?? null,
+      priorityRating: completionInput.priorityRating ?? null
     })
 
     return {

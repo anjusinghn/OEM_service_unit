@@ -71,6 +71,9 @@ export type RewardComputeJob = {
   serviceRequestId: string
   vehicleId: string
   timestamp: string
+  depotRating?: number | null
+  technicianRating?: number | null
+  priorityRating?: number | null
 }
 
 export type DepotMatchJob = {

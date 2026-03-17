@@ -10,7 +10,7 @@ const getConfidence = (value: unknown): number | null => {
 }
 
 export const processRewardCompute = async (job: Job<QueuePayloadMap[typeof queueNames.rewardCompute]>) => {
-  const { serviceRequestId, vehicleId } = job.data
+  const { serviceRequestId, vehicleId, depotRating, technicianRating, priorityRating } = job.data
 
   const [serviceHistory, decisionLogs] = await Promise.all([
     prisma.serviceHistory.findFirst({ where: { vehicleId }, orderBy: { resolvedAt: "desc" } }),
@@ -36,7 +36,10 @@ export const processRewardCompute = async (job: Job<QueuePayloadMap[typeof queue
       partsUsed: Array.isArray(serviceHistory.partsUsed) ? serviceHistory.partsUsed.filter((value): value is string => typeof value === "string") : [],
       repairDuration: serviceHistory.repairDuration,
       technicianNotes: serviceHistory.technicianNotes,
-      firstTimeFix: serviceHistory.firstTimeFix
+      firstTimeFix: serviceHistory.firstTimeFix,
+      depotRating: depotRating ?? null,
+      technicianRating: technicianRating ?? null,
+      priorityRating: priorityRating ?? null
     },
     priorityDecision: priorityDecision ? { confidence: getConfidence(priorityDecision.aiOutput) } : null,
     depotDecision: depotDecision ? { confidence: getConfidence(depotDecision.aiOutput) } : null,

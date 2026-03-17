@@ -39,6 +39,18 @@ const statusSchema = z.object({
     .optional()
 })
 
+const completionSchema = z.object({
+  actualFault: z.string().trim().min(1).optional().nullable(),
+  diagnosisCorrect: z.boolean().optional().nullable(),
+  partsUsed: z.array(z.string()).optional(),
+  repairDuration: z.number().nonnegative().optional().nullable(),
+  technicianNotes: z.string().trim().min(1).optional().nullable(),
+  firstTimeFix: z.boolean().optional().nullable(),
+  depotRating: z.number().min(1).max(5).optional().nullable(),
+  technicianRating: z.number().min(1).max(5).optional().nullable(),
+  priorityRating: z.number().min(1).max(5).optional().nullable()
+})
+
 export const createServer = (): express.Express => {
   const app = express()
   const useDemoStore = process.env.USE_DEMO_STORE === "true"
@@ -172,7 +184,15 @@ export const createServer = (): express.Express => {
   })
 
   app.post("/api/v1/service-requests/:requestId/complete", async (req, res) => {
-    const result = await store.completeRequest(req.params.requestId)
+    const parsed = completionSchema.safeParse(req.body ?? {})
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() })
+      return
+    }
+
+    const result = useDemoStore
+      ? await store.completeRequest(req.params.requestId)
+      : await repositoryStore.completeRequest(req.params.requestId, parsed.data)
     if (!result) {
       res.status(404).json({ error: "Unable to complete service request" })
       return

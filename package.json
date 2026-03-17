@@ -11,8 +11,8 @@
     "dev:worker": "pnpm --filter @kaz/worker dev",
     "dev:simulator": "pnpm --filter @kaz/simulator dev",
     "typecheck": "turbo run typecheck",
-    "infra:up": "docker compose -f infra/docker/docker-compose.yml up -d",
-    "infra:down": "docker compose -f infra/docker/docker-compose.yml down"
+    "infra:up": "docker compose --env-file .env -f infra/docker/docker-compose.yml up -d",
+    "infra:down": "docker compose --env-file .env -f infra/docker/docker-compose.yml down"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

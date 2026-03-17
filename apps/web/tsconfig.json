@@ -1,8 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "jsx": "preserve",
     "plugins": [
       {
@@ -12,13 +12,22 @@
     "incremental": true,
     "isolatedModules": true,
     "allowJs": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@kaz/shared": ["../../packages/shared/src/index.ts"],
+      "@kaz/ui": ["../../packages/ui/src/index.ts"]
+    }
   },
   "include": [
     "app/**/*.ts",
     "app/**/*.tsx",
     "components/**/*.ts",
     "components/**/*.tsx",
+    "lib/**/*.ts",
+    "hooks/**/*.ts",
+    "stores/**/*.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],

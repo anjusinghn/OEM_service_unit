@@ -1,30 +1,33 @@
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { Outfit, IBM_Plex_Mono } from "next/font/google"
+import { Providers } from "../components/providers"
 
 import "./globals.css"
 
-const body = Outfit({
+const outfit = Outfit({
   subsets: ["latin"],
-  variable: "--font-body",
-  weight: ["400", "500", "600", "700"]
+  variable: "--font-sans",
+  weight: ["400", "500", "600", "700"],
 })
 
 const mono = IBM_Plex_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
-  weight: ["400", "500"]
+  weight: ["400", "500"],
 })
 
 export const metadata: Metadata = {
   title: "kazindustries",
-  description: "Service orchestration layer for OEM aftersales."
+  description: "Service orchestration layer for OEM aftersales.",
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className={`${body.variable} ${mono.variable}`}>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${outfit.variable} ${mono.variable}`}>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }

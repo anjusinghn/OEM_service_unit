@@ -8,6 +8,7 @@ import { createBullBoard } from "@bull-board/api"
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter"
 import { ExpressAdapter } from "@bull-board/express"
 import {
+  aiReasoningQueue,
   dashboardChannel,
   depotMatchQueue,
   faultEventsQueue,
@@ -65,6 +66,7 @@ export const createServer = (): express.Express => {
         faultEventsQueue,
         healthRecomputeQueue,
         priorityRerankQueue,
+        aiReasoningQueue,
         depotMatchQueue,
         techMatchQueue,
         notificationsQueue
@@ -122,6 +124,20 @@ export const createServer = (): express.Express => {
 
   app.get("/api/v1/orchestration/vehicles/:vehicleId/tech-match", async (req, res) => {
     res.json(await store.getTechRecommendations(req.params.vehicleId))
+  })
+
+  app.get("/api/v1/orchestration/vehicles/:vehicleId/dispatch-plan", async (req, res) => {
+    const plan = await repositoryStore.getDispatchPlan(req.params.vehicleId)
+    if (!plan) {
+      res.status(404).json({ error: "Unable to build dispatch plan" })
+      return
+    }
+    res.json(plan)
+  })
+
+  app.get("/api/v1/orchestration/escalations", async (_req, res) => {
+    const dashboard = await store.getDashboardPayload()
+    res.json(dashboard.aiEscalations ?? [])
   })
 
   app.get("/api/v1/depots", async (_req, res) => {

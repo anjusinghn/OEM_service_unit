@@ -23,6 +23,7 @@ import {
 
 import { MetricCard, SectionCard, StatusPill } from "@kaz/ui"
 import type {
+  AiDispatchPlan,
   DashboardSnapshot,
   Depot,
   ForensicsSnapshot,
@@ -85,6 +86,7 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [activeNav, setActiveNav] = useState("overview")
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [dispatchPlan, setDispatchPlan] = useState<AiDispatchPlan | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -125,6 +127,17 @@ export function Dashboard() {
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined
     })
+  }
+
+  const fetchDispatchPlan = async (vehicleId: string) => {
+    setBusyKey(`p:${vehicleId}`)
+    try {
+      const response = await fetch(`${apiBase}/api/v1/orchestration/vehicles/${vehicleId}/dispatch-plan`, { cache: "no-store" })
+      if (!response.ok) throw new Error("dispatch plan fetch failed")
+      setDispatchPlan((await response.json()) as AiDispatchPlan)
+    } finally {
+      setBusyKey(null)
+    }
   }
 
   const dispatch = async (vehicleId: string) => {
@@ -343,6 +356,16 @@ export function Dashboard() {
                     </div>
                   ) : null}
 
+                  {selected.priority?.breakdown.aiAssessment ? (
+                    <div className="recommendation-card" style={{ marginBottom: 20 }}>
+                      <span>AI priority assessment</span>
+                      <strong>
+                        {selected.priority.breakdown.aiAssessment.urgency} · {selected.priority.breakdown.aiAssessment.adjustedScore}
+                      </strong>
+                      <p>{selected.priority.breakdown.aiAssessment.recommendation}</p>
+                    </div>
+                  ) : null}
+
                   <div className="subsystem-section-title">Subsystem health</div>
                   <div className="subsystem-grid">
                     {Object.entries(selected.health.subsystems).map(([sys, score]) => (
@@ -382,12 +405,12 @@ export function Dashboard() {
                     <div className="recommendation-card">
                       <span>Recommended depot</span>
                       <strong>{selected.depotRecommendations?.[0]?.depotId ?? "\u2014"}</strong>
-                      <p>{selected.depotRecommendations?.[0]?.reasons.join(" \u00b7 ")}</p>
+                      <p>{selected.depotRecommendations?.[0]?.aiAssessment?.reasoning ?? selected.depotRecommendations?.[0]?.reasons.join(" \u00b7 ")}</p>
                     </div>
                     <div className="recommendation-card">
                       <span>Recommended technician</span>
                       <strong>{selected.technicianRecommendations?.[0]?.technicianId ?? "\u2014"}</strong>
-                      <p>{selected.technicianRecommendations?.[0]?.reasons.join(" \u00b7 ")}</p>
+                      <p>{selected.technicianRecommendations?.[0]?.aiAssessment?.reasoning ?? selected.technicianRecommendations?.[0]?.reasons.join(" \u00b7 ")}</p>
                     </div>
                     <div className="recommendation-card">
                       <span>Parts readiness</span>
@@ -406,8 +429,36 @@ export function Dashboard() {
                       <Wrench size={14} />
                       {selected.currentRequest ? "Already dispatched" : "Dispatch to workflow"}
                     </button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => fetchDispatchPlan(selected.id)}
+                      disabled={busyKey === `p:${selected.id}`}
+                    >
+                      AI dispatch plan
+                    </button>
                     <span className="hint">Creates a service request with the recommended depot, technician, and parts.</span>
                   </div>
+
+                  {dispatchPlan ? (
+                    <div className="recommendation-grid" style={{ marginTop: 18 }}>
+                      <div className="recommendation-card">
+                        <span>Dispatch depot</span>
+                        <strong>{dispatchPlan.depotId}</strong>
+                        <p>{dispatchPlan.depotReasoning}</p>
+                      </div>
+                      <div className="recommendation-card">
+                        <span>Dispatch technician</span>
+                        <strong>{dispatchPlan.technicianId}</strong>
+                        <p>{dispatchPlan.techReasoning}</p>
+                      </div>
+                      <div className="recommendation-card">
+                        <span>Watch points</span>
+                        <strong>{dispatchPlan.urgencyLevel}</strong>
+                        <p>{dispatchPlan.watchPoints.join(", ")}</p>
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               ) : null}
             </SectionCard>
@@ -626,6 +677,31 @@ export function Dashboard() {
 
           {/* Alerts + live pulse */}
           <div className="grid grid--secondary fade-in">
+            <SectionCard title="AI Escalations" eyebrow="Phase 3 Intelligence">
+              <div className="alerts-list">
+                {(payload.aiEscalations ?? []).slice(0, 6).map((escalation, index) => (
+                  <article className={`alert-row${escalation.severity === "critical" ? " alert-row--critical" : " alert-row--warning"}`} key={`${escalation.type}-${index}`}>
+                    <div className="alert-row__icon">
+                      {escalation.severity === "critical" ? <ShieldAlert size={16} /> : <AlertTriangle size={16} />}
+                    </div>
+                    <div>
+                      <strong>{escalation.title}</strong>
+                      <p>{escalation.description}</p>
+                    </div>
+                    <StatusPill tone={escalation.severity === "critical" ? "critical" : "watch"}>
+                      {escalation.severity}
+                    </StatusPill>
+                  </article>
+                ))}
+                {!(payload.aiEscalations ?? []).length ? (
+                  <div className="empty-state">
+                    <Shield size={24} />
+                    <span>No AI escalations currently active.</span>
+                  </div>
+                ) : null}
+              </div>
+            </SectionCard>
+
             <SectionCard title="Active Alerts" eyebrow="Signal Trust">
               <div className="alerts-list">
                 {payload.alerts.slice(0, 8).map((alert) => {

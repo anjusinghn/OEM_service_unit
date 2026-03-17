@@ -1,6 +1,8 @@
 import { EventEmitter } from "node:events"
 
+import { runDispatchReasoning } from "@kaz/ai"
 import {
+  type Prisma,
   cacheRepository,
   dashboardChannel,
   depotRepository,
@@ -14,7 +16,6 @@ import {
   signalRepository,
   technicianRepository,
   vehicleRepository,
-  type Prisma
 } from "@kaz/db"
 import {
   advanceInvestigation as advanceInvestigationEngine,
@@ -66,6 +67,14 @@ type DashboardPayload = DashboardSnapshot & {
   forensics: ForensicsSnapshot
   generatedAt: string
 }
+
+type LatestAiDecisionRow = {
+  vehicleId: string
+  decisionType: string
+  aiOutput: Prisma.JsonValue | null
+}
+
+const toJsonValue = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 
 type ServiceActionResult = {
   request: ServiceRequest
@@ -371,6 +380,17 @@ class RepositoryStore {
 
   private async buildPayload() {
     const state = await this.loadState()
+    const latestAiRows = await prisma.$queryRaw<LatestAiDecisionRow[]>`
+      SELECT DISTINCT ON (vehicle_id, decision_type)
+        vehicle_id AS "vehicleId",
+        decision_type AS "decisionType",
+        ai_output AS "aiOutput"
+      FROM ai_decision_logs
+      ORDER BY vehicle_id, decision_type, created_at DESC
+    `
+    const aiByVehicle = Object.fromEntries(
+      latestAiRows.map((row) => [`${row.vehicleId}:${row.decisionType}`, row.aiOutput])
+    ) as Record<string, Prisma.JsonValue | null>
     const healthByVehicle = Object.fromEntries(
       state.vehicles.map((vehicle) => [
         vehicle.id,
@@ -388,15 +408,42 @@ class RepositoryStore {
     const technicianRecommendations = Object.fromEntries(
       Object.entries(depotRecommendations).map(([vehicleId, depots]) => [
         vehicleId,
-        depots[0]
+        (depots[0]
           ? recommendTechnicians(state, depots[0].depotId, healthByVehicle[vehicleId].weakestSubsystem)
-          : []
+          : []).map((recommendation) => {
+            const aiAssessment = aiByVehicle[`${vehicleId}:technician`]
+            return aiAssessment && typeof aiAssessment === "object" && !Array.isArray(aiAssessment)
+              ? { ...recommendation, aiAssessment: recommendation.technicianId === (aiAssessment as { recommendedTechnicianId?: string }).recommendedTechnicianId ? (aiAssessment as unknown as DashboardSnapshot["technicianRecommendations"][string][number]["aiAssessment"]) : null }
+              : recommendation
+          })
       ])
     )
     const snapshot: DashboardSnapshot = {
       ...baseSnapshot,
-      depotRecommendations,
-      technicianRecommendations
+      priorityQueue: baseSnapshot.priorityQueue.map((entry) => ({
+        ...entry,
+        breakdown: {
+          ...entry.breakdown,
+          aiAssessment: aiByVehicle[`${entry.vehicleId}:priority`] && typeof aiByVehicle[`${entry.vehicleId}:priority`] === "object" && !Array.isArray(aiByVehicle[`${entry.vehicleId}:priority`])
+            ? (aiByVehicle[`${entry.vehicleId}:priority`] as DashboardSnapshot["priorityQueue"][number]["breakdown"]["aiAssessment"])
+            : null
+        }
+      })),
+      depotRecommendations: Object.fromEntries(
+        Object.entries(depotRecommendations).map(([vehicleId, recommendations]) => [
+          vehicleId,
+          recommendations.map((recommendation) => {
+            const aiAssessment = aiByVehicle[`${vehicleId}:depot`]
+            return aiAssessment && typeof aiAssessment === "object" && !Array.isArray(aiAssessment)
+              ? { ...recommendation, aiAssessment: recommendation.depotId === (aiAssessment as { recommendedDepotId?: string }).recommendedDepotId ? (aiAssessment as unknown as DashboardSnapshot["depotRecommendations"][string][number]["aiAssessment"]) : null }
+              : recommendation
+          })
+        ])
+      ),
+      technicianRecommendations,
+      aiEscalations: latestAiRows
+        .filter((row) => row.decisionType === "escalation" && row.aiOutput && typeof row.aiOutput === "object" && !Array.isArray(row.aiOutput))
+        .map((row) => row.aiOutput as unknown as NonNullable<DashboardSnapshot["aiEscalations"]>[number])
     }
     const forensics = this.applyForensicsOverlay(buildForensicsSnapshot(state, healthByVehicle))
 
@@ -465,6 +512,50 @@ class RepositoryStore {
   async getTechRecommendations(vehicleId: string) {
     const { snapshot } = await this.buildPayload()
     return snapshot.technicianRecommendations[vehicleId] ?? []
+  }
+
+  async getDispatchPlan(vehicleId: string) {
+    const { state, snapshot } = await this.buildPayload()
+    const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+    const health = snapshot.healthByVehicle[vehicleId]
+    if (!vehicle || !health) return null
+
+    const depotRecommendations = snapshot.depotRecommendations[vehicleId] ?? []
+    const technicianRecommendations = snapshot.technicianRecommendations[vehicleId] ?? []
+    const partsToStage = depotRecommendations[0]?.requiredParts.map((part) => part.partNumber) ?? []
+    const serviceHistory = state.serviceHistory.filter((record) => record.vehicleId === vehicleId)
+
+    const plan = await runDispatchReasoning({
+      vehicle,
+      health,
+      faults: state.faults[vehicleId] ?? [],
+      depotRecommendations,
+      technicianRecommendations,
+      serviceHistory,
+      partsToStage
+    })
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "dispatch",
+        heuristicOutput: toJsonValue({
+          depotRecommendations,
+          technicianRecommendations,
+          partsToStage
+        }),
+        aiOutput: toJsonValue(plan),
+        finalDecision: toJsonValue({
+          depotId: plan.depotId,
+          technicianId: plan.technicianId,
+          urgencyLevel: plan.urgencyLevel
+        }),
+        modelName: plan.model,
+        latencyMs: plan.latencyMs
+      }
+    })
+
+    return plan
   }
 
   async getServiceRequests() {

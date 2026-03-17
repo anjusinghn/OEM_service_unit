@@ -170,7 +170,10 @@ export const createServer = (): express.Express => {
   })
 
   app.post("/api/v1/orchestration/vehicles/:vehicleId/dispatch", async (req, res) => {
-    const result = await store.dispatchVehicle(req.params.vehicleId)
+    const overrides = req.body && typeof req.body === "object" ? req.body : {}
+    const depotId = typeof overrides.depotId === "string" ? overrides.depotId : undefined
+    const technicianId = typeof overrides.technicianId === "string" ? overrides.technicianId : undefined
+    const result = await store.dispatchVehicle(req.params.vehicleId, depotId, technicianId)
     if (!result) {
       res.status(404).json({ error: "Unable to dispatch vehicle" })
       return

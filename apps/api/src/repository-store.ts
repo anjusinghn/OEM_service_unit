@@ -808,7 +808,7 @@ class RepositoryStore {
     return (await this.getForensics()).heatmapData
   }
 
-  async dispatchVehicle(vehicleId: string): Promise<ServiceActionResult | null> {
+  async dispatchVehicle(vehicleId: string, overrideDepotId?: string, overrideTechnicianId?: string): Promise<ServiceActionResult | null> {
     const { state, snapshot } = await this.buildPayload()
     const existing = state.serviceRequests.find((request) => request.vehicleId === vehicleId && request.status !== "CLOSED")
     if (existing) {
@@ -828,9 +828,11 @@ class RepositoryStore {
     const priority = snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicleId)
     if (!vehicle || !health || !priority) return null
 
-    const depot = recommendDepots(vehicle, state, health.weakestSubsystem)[0]
-    const technician = depot ? recommendTechnicians(state, depot.depotId, health.weakestSubsystem)[0] : undefined
-    if (!depot || !technician) return null
+    const depotRec = recommendDepots(vehicle, state, health.weakestSubsystem)[0]
+    const selectedDepotId = overrideDepotId ?? depotRec?.depotId
+    const techRec = selectedDepotId ? recommendTechnicians(state, selectedDepotId, health.weakestSubsystem)[0] : undefined
+    const selectedTechId = overrideTechnicianId ?? techRec?.technicianId
+    if (!selectedDepotId || !selectedTechId) return null
 
     const priorityAi = toAiDecisionData(snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicleId)?.breakdown.aiAssessment as Prisma.JsonValue | null)
     const depotAi = toAiDecisionData((snapshot.depotRecommendations[vehicleId] ?? [])[0]?.aiAssessment as Prisma.JsonValue | null)
@@ -861,9 +863,9 @@ class RepositoryStore {
         decisionSubtype: "selected",
         heuristicOutput: toJsonValue(snapshot.depotRecommendations[vehicleId] ?? []),
         aiOutput: depotAi ?? undefined,
-        finalDecision: toJsonValue({ depotId: depot.depotId, score: depot.score }),
-        humanOverride: false,
-        overrideReason: null,
+        finalDecision: toJsonValue({ depotId: selectedDepotId, score: depotRec?.score ?? 0 }),
+        humanOverride: !!overrideDepotId,
+        overrideReason: overrideDepotId ? "User override" : null,
         modelName: depotAi && typeof depotAi.model === "string" ? depotAi.model : null,
         latencyMs: depotAi && typeof depotAi.latencyMs === "number" ? depotAi.latencyMs : null
       }
@@ -876,9 +878,9 @@ class RepositoryStore {
         decisionSubtype: "selected",
         heuristicOutput: toJsonValue(snapshot.technicianRecommendations[vehicleId] ?? []),
         aiOutput: technicianAi ?? undefined,
-        finalDecision: toJsonValue({ technicianId: technician.technicianId, score: technician.score }),
-        humanOverride: false,
-        overrideReason: null,
+        finalDecision: toJsonValue({ technicianId: selectedTechId, score: techRec?.score ?? 0 }),
+        humanOverride: !!overrideTechnicianId,
+        overrideReason: overrideTechnicianId ? "User override" : null,
         modelName: technicianAi && typeof technicianAi.model === "string" ? technicianAi.model : null,
         latencyMs: technicianAi && typeof technicianAi.latencyMs === "number" ? technicianAi.latencyMs : null
       }
@@ -888,15 +890,15 @@ class RepositoryStore {
       vehicleId,
       priorityScore: priority.score,
       weakestSubsystem: health.weakestSubsystem,
-      depotId: depot.depotId,
-      technicianId: technician.technicianId,
-      requiredPartNumbers: depot.requiredParts.map((part) => part.partNumber),
+      depotId: selectedDepotId,
+      technicianId: selectedTechId,
+      requiredPartNumbers: depotRec?.requiredParts.map((part: { partNumber: string }) => part.partNumber) ?? [],
       initialStatus: "DEPOT_ASSIGNED"
     })
 
-    const depotRecord = state.depots.find((item) => item.id === depot.depotId)
+    const depotRecord = state.depots.find((item) => item.id === selectedDepotId)
     if (depotRecord) {
-      await depotRepository.updateCapacity(depot.depotId, Math.min(depotRecord.totalBays, depotRecord.occupiedBays + 1))
+      await depotRepository.updateCapacity(selectedDepotId, Math.min(depotRecord.totalBays, depotRecord.occupiedBays + 1))
     }
 
     await prisma.aiDecisionLog.create({
@@ -906,9 +908,9 @@ class RepositoryStore {
         decisionSubtype: "applied",
         heuristicOutput: toJsonValue({
           priority,
-          depot,
-          technician,
-          requiredPartNumbers: depot.requiredParts.map((part) => part.partNumber)
+          depot: depotRec,
+          technician: techRec,
+          requiredPartNumbers: depotRec?.requiredParts.map((part: { partNumber: string }) => part.partNumber) ?? []
         }),
         aiOutput: undefined,
         finalDecision: toJsonValue({
@@ -931,7 +933,7 @@ class RepositoryStore {
       livePulse: {
         id: `pulse-dispatch-${created.id}`,
         kind: "dispatch",
-        message: `Vehicle ${vehicleId} dispatched to ${depot.depotId} with ${technician.technicianId}.`,
+        message: `Vehicle ${vehicleId} dispatched to ${selectedDepotId} with ${selectedTechId}.`,
         at: nowIso()
       }
     }

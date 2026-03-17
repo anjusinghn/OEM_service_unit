@@ -219,7 +219,7 @@ export class DemoStore {
     return this.state.forensics.heatmapData
   }
 
-  dispatchVehicle(vehicleId: string): ServiceActionResult | null {
+  dispatchVehicle(vehicleId: string, overrideDepotId?: string, overrideTechnicianId?: string): ServiceActionResult | null {
     const existing = this.state.serviceRequests.find(
       (request) => request.vehicleId === vehicleId && request.status !== "CLOSED"
     )
@@ -232,25 +232,27 @@ export class DemoStore {
 
     const priority = this.getPriority(vehicleId)
     const health = this.snapshot.healthByVehicle[vehicleId]
-    const depot = this.getDepotRecommendations(vehicleId)[0]
-    const technician = depot ? recommendTechnicians(this.state, depot.depotId, health.weakestSubsystem)[0] : undefined
-    if (!priority || !depot || !technician) return null
+    const depotRec = this.getDepotRecommendations(vehicleId)[0]
+    const selectedDepotId = overrideDepotId ?? depotRec?.depotId
+    const techRec = selectedDepotId ? recommendTechnicians(this.state, selectedDepotId, health.weakestSubsystem)[0] : undefined
+    const selectedTechId = overrideTechnicianId ?? techRec?.technicianId
+    if (!priority || !selectedDepotId || !selectedTechId) return null
 
     const request = createServiceRequest(
       this.state,
       vehicleId,
       priority.score,
       health.weakestSubsystem,
-      depot.depotId,
-      technician.technicianId,
-      depot.requiredParts.map((part) => part.partNumber)
+      selectedDepotId,
+      selectedTechId,
+      depotRec?.requiredParts.map((part) => part.partNumber) ?? []
     )
 
     this.state.serviceRequests = [request, ...this.state.serviceRequests]
     this.adjustDepotCapacity(request.depotId, 1)
     const livePulse = this.addLivePulse(
       "dispatch",
-      `Vehicle ${vehicleId} dispatched to ${depot.depotId} with ${technician.technicianId}.`
+      `Vehicle ${vehicleId} dispatched to ${selectedDepotId} with ${selectedTechId}.`
     )
     this.recompute()
     return { request, livePulse }

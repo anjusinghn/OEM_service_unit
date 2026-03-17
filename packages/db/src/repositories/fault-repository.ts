@@ -20,30 +20,16 @@ export const faultRepository = {
   },
 
   async upsertActiveFault(data: UpsertActiveFaultInput): Promise<VehicleFault> {
-    const existing = await prisma.vehicleFault.findFirst({
-      where: {
-        vehicleId: data.vehicleId,
-        dtcCode: data.dtcCode,
-        isActive: true
-      },
-      orderBy: { occurredAt: "desc" }
-    })
-
-    if (!existing) {
-      return prisma.vehicleFault.create({ data })
-    }
-
-    return prisma.vehicleFault.update({
-      where: { id: existing.id },
-      data: {
+    return prisma.vehicleFault.upsert({
+      where: { id: data.id as string },
+      create: data,
+      update: {
         subsystem: data.subsystem,
         severity: data.severity,
         title: data.title,
         description: data.description,
         occurredAt: data.occurredAt,
-        occurrences: {
-          increment: 1
-        },
+        occurrences: { increment: 1 },
         isActive: true,
         resolvedAt: null
       }

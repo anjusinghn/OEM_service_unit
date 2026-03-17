@@ -134,6 +134,71 @@ export interface PriorityBreakdown {
   downtimeCost: number
   serviceWindow: number
   reasons: string[]
+  aiAssessment?: AiPriorityAssessment | null
+}
+
+export interface AiPriorityAssessment {
+  adjustedScore: number
+  adjustment: number
+  urgency: "routine" | "elevated" | "urgent" | "emergency"
+  riskFactors: string[]
+  recommendation: string
+  confidence: number
+  shouldEscalate: boolean
+  model: string | null
+  latencyMs: number | null
+}
+
+export interface AiDepotAssessment {
+  recommendedDepotId: string
+  reasoning: string
+  confidence: number
+  partsRisk: string | null
+  logisticsNote: string | null
+  model: string | null
+  latencyMs: number | null
+}
+
+export interface AiTechnicianAssessment {
+  recommendedTechnicianId: string
+  reasoning: string
+  confidence: number
+  skillGapWarning: string | null
+  estimatedRepairHours: number | null
+  model: string | null
+  latencyMs: number | null
+}
+
+export interface AiDispatchPlan {
+  depotId: string
+  depotReasoning: string
+  technicianId: string
+  techReasoning: string
+  partsToStage: string[]
+  estimatedRepairHours: number
+  estimatedTotalCost: number
+  urgencyLevel: "routine" | "elevated" | "urgent" | "emergency"
+  watchPoints: string[]
+  alternativePlan: {
+    depotId: string
+    technicianId: string | null
+    reasoning: string
+  } | null
+  confidence: number
+  agentTrace: string[]
+  model: string | null
+  latencyMs: number | null
+}
+
+export interface AiEscalation {
+  type: string
+  severity: "info" | "warning" | "critical"
+  title: string
+  description: string
+  affectedEntities: string[]
+  suggestedAction: string
+  model: string | null
+  latencyMs: number | null
 }
 
 export interface PriorityEntry {
@@ -153,12 +218,14 @@ export interface DepotRecommendation {
   partsReady: boolean
   reasons: string[]
   requiredParts: Part[]
+  aiAssessment?: AiDepotAssessment | null
 }
 
 export interface TechnicianRecommendation {
   technicianId: string
   score: number
   reasons: string[]
+  aiAssessment?: AiTechnicianAssessment | null
 }
 
 export interface ServiceTimelineEvent {
@@ -233,6 +300,7 @@ export interface DashboardSnapshot {
   depotRecommendations: Record<string, DepotRecommendation[]>
   technicianRecommendations: Record<string, TechnicianRecommendation[]>
   livePulse: LivePulse[]
+  aiEscalations?: AiEscalation[]
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -1,13 +1,13 @@
 # KAZINDUSTRIES - Progress Report
 
-> **Last updated:** 17 March 2026
-> **Status:** Production Phases 1, 2, 3, and 4 are implemented in the repository. Phase 5 and beyond are not implemented yet.
+> **Last updated:** 18 March 2026
+> **Status:** Production Phases 1, 2, 3, 4, and 5 are implemented in the repository. Phase 6 and beyond are not implemented yet.
 
 ---
 
 ## Current Snapshot
 
-The codebase is now a production-style multi-process platform through Phase 4.
+The codebase is now a production-style multi-process platform through Phase 5.
 
 - **Phase 1 is implemented**: Dockerized Postgres/TimescaleDB + Redis, repository-backed API, persistent service workflow, and durable operational state.
 - **Phase 2 is implemented**: continuous simulator, BullMQ worker graph, Redis pub/sub SSE, and repository-backed telemetry forensics.
@@ -170,6 +170,53 @@ What this means now:
 
 ---
 
+## Phase 5 - Enterprise Dashboard (shadcn/ui + Tailwind)
+
+Phase 5 is the complete redesign of the dashboard from a 674-line single-file demo into a full enterprise command center.
+
+Implemented pieces:
+
+- Tailwind CSS v4 with custom theme (light/dark mode, fleet semantic colors, AI accent palette)
+- Zustand store for real-time SSE-driven state management
+- TanStack Query client configured for caching and background refetch
+- SSE hook with exponential backoff reconnection
+- Dark mode toggle with localStorage persistence
+
+Dashboard pages (all under Next.js App Router route groups):
+
+- `/` Fleet Command Center — metric cards, health donut (Recharts PieChart), priority queue preview (top 10), AI escalation cards, alert list, live activity feed
+- `/triage` Triage Queue — sortable/filterable priority table, expandable rows with subsystem radar chart (Recharts RadarChart), heuristic breakdown bars, AI reasoning panel with purple accent styling
+- `/dispatch` AI Dispatch Agent — vehicle selector, AI dispatch plan fetching, animated agent trace display, dispatch plan card with depot/technician/parts/cost details, accept/modify/cancel actions
+- `/workflow` Service Workflow Kanban — 8-column kanban board by service status, per-request cards with advance/complete buttons, completion form for structured outcome recording (feeds RL loop)
+- `/depots` Depot Network — responsive grid of depot cards with bay utilization gauges and specialty tags
+- `/technicians` Technician Roster — table with name, depot, certifications, workload progress bars, first-time-fix rates
+- `/intelligence` Decision Intelligence — quality trend line chart (AI vs heuristic), metric cards, best/worst decision lists, weight adjustment proposals, learned patterns
+- `/alerts` Alerts & Escalations — full alert list with severity coloring, AI escalation cards
+- `/settings` Settings — organization info, priority weights display, AI configuration, Phase 6 placeholders
+
+Layout and shared infrastructure:
+
+- collapsible dark sidebar with 9 navigation routes and active state indicator
+- top bar with SSE connection pulse, notification bell, theme toggle, Cmd+K search hint
+- Cmd+K command palette (cmdk) for keyboard-driven navigation
+- error boundary with retry button
+- section card, status badge, status dot, AI badge, loading skeleton shared components
+- API client (apiFetch/apiPost/apiPatch), format utilities, cn (clsx + tailwind-merge)
+
+Technology used:
+
+- Tailwind CSS v4 with @tailwindcss/postcss
+- Recharts (PieChart, RadarChart, LineChart)
+- Framer Motion (AnimatePresence for expandable rows)
+- Zustand (global dashboard state store)
+- TanStack Query (query client, configured for background refetch)
+- Sonner (toast notifications)
+- cmdk (command palette)
+- Lucide React (icons)
+- @radix-ui primitives (dialog, select, dropdown-menu, etc.)
+
+---
+
 ## Architecture Through Phase 4
 
 ### Runtime topology
@@ -192,6 +239,18 @@ What this means now:
 - `@kaz/ai`
 - `@kaz/oem-adapters-mock`
 - `@kaz/ui`
+
+### Phase 5 dashboard technology
+
+- Tailwind CSS v4
+- Zustand 5.x
+- TanStack Query 5.x
+- Recharts 2.x
+- Framer Motion 11.x
+- cmdk 1.x
+- Sonner
+- Lucide React
+- @radix-ui primitives
 
 ---
 
@@ -226,7 +285,6 @@ What this means now:
 
 ## What Is Still Not Implemented
 
-- Phase 5 enterprise dashboard redesign
 - Phase 6 auth, RBAC, multi-tenancy enforcement, and formal test coverage target
 - Phase 7 CI/CD and cloud deployment
 - real OEM adapters beyond the mock adapter
@@ -235,11 +293,12 @@ What this means now:
 
 ## Bottom Line
 
-The repository now implements a working production-style local platform through Phase 4.
+The repository now implements a working production-style local platform through Phase 5.
 
 - Phase 1 provides durable data and repository-backed operations.
 - Phase 2 provides the live async runtime.
 - Phase 3 provides AI-assisted orchestration.
 - Phase 4 provides reward-driven review and learning surfaces.
+- Phase 5 provides the enterprise dashboard with Tailwind CSS, shadcn/ui patterns, Recharts, Framer Motion, and Zustand.
 
-That means the current system is no longer just an orchestration demo; it is a persisted, asynchronous, AI-assisted, reviewable fleet service platform through the first four planned phases.
+That means the current system is no longer just an orchestration demo; it is a persisted, asynchronous, AI-assisted, reviewable, and visually complete fleet service platform through the first five planned phases.

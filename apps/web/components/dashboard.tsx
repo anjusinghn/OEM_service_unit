@@ -28,6 +28,7 @@ import type {
   Depot,
   ForensicsSnapshot,
   HealthScore,
+  IntelligenceSnapshot,
   ServiceRequest,
   Vehicle,
   VehicleFault
@@ -48,6 +49,7 @@ type DashboardPayload = DashboardSnapshot & {
   depots: Depot[]
   serviceRequests: ServiceRequest[]
   forensics: ForensicsSnapshot
+  intelligence?: IntelligenceSnapshot
   generatedAt: string
 }
 
@@ -87,13 +89,17 @@ export function Dashboard() {
   const [activeNav, setActiveNav] = useState("overview")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dispatchPlan, setDispatchPlan] = useState<AiDispatchPlan | null>(null)
+  const [intelligence, setIntelligence] = useState<IntelligenceSnapshot | null>(null)
 
   const load = useCallback(async () => {
     try {
       const response = await fetch(`${apiBase}/api/v1/dashboard`, { cache: "no-store" })
       if (!response.ok) throw new Error("dashboard fetch failed")
       const data = (await response.json()) as DashboardPayload
+      const intelligenceResponse = await fetch(`${apiBase}/api/v1/intelligence`, { cache: "no-store" })
+      const intelligenceData = intelligenceResponse.ok ? ((await intelligenceResponse.json()) as IntelligenceSnapshot) : null
       setPayload(data)
+      setIntelligence(intelligenceData)
       setSelectedVehicleId((c) => c ?? data.priorityQueue[0]?.vehicleId ?? data.vehicles[0]?.id ?? null)
       setError(null)
     } catch (cause) {
@@ -284,6 +290,12 @@ export function Dashboard() {
               value={payload.forensics.anomalies.length}
               detail={`${payload.forensics.investigations.length} open investigations`}
               tone={payload.forensics.anomalies.length > 0 ? "watch" : "success"}
+            />
+            <MetricCard
+              label="Decision quality"
+              value={intelligence ? `${Math.round((intelligence.qualityTrend[0]?.aiScore ?? 0) * 100)}%` : "\u2014"}
+              detail={intelligence ? `${Math.round(intelligence.overrideRate * 100)}% override rate` : "learning pending"}
+              tone="success"
             />
           </div>
 
@@ -614,6 +626,73 @@ export function Dashboard() {
           </div>
 
           <div className="grid grid--secondary mb-28 fade-in">
+            <SectionCard
+              title="Decision Intelligence"
+              eyebrow="Phase 4 Reward Loop"
+              actions={<StatusPill tone="info">{intelligence?.rewardSignals.length ?? 0} rewards</StatusPill>}
+            >
+              <div className="request-board">
+                {intelligence ? (
+                  <>
+                    <article className="request-card">
+                      <div className="request-card__top">
+                        <div>
+                          <strong>Quality trend</strong>
+                          <p>AI vs heuristic reward averages by decision type</p>
+                        </div>
+                        <StatusPill tone="success">{Math.round(intelligence.overrideRate * 100)}% overrides</StatusPill>
+                      </div>
+                      <div className="request-card__timeline">
+                        {intelligence.qualityTrend.map((point) => (
+                          <div key={point.label}>
+                            <strong>{point.label}</strong>
+                            <p>AI {point.aiScore.toFixed(2)} · heuristic {point.heuristicScore.toFixed(2)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                    <article className="request-card">
+                      <div className="request-card__top">
+                        <div>
+                          <strong>Best decisions</strong>
+                          <p>Highest reward scores in recent history</p>
+                        </div>
+                      </div>
+                      <div className="request-card__timeline">
+                        {intelligence.bestDecisions.slice(0, 3).map((item) => (
+                          <div key={item.decisionLogId}>
+                            <strong>{item.decisionType} · {item.vehicleId}</strong>
+                            <p>{item.rewardScore.toFixed(2)} reward</p>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                    <article className="request-card">
+                      <div className="request-card__top">
+                        <div>
+                          <strong>Worst decisions</strong>
+                          <p>Lowest reward scores to review</p>
+                        </div>
+                      </div>
+                      <div className="request-card__timeline">
+                        {intelligence.worstDecisions.slice(0, 3).map((item) => (
+                          <div key={item.decisionLogId}>
+                            <strong>{item.decisionType} · {item.vehicleId}</strong>
+                            <p>{item.rewardScore.toFixed(2)} reward</p>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  </>
+                ) : (
+                  <div className="empty-state">
+                    <Shield size={24} />
+                    <span>Decision intelligence is loading.</span>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
             <SectionCard
               title="Investigations"
               eyebrow="Root Cause Workflow"

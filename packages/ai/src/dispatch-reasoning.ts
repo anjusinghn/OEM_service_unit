@@ -15,6 +15,7 @@ export type DispatchReasoningInput = {
   technicianRecommendations: TechnicianRecommendation[]
   serviceHistory: ServiceHistoryRecord[]
   partsToStage: string[]
+  fewShotExamples?: string
 }
 
 const planningPrompt = ChatPromptTemplate.fromMessages([
@@ -30,7 +31,7 @@ const summarizationPrompt = ChatPromptTemplate.fromMessages([
     "system",
     "You are a fleet dispatch planner. Convert the gathered context and trace into a complete structured dispatch plan."
   ],
-  ["human", "DispatchContext: {dispatchContext}\nAgentTrace: {agentTrace}"]
+  ["human", "DispatchContext: {dispatchContext}\nAgentTrace: {agentTrace}\nFewShotExamples: {fewShotExamples}"]
 ])
 
 const heuristicDispatchFallback = (input: DispatchReasoningInput): AiDispatchPlan => {
@@ -119,7 +120,8 @@ export const runDispatchReasoning = async (input: DispatchReasoningInput): Promi
         serviceHistory: input.serviceHistory.slice(0, 10),
         partsToStage: input.partsToStage
       }),
-      agentTrace: JSON.stringify(agentTrace)
+      agentTrace: JSON.stringify(agentTrace),
+      fewShotExamples: input.fewShotExamples ?? ""
     })
 
     return {

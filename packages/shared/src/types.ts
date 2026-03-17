@@ -257,6 +257,86 @@ export interface ServiceHistoryRecord {
   outcome: string
   resolvedAt: string
   firstTimeFix: boolean
+  actualFault?: string | null
+  partsUsed?: string[]
+  repairDuration?: number | null
+  diagnosisCorrect?: boolean | null
+  technicianNotes?: string | null
+}
+
+export interface ServiceCompletionInput {
+  actualFault?: string | null
+  diagnosisCorrect?: boolean | null
+  partsUsed?: string[]
+  repairDuration?: number | null
+  technicianNotes?: string | null
+  firstTimeFix?: boolean | null
+  depotRating?: number | null
+  technicianRating?: number | null
+  priorityRating?: number | null
+}
+
+export interface RewardSignalRecord {
+  id: string
+  aiDecisionLogId: string
+  rewardType: string
+  rewardScore: number
+  rewardBreakdown: Record<string, number>
+  createdAt: string
+}
+
+export interface DecisionQualityPoint {
+  label: string
+  aiScore: number
+  heuristicScore: number
+}
+
+export interface ConfidenceCalibrationPoint {
+  confidenceBucket: number
+  actualAccuracy: number
+  sampleSize: number
+}
+
+export interface DecisionReviewItem {
+  decisionLogId: string
+  vehicleId: string
+  decisionType: string
+  rewardScore: number
+  createdAt: string
+  summary: string
+}
+
+export interface FewShotExample {
+  label: string
+  decisionType: string
+  vehicleId: string
+  rewardScore: number
+  summary: string
+}
+
+export interface WeightAdjustmentProposal {
+  decisionType: string
+  currentWeight: number
+  proposedWeight: number
+  reason: string
+}
+
+export interface LearnedPattern {
+  pattern: string
+  confidence: number
+  supportingCount: number
+}
+
+export interface IntelligenceSnapshot {
+  rewardSignals: RewardSignalRecord[]
+  qualityTrend: DecisionQualityPoint[]
+  confidenceCalibration: ConfidenceCalibrationPoint[]
+  bestDecisions: DecisionReviewItem[]
+  worstDecisions: DecisionReviewItem[]
+  overrideRate: number
+  fewShotExamples: FewShotExample[]
+  weightAdjustmentProposals: WeightAdjustmentProposal[]
+  learnedPatterns: LearnedPattern[]
 }
 
 export interface LivePulse {

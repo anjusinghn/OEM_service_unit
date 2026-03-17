@@ -88,6 +88,15 @@ export type AssignDepotAndTechnicianInput = {
 export type CompleteServiceRequestInput = {
   requestId: string
   note?: string
+  actualFault?: string | null
+  diagnosisCorrect?: boolean | null
+  partsUsed?: string[]
+  repairDuration?: number | null
+  technicianNotes?: string | null
+  firstTimeFix?: boolean | null
+  depotRating?: number | null
+  technicianRating?: number | null
+  priorityRating?: number | null
 }
 
 export const serviceRequestRepository = {

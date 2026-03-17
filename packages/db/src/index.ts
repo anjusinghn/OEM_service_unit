@@ -16,6 +16,7 @@ export {
   healthRecomputeQueue,
   notificationsQueue,
   priorityRerankQueue,
+  rewardComputeQueue,
   queueConcurrency,
   queueNames,
   queues,
@@ -44,6 +45,7 @@ export {
   healthRepository,
   partsRepository,
   priorityRepository,
+  rewardSignalRepository,
   serviceHistoryRepository,
   serviceRequestRepository,
   signalRepository,
@@ -69,12 +71,13 @@ export type {
   UpsertActiveFaultInput
 } from "./repositories"
 export type {
-  DepotMatchJob,
   AiReasoningJob,
+  DepotMatchJob,
   FaultEventJob,
   HealthRecomputeJob,
   NotificationJob,
   PriorityRerankJob,
+  RewardComputeJob,
   QueueName,
   QueuePayloadMap,
   TechMatchJob,

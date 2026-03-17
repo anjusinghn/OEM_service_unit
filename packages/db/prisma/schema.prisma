@@ -504,17 +504,35 @@ model AiDecisionLog {
   id              String   @id @default(cuid())
   vehicleId       String   @map("vehicle_id")
   decisionType    String   @map("decision_type")
+  decisionSubtype String?  @map("decision_subtype")
   heuristicOutput Json     @map("heuristic_output")
   aiOutput        Json?    @map("ai_output")
   finalDecision   Json?    @map("final_decision")
+  humanOverride   Boolean  @default(false) @map("human_override")
+  overrideReason  String?  @map("override_reason")
   modelName       String?  @map("model_name")
   latencyMs       Int?     @map("latency_ms")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  rewardSignals RewardSignal[]
 
   @@index([vehicleId, decisionType, createdAt(sort: Desc)])
   @@map("ai_decision_logs")
+}
+
+model RewardSignal {
+  id              String   @id @default(cuid())
+  aiDecisionLogId String   @map("ai_decision_log_id")
+  rewardType      String   @map("reward_type")
+  rewardScore     Float    @map("reward_score")
+  rewardBreakdown Json     @default("{}") @map("reward_breakdown")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  aiDecisionLog AiDecisionLog @relation(fields: [aiDecisionLogId], references: [id], onDelete: Cascade)
+
+  @@index([aiDecisionLogId, rewardType, createdAt(sort: Desc)])
+  @@map("reward_signals")
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -1,15 +1,18 @@
 import { EventEmitter } from "node:events"
 
-import { runDispatchReasoning } from "@kaz/ai"
+import { buildFewShotExamples, buildLearnedPatterns, buildWeightAdjustmentProposals, renderFewShotExamples, runDispatchReasoning } from "@kaz/ai"
 import {
   type Prisma,
   cacheRepository,
   dashboardChannel,
   depotRepository,
+  enqueueJob,
   faultRepository,
   partsRepository,
   prisma,
   publish,
+  queueNames,
+  rewardSignalRepository,
   resetAndSeed,
   serviceHistoryRepository,
   serviceRequestRepository,
@@ -34,12 +37,15 @@ import {
   type Depot,
   type ForensicsSnapshot,
   type HealthScore,
+  type IntelligenceSnapshot,
   type Investigation,
   type InvestigationStatus,
   type InventoryItem,
   type LivePulse,
   type Part,
   type PatternStatus,
+  type ServiceCompletionInput,
+  type DecisionReviewItem,
   type ServiceHistoryRecord,
   type ServiceRequest,
   type ServiceRequestStatus,
@@ -75,6 +81,9 @@ type LatestAiDecisionRow = {
 }
 
 const toJsonValue = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+
+const toAiDecisionData = (value: Prisma.JsonValue | null | undefined) =>
+  value && typeof value === "object" && !Array.isArray(value) ? value : null
 
 type ServiceActionResult = {
   request: ServiceRequest
@@ -471,6 +480,115 @@ class RepositoryStore {
     return { state, snapshot, forensics, payload }
   }
 
+  private async buildIntelligenceSnapshot(): Promise<IntelligenceSnapshot> {
+    const [rewardSignals, decisionLogs] = await Promise.all([
+      rewardSignalRepository.findRecent(200),
+      prisma.aiDecisionLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 200
+      })
+    ])
+
+    const rewardRecords = rewardSignals.map((signal: Awaited<ReturnType<typeof rewardSignalRepository.findRecent>>[number]) => ({
+      id: signal.id,
+      aiDecisionLogId: signal.aiDecisionLogId,
+      rewardType: signal.rewardType,
+      rewardScore: signal.rewardScore,
+      rewardBreakdown: signal.rewardBreakdown && typeof signal.rewardBreakdown === "object" && !Array.isArray(signal.rewardBreakdown)
+        ? Object.fromEntries(
+            Object.entries(signal.rewardBreakdown).filter(([, value]) => typeof value === "number") as Array<[string, number]>
+          )
+        : {},
+      createdAt: signal.createdAt.toISOString()
+    }))
+
+    const groupedByType = new Map<string, typeof rewardRecords>()
+    for (const signal of rewardRecords) {
+      const list = groupedByType.get(signal.rewardType) ?? []
+      list.push(signal)
+      groupedByType.set(signal.rewardType, list)
+    }
+
+    const qualityTrend = [...groupedByType.entries()].map(([label, signals]) => ({
+      label,
+      aiScore: signals.reduce((sum: number, item: (typeof rewardRecords)[number]) => sum + item.rewardScore, 0) / Math.max(1, signals.length),
+      heuristicScore: 0.5
+    }))
+
+    const scoredLogIds = new Set(rewardRecords.map((item: (typeof rewardRecords)[number]) => item.aiDecisionLogId))
+    const scoredDecisionLogs = decisionLogs.filter((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => scoredLogIds.has(log.id))
+
+    const confidenceBuckets = new Map<number, { correct: number; total: number }>()
+    for (const log of scoredDecisionLogs) {
+      if (!log.aiOutput || typeof log.aiOutput !== "object" || Array.isArray(log.aiOutput)) continue
+      const confidence = (log.aiOutput as { confidence?: unknown }).confidence
+      if (typeof confidence !== "number") continue
+      const bucket = Math.floor(confidence * 10) / 10
+      const existing = confidenceBuckets.get(bucket) ?? { correct: 0, total: 0 }
+      const reward = rewardRecords.find((item: (typeof rewardRecords)[number]) => item.aiDecisionLogId === log.id)
+      existing.total += 1
+      if (reward!.rewardScore >= 0.6) existing.correct += 1
+      confidenceBuckets.set(bucket, existing)
+    }
+
+    const confidenceCalibration = [...confidenceBuckets.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([confidenceBucket, bucket]) => ({
+        confidenceBucket,
+        actualAccuracy: bucket.correct / Math.max(1, bucket.total),
+        sampleSize: bucket.total
+      }))
+
+    const reviewItems: DecisionReviewItem[] = scoredDecisionLogs.map((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => {
+      const reward = rewardRecords.find((item: (typeof rewardRecords)[number]) => item.aiDecisionLogId === log.id)!
+      return {
+        decisionLogId: log.id,
+        vehicleId: log.vehicleId,
+        decisionType: log.decisionType,
+        rewardScore: reward.rewardScore,
+        createdAt: log.createdAt.toISOString(),
+        summary: `${log.decisionType} decision for ${log.vehicleId}`
+      }
+    })
+
+    const bestDecisions = [...reviewItems].sort((a, b) => b.rewardScore - a.rewardScore).slice(0, 10)
+    const worstDecisions = [...reviewItems].sort((a, b) => a.rewardScore - b.rewardScore).slice(0, 10)
+    const overrideRate = decisionLogs.length
+      ? decisionLogs.filter((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => log.humanOverride).length / decisionLogs.length
+      : 0
+    const fewShotExamples = buildFewShotExamples(bestDecisions, worstDecisions)
+    const weightAdjustmentProposals = buildWeightAdjustmentProposals(reviewItems)
+    const learnedPatterns = buildLearnedPatterns(
+      (await serviceHistoryRepository.findRecent(100)).map((record) => ({
+        id: record.id,
+        vehicleId: record.vehicleId,
+        depotId: record.depotId,
+        technicianId: record.technicianId,
+        subsystem: isSubsystemKey(record.subsystem) ? record.subsystem : "engine",
+        outcome: record.outcome,
+        resolvedAt: record.resolvedAt.toISOString(),
+        firstTimeFix: record.firstTimeFix,
+        actualFault: record.actualFault,
+        partsUsed: Array.isArray(record.partsUsed) ? record.partsUsed.filter((value): value is string => typeof value === "string") : [],
+        repairDuration: record.repairDuration,
+        diagnosisCorrect: record.diagnosisCorrect,
+        technicianNotes: record.technicianNotes
+      }))
+    )
+
+    return {
+      rewardSignals: rewardRecords,
+      qualityTrend,
+      confidenceCalibration,
+      bestDecisions,
+      worstDecisions,
+      overrideRate,
+      fewShotExamples,
+      weightAdjustmentProposals,
+      learnedPatterns
+    }
+  }
+
   async reset() {
     this.overlay.patternStatuses.clear()
     this.overlay.investigations = []
@@ -524,6 +642,7 @@ class RepositoryStore {
     const technicianRecommendations = snapshot.technicianRecommendations[vehicleId] ?? []
     const partsToStage = depotRecommendations[0]?.requiredParts.map((part) => part.partNumber) ?? []
     const serviceHistory = state.serviceHistory.filter((record) => record.vehicleId === vehicleId)
+    const intelligence = await this.buildIntelligenceSnapshot()
 
     const plan = await runDispatchReasoning({
       vehicle,
@@ -532,7 +651,8 @@ class RepositoryStore {
       depotRecommendations,
       technicianRecommendations,
       serviceHistory,
-      partsToStage
+      partsToStage,
+      fewShotExamples: renderFewShotExamples(intelligence.fewShotExamples)
     })
 
     await prisma.aiDecisionLog.create({
@@ -566,6 +686,33 @@ class RepositoryStore {
   async getForensics() {
     const { forensics } = await this.buildPayload()
     return forensics
+  }
+
+  async getIntelligenceSnapshot() {
+    return this.buildIntelligenceSnapshot()
+  }
+
+  async getDecisionAuditTrail(vehicleId?: string) {
+    const logs = await prisma.aiDecisionLog.findMany({
+      where: vehicleId ? { vehicleId } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 100
+    })
+
+    return logs.map((log) => ({
+      id: log.id,
+      vehicleId: log.vehicleId,
+      decisionType: log.decisionType,
+      decisionSubtype: log.decisionSubtype,
+      heuristicOutput: log.heuristicOutput,
+      aiOutput: log.aiOutput,
+      finalDecision: log.finalDecision,
+      humanOverride: log.humanOverride,
+      overrideReason: log.overrideReason,
+      modelName: log.modelName,
+      latencyMs: log.latencyMs,
+      createdAt: log.createdAt.toISOString()
+    }))
   }
 
   async getCohorts() {
@@ -685,6 +832,58 @@ class RepositoryStore {
     const technician = depot ? recommendTechnicians(state, depot.depotId, health.weakestSubsystem)[0] : undefined
     if (!depot || !technician) return null
 
+    const priorityAi = toAiDecisionData(snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicleId)?.breakdown.aiAssessment as Prisma.JsonValue | null)
+    const depotAi = toAiDecisionData((snapshot.depotRecommendations[vehicleId] ?? [])[0]?.aiAssessment as Prisma.JsonValue | null)
+    const technicianAi = toAiDecisionData((snapshot.technicianRecommendations[vehicleId] ?? [])[0]?.aiAssessment as Prisma.JsonValue | null)
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "priority",
+        decisionSubtype: "selected",
+        heuristicOutput: toJsonValue(priority),
+        aiOutput: priorityAi ?? undefined,
+        finalDecision: toJsonValue({
+          score: priority.score,
+          status: priority.status
+        }),
+        humanOverride: false,
+        overrideReason: null,
+        modelName: priorityAi && typeof priorityAi.model === "string" ? priorityAi.model : null,
+        latencyMs: priorityAi && typeof priorityAi.latencyMs === "number" ? priorityAi.latencyMs : null
+      }
+    })
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "depot",
+        decisionSubtype: "selected",
+        heuristicOutput: toJsonValue(snapshot.depotRecommendations[vehicleId] ?? []),
+        aiOutput: depotAi ?? undefined,
+        finalDecision: toJsonValue({ depotId: depot.depotId, score: depot.score }),
+        humanOverride: false,
+        overrideReason: null,
+        modelName: depotAi && typeof depotAi.model === "string" ? depotAi.model : null,
+        latencyMs: depotAi && typeof depotAi.latencyMs === "number" ? depotAi.latencyMs : null
+      }
+    })
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "technician",
+        decisionSubtype: "selected",
+        heuristicOutput: toJsonValue(snapshot.technicianRecommendations[vehicleId] ?? []),
+        aiOutput: technicianAi ?? undefined,
+        finalDecision: toJsonValue({ technicianId: technician.technicianId, score: technician.score }),
+        humanOverride: false,
+        overrideReason: null,
+        modelName: technicianAi && typeof technicianAi.model === "string" ? technicianAi.model : null,
+        latencyMs: technicianAi && typeof technicianAi.latencyMs === "number" ? technicianAi.latencyMs : null
+      }
+    })
+
     const created = await serviceRequestRepository.create({
       vehicleId,
       priorityScore: priority.score,
@@ -699,6 +898,30 @@ class RepositoryStore {
     if (depotRecord) {
       await depotRepository.updateCapacity(depot.depotId, Math.min(depotRecord.totalBays, depotRecord.occupiedBays + 1))
     }
+
+    await prisma.aiDecisionLog.create({
+      data: {
+        vehicleId,
+        decisionType: "dispatch",
+        decisionSubtype: "applied",
+        heuristicOutput: toJsonValue({
+          priority,
+          depot,
+          technician,
+          requiredPartNumbers: depot.requiredParts.map((part) => part.partNumber)
+        }),
+        aiOutput: undefined,
+        finalDecision: toJsonValue({
+          serviceRequestId: created.id,
+          depotId: created.depotId,
+          technicianId: created.technicianId
+        }),
+        humanOverride: false,
+        overrideReason: null,
+        modelName: null,
+        latencyMs: null
+      }
+    })
 
     await cacheRepository.invalidateVehicle(vehicleId)
     await this.emitDashboardRefresh("dispatch_event", { vehicleId, serviceRequestId: created.id })

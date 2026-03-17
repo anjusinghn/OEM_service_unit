@@ -1,6 +1,6 @@
 import { Worker, type Job } from "bullmq"
 
-import { aiReasoningQueue, closeQueues, enqueueJob, queueConcurrency, queueNames, type QueuePayloadMap } from "@kaz/db"
+import { aiReasoningQueue, closeQueues, enqueueJob, queueConcurrency, queueNames, rewardComputeQueue, type QueuePayloadMap } from "@kaz/db"
 
 import { processAiReasoning } from "./processors/ai-reasoning.js"
 import { processDepotMatch } from "./processors/depot-match.js"
@@ -8,6 +8,7 @@ import { processFaultEvent } from "./processors/fault-events.js"
 import { processHealthRecompute } from "./processors/health-recompute.js"
 import { processNotification } from "./processors/notifications.js"
 import { processPriorityRerank } from "./processors/priority-rerank.js"
+import { processRewardCompute } from "./processors/reward-compute.js"
 import { processSignalIngest } from "./processors/signal-ingest.js"
 import { processTechMatch } from "./processors/tech-match.js"
 
@@ -43,6 +44,10 @@ const workers = [
   new Worker<QueuePayloadMap[typeof queueNames.aiReasoning]>(queueNames.aiReasoning, processAiReasoning, {
     connection,
     concurrency: queueConcurrency[queueNames.aiReasoning]
+  }),
+  new Worker<QueuePayloadMap[typeof queueNames.rewardCompute]>(queueNames.rewardCompute, processRewardCompute, {
+    connection,
+    concurrency: queueConcurrency[queueNames.rewardCompute]
   }),
   new Worker<QueuePayloadMap[typeof queueNames.depotMatch]>(queueNames.depotMatch, processDepotMatch, {
     connection,

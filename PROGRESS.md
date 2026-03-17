@@ -1,479 +1,245 @@
 # KAZINDUSTRIES - Progress Report
 
 > **Last updated:** 17 March 2026
-> **Status:** Production Phase 1 and Phase 2 are implemented in the repo. Phase 3 is not started. A demo-only fallback path still exists for local UI-only usage.
+> **Status:** Production Phases 1, 2, 3, and 4 are implemented in the repository. Phase 5 and beyond are not implemented yet.
 
 ---
 
 ## Current Snapshot
 
-The codebase is no longer just an in-memory orchestration demo.
+The codebase is now a production-style multi-process platform through Phase 4.
 
-- **Production data path exists**: PostgreSQL/TimescaleDB, Redis, BullMQ queues, worker processors, repository-backed API, and continuous simulator are all implemented.
-- **Phase 1 is implemented end-to-end**: telemetry -> health recompute -> priority rerank -> depot match -> technician match -> service workflow -> live dashboard refresh.
-- **Phase 2 is implemented on top of the same operational state**: cohorts, anomalies, failure patterns, investigations, supplier scorecards, and heatmap APIs are exposed and rendered in the dashboard.
-- **Redis is used for three jobs**: cache, pub/sub, and BullMQ queue backing.
-- **TimescaleDB role**: vehicle telemetry, health snapshots, and priority snapshots are stored in PostgreSQL tables intended for time-series usage.
-- **Demo mode still exists**: setting `USE_DEMO_STORE=true` keeps the old in-memory path available, but the production repository-backed path is now implemented and is the main architecture to document.
+- **Phase 1 is implemented**: Dockerized Postgres/TimescaleDB + Redis, repository-backed API, persistent service workflow, and durable operational state.
+- **Phase 2 is implemented**: continuous simulator, BullMQ worker graph, Redis pub/sub SSE, and repository-backed telemetry forensics.
+- **Phase 3 is implemented**: OpenRouter-backed AI reasoning for priority, depot, technician, dispatch, and escalation flows.
+- **Phase 4 is implemented**: richer decision logging, enhanced completion outcomes, reward computation, intelligence analytics, and review surfaces.
+- **Demo fallback still exists**: `USE_DEMO_STORE=true` keeps the old in-memory path available, but the main documented architecture is the repository-backed production path.
 
 ---
 
-## What Phase 1 and Phase 2 Mean Right Now
+## Phase 1 - Docker, Database, Repository Layer
 
-### Phase 1 - Service Orchestration
-
-Phase 1 is the operational pipeline that decides which vehicle needs attention, where it should go, who should work on it, and how the service request moves through its lifecycle.
+Phase 1 is the persistence and operational foundation.
 
 Implemented pieces:
 
-- **Signal ingestion pipeline**: simulator sends telemetry and fault changes into BullMQ queues.
-- **Health recompute**: worker recalculates vehicle health from latest signals plus active faults.
-- **Priority engine**: worker rebuilds the triage queue and stores current priority plus time-stamped snapshots.
-- **Depot recommendation**: best depot is recomputed from subsystem need, capacity, and parts availability.
-- **Technician recommendation**: best technician is recomputed for the selected depot and subsystem.
-- **Service workflow**: requests move through `DETECTED -> PRIORITIZED -> DEPOT_ASSIGNED -> PARTS_CONFIRMED -> TECHNICIAN_ASSIGNED -> SCHEDULED -> IN_PROGRESS -> COMPLETED -> CLOSED`.
-- **Live operations UI**: the dashboard reads the latest snapshot and refreshes over SSE.
+- Dockerized local infrastructure in `infra/docker/docker-compose.yml` for PostgreSQL/TimescaleDB and Redis
+- Prisma schema + migrations for operational, analytics, AI, and reward data
+- Redis-backed cache and pub/sub helpers in `packages/db/src/redis.ts`
+- Repository layer in `packages/db/src/repositories/` for vehicles, depots, technicians, parts, faults, signals, health, priority, service requests, service history, cache, and rewards
+- Repository-backed API path in `apps/api/src/repository-store.ts`
+- Seed/reset workflow in `packages/db/src/seed.ts`
+- Durable time-series storage for:
+  - `vehicle_signals`
+  - `vehicle_health_snapshots`
+  - `priority_snapshots`
 
-### Phase 2 - Telemetry Forensics
+What this means now:
 
-Phase 2 is the analysis layer that explains fleet-wide patterns instead of only vehicle-by-vehicle service execution.
+- operational state survives restarts
+- the API no longer depends on in-memory-only state in normal mode
+- the system can serve both latest-state reads and historical analysis from persistence
+
+---
+
+## Phase 2 - Real Worker + Simulator Pipeline
+
+Phase 2 is the asynchronous telemetry and service orchestration runtime.
 
 Implemented pieces:
 
-- **Cohort analysis**: vehicles are grouped by dimensions such as build batch, software version, region, model, duty cycle, and depot affinity.
-- **Anomaly detection**: cohorts are compared against baseline fleet behavior to surface abnormal fault rates.
-- **Failure pattern detection**: the system derives patterns from DTC sequences, subsystem relationships, and regional behavior.
-- **Investigation workflow**: anomalies or patterns can be opened into investigations and progressed through review stages.
-- **Evidence package building**: investigation detail can be expanded into related vehicles, signals, history, and supporting context.
-- **Supplier scorecards**: component suppliers and active batches are linked into the forensics view.
-- **Heatmap data**: fleet issues can be viewed geographically.
+- continuous simulator in `apps/simulator/src/index.ts`
+- BullMQ queue definitions in `packages/db/src/queues.ts`
+- worker cluster in `apps/worker/src/index.ts`
+- processors for:
+  - signal ingest
+  - fault events
+  - health recompute
+  - priority rerank
+  - depot match
+  - technician match
+  - notifications
+- Redis pub/sub driven SSE fan-out in `apps/api/src/server.ts`
+- Bull Board at `/admin/queues`
 
-Important note: the current repository-backed Phase 2 analytics are generated from live operational state, and review overlays such as investigation state are maintained by the API process. That means the analysis experience works now, but some Phase 2 state still behaves more like an application overlay than a fully persisted long-term analytics platform.
+Current queue graph:
 
----
+- `telemetry-ingest`
+- `fault-events`
+- `health-recompute`
+- `priority-rerank`
+- `ai-reasoning`
+- `reward-compute`
+- `depot-match`
+- `tech-match`
+- `notifications`
 
-## Architecture Until This Point
+What this means now:
 
-### 1. Monorepo layout
-
-Apps:
-
-- `apps/api` - Express API, SSE stream, Bull Board, production and demo store routing
-- `apps/web` - Next.js dashboard UI
-- `apps/worker` - BullMQ worker cluster for background processing
-- `apps/simulator` - continuous mock OEM telemetry producer
-
-Core packages:
-
-- `packages/db` - Prisma schema, repositories, Redis helpers, queue definitions, seed/reset logic
-- `packages/signal-trust` - health scoring and alert dedupe logic
-- `packages/orchestration` - priority, depot, technician, and service workflow logic
-- `packages/forensics` - cohort, anomaly, pattern, investigation, and evidence logic
-- `packages/shared` - shared TypeScript domain types
-- `packages/oem-adapters/mock` - mock OEM fleet generator and tick simulation
-- `packages/ui` - dashboard UI primitives
-
-### 2. Runtime topology
-
-The implemented production-style local topology is:
-
-1. `apps/simulator` generates telemetry snapshots and fault changes.
-2. Those events are pushed into BullMQ queues backed by Redis.
-3. `apps/worker` consumes the queues and updates persistence plus cache.
-4. PostgreSQL/TimescaleDB stores durable operational and time-series data.
-5. Redis stores hot-path cache entries and publishes dashboard refresh events.
-6. `apps/api` reads from repositories, exposes REST endpoints, and fans updates to browsers over SSE.
-7. `apps/web` renders the fleet command dashboard and operator actions.
-
-### 3. End-to-end data flow
-
-The current data flow is:
-
-1. **Telemetry creation** - `apps/simulator/src/index.ts` generates a fleet state and runs continuous ticks.
-2. **Queue submission** - simulator enqueues telemetry jobs to `telemetry-ingest` and fault jobs to `fault-events`.
-3. **Signal persistence** - `processSignalIngest` writes signal snapshots to `vehicle_signals`, caches the latest signal in Redis, then enqueues `health-recompute`.
-4. **Fault persistence** - `processFaultEvent` upserts or clears active faults, then enqueues `health-recompute`.
-5. **Health scoring** - `processHealthRecompute` loads latest signal plus active faults, runs `computeHealthScore()`, writes a `vehicle_health_snapshots` record, caches health, then enqueues `priority-rerank`.
-6. **Priority refresh** - `processPriorityRerank` rebuilds the triage queue, updates `priority_entries`, writes `priority_snapshots`, caches the current vehicle priority, then enqueues depot match, technician match, and notification jobs.
-7. **Recommendation caching** - `processDepotMatch` and `processTechMatch` compute and cache depot and technician recommendations.
-8. **Real-time broadcast** - `processNotification` publishes queue results to Redis channel `channel:dashboard`.
-9. **API fan-out** - `apps/api/src/server.ts` subscribes to the dashboard channel and pushes updated payloads to connected SSE clients.
-10. **Dashboard refresh** - `apps/web/components/dashboard.tsx` receives SSE events and re-renders the active operational view.
+- simulator -> queue -> worker -> DB -> API -> dashboard works as a live multi-process system
+- recommendation and workflow changes propagate asynchronously
+- Redis acts as cache, pub/sub bus, and BullMQ backing store
 
 ---
 
-## Implemented Queues and What Each One Does
+## Phase 3 - AI Decision Engine
 
-Defined in `packages/db/src/queues.ts`:
+Phase 3 is the AI augmentation layer on top of the heuristic pipeline.
 
-| Queue | Concurrency | Purpose |
-|---|---:|---|
-| `telemetry-ingest` | 10 | Persist latest telemetry snapshots and trigger health recompute |
-| `fault-events` | 5 | Upsert or clear active faults and trigger health recompute |
-| `health-recompute` | 5 | Rebuild vehicle health from latest signal + faults |
-| `priority-rerank` | 2 | Recompute current priority, snapshots, and downstream recommendations |
-| `depot-match` | 3 | Cache best depot recommendations per vehicle |
-| `tech-match` | 3 | Cache best technician recommendations per vehicle |
-| `notifications` | 2 | Publish live update events for the API/dashboard |
+Implemented pieces:
 
-There is **no Temporal engine in the current implementation**. Workflow orchestration is currently handled by:
+- `@kaz/ai` package using LangChain with OpenRouter in `packages/ai/`
+- OpenRouter configuration surface in `.env.example`
+- OpenRouter default model: `z-ai/glm-4.5-air:free`
+- AI reasoning chains for:
+  - priority reasoning
+  - depot reasoning
+  - technician reasoning
+  - dispatch reasoning
+  - escalation reasoning
+- AI decision persistence in `ai_decision_logs`
+- AI worker processor in `apps/worker/src/processors/ai-reasoning.ts`
+- AI-enriched API payloads for:
+  - priority queue and vehicle priority detail
+  - depot recommendations
+  - technician recommendations
+  - dispatch plan endpoint
+  - escalation endpoint
+- Dashboard rendering for:
+  - AI priority assessment
+  - AI depot reasoning
+  - AI technician reasoning
+  - AI dispatch plan
+  - AI escalation cards
 
-- the BullMQ job graph for background work, and
-- the service request state machine for business workflow progression.
+Current AI behavior:
 
-If "TempCal DB" meant **TimescaleDB**, that is part of the current stack. If it meant **Temporal**, that is not wired into the codebase right now.
+- heuristics remain the fast path
+- AI runs asynchronously or on-demand where appropriate
+- fallback behavior is preserved when AI is disabled or unavailable
 
----
+Key API surfaces added by this phase:
 
-## Redis: How It Is Used Right Now
-
-Redis is implemented in `packages/db/src/redis.ts` and used in three separate ways.
-
-### 1. Cache layer
-
-Current cache keys in `packages/db/src/repositories/cache-repository.ts`:
-
-- `vehicle:signal:{vehicleId}` - latest signal snapshot, TTL 60s
-- `vehicle:health:{vehicleId}` - latest health score, TTL 60s
-- `vehicle:priority:{vehicleId}` - latest priority entry, TTL 60s
-- `vehicle:depot-match:{vehicleId}` - depot recommendations, TTL 120s
-- `vehicle:tech-match:{vehicleId}` - technician recommendations, TTL 120s
-
-This gives the system a hot read path without making Redis the source of truth.
-
-### 2. Pub/Sub
-
-- Channel: `channel:dashboard`
-- Worker publishes update messages.
-- API subscribes and uses those messages to trigger SSE pushes.
-- Browser receives fresh dashboard payloads through `/api/v1/events`.
-
-This is correct for live dashboard fan-out because the event is transient and the source of truth still lives in PostgreSQL and repository rebuilds.
-
-### 3. BullMQ backing store
-
-All BullMQ queues are Redis-backed. Redis therefore acts as the transport layer for asynchronous pipeline execution between simulator/API producers and worker consumers.
+- `/api/v1/orchestration/vehicles/:vehicleId/dispatch-plan`
+- `/api/v1/orchestration/escalations`
 
 ---
 
-## Database and TimescaleDB: How It Is Used Right Now
+## Phase 4 - Reinforcement Learning Feedback Loop
 
-The Prisma schema in `packages/db/prisma/schema.prisma` now models both operational state and analysis state.
+Phase 4 is the decision quality and learning loop built from completed service outcomes.
 
-### Foundation and tenant structure
+Implemented pieces:
 
-- `organizations`
-- `users`
-- `api_keys`
-- `oem_connections`
+- richer decision audit fields in `ai_decision_logs`:
+  - `decision_subtype`
+  - `human_override`
+  - `override_reason`
+- reward storage in `reward_signals`
+- enhanced completion input accepted by the API for:
+  - actual fault
+  - diagnosis correctness
+  - parts used
+  - repair duration
+  - technician notes
+  - first-time-fix
+  - depot / technician / priority ratings
+- reward computation engine in `packages/ai/src/reward.ts`
+- reward worker processor in `apps/worker/src/processors/reward-compute.ts`
+- decision intelligence analytics in `apps/api/src/repository-store.ts`
+- intelligence API endpoints:
+  - `/api/v1/intelligence`
+  - `/api/v1/intelligence/decisions`
+- dashboard review section for:
+  - quality trend
+  - override rate
+  - best decisions
+  - worst decisions
+- self-improvement support in `packages/ai/`:
+  - few-shot examples
+  - weight adjustment proposals
+  - learned patterns
+  - confidence calibration data
 
-### Operational fleet state
+What this means now:
 
-- `vehicles`
-- `vehicle_signals`
-- `vehicle_health_snapshots`
-- `priority_entries`
-- `priority_snapshots`
-- `vehicle_faults`
-- `alerts`
-- `depots`
-- `bays`
-- `parts`
-- `inventory_items`
-- `technicians`
-- `service_requests`
-- `service_timeline`
-- `service_history`
-- `sla_tracking`
-- `webhooks`
-- `notification_preferences`
-
-### Phase 2 forensics state
-
-- `forensics_cohorts`
-- `cohort_members`
-- `cohort_comparisons`
-- `cohort_anomalies`
-- `forensics_patterns`
-- `forensics_investigations`
-- `forensics_investigation_events`
-- `supplier_info`
-- `supplier_scorecards`
-
-### What TimescaleDB gives this system
-
-The schema stores telemetry, health history, and priority history as time-series shaped tables:
-
-- `vehicle_signals`
-- `vehicle_health_snapshots`
-- `priority_snapshots`
-
-So the system can support both:
-
-- **operational reads** - latest known fleet state
-- **historical analysis** - how a vehicle or fleet changed over time
+- completed service outcomes generate reward signals
+- decisions can be reviewed historically
+- the system exposes review-oriented intelligence instead of only operational status
+- dispatch reasoning can consume historical few-shot context
 
 ---
 
-## What the API Layer Does
+## Architecture Through Phase 4
 
-`apps/api/src/server.ts` now exposes the current platform surface.
+### Runtime topology
 
-### Core operational endpoints
+1. `apps/simulator` generates telemetry and fault changes
+2. BullMQ queues carry operational and learning jobs
+3. `apps/worker` processes telemetry, health, priority, AI reasoning, matching, notification, and reward jobs
+4. PostgreSQL/TimescaleDB stores durable operational, AI, and reward history
+5. Redis stores hot-path cache and publishes dashboard events
+6. `apps/api` serves repository-backed REST + SSE endpoints
+7. `apps/web` renders operational, forensic, AI, and decision-intelligence surfaces
 
-- `/health`
-- `/api/v1/dashboard`
-- `/api/v1/vehicles`
-- `/api/v1/vehicles/:vehicleId`
-- `/api/v1/orchestration/priority-queue`
-- `/api/v1/orchestration/vehicles/:vehicleId/priority`
-- `/api/v1/orchestration/vehicles/:vehicleId/depot-match`
-- `/api/v1/orchestration/vehicles/:vehicleId/tech-match`
-- `/api/v1/orchestration/vehicles/:vehicleId/dispatch`
-- `/api/v1/depots`
-- `/api/v1/service-requests`
-- `/api/v1/service-requests/:requestId/status`
-- `/api/v1/service-requests/:requestId/complete`
-- `/api/v1/demo/reset`
-- `/api/v1/events`
-
-### Phase 2 forensics endpoints
-
-- `/api/v1/forensics/cohorts`
-- `/api/v1/forensics/cohorts/:cohortId`
-- `/api/v1/forensics/cohorts/:cohortId/compare`
-- `/api/v1/forensics/anomalies`
-- `/api/v1/forensics/patterns`
-- `/api/v1/forensics/patterns/:patternId`
-- `/api/v1/forensics/patterns/:patternId/status`
-- `/api/v1/forensics/investigations`
-- `/api/v1/forensics/investigations/:investigationId`
-- `/api/v1/forensics/investigations`
-- `/api/v1/forensics/investigations/:investigationId/status`
-- `/api/v1/forensics/investigations/:investigationId/evidence`
-- `/api/v1/forensics/suppliers/scorecards`
-- `/api/v1/forensics/heatmap`
-
-### Operational modes supported by the API
-
-- **Demo mode** - `USE_DEMO_STORE=true`, entirely in-memory
-- **Repository mode** - default production-oriented path, reads from PostgreSQL/TimescaleDB and Redis-backed queues
-
-Bull Board is also mounted at `/admin/queues` when repository mode is active.
-
----
-
-## What the Dashboard Does Right Now
-
-The dashboard in `apps/web/components/dashboard.tsx` already exposes both operational and forensic views.
-
-Main navigation areas:
-
-- Overview
-- Triage
-- Forensics
-- Workflow
-- Depot Network
-- Alerts
-- Activity
-- Settings placeholder
-
-What an operator can do today:
-
-- watch live fleet refresh over SSE
-- inspect the current priority queue
-- open a vehicle detail view with health, faults, and recommendations
-- dispatch a vehicle into the service workflow
-- advance a request through the workflow
-- complete a request and watch health/fault state update
-- review anomalies, patterns, investigations, supplier scorecards, and heatmap data
-- reset the seeded environment back to a known state
-
----
-
-## Seeded Local Data You Can Work With
-
-`packages/db/src/seed.ts` seeds a realistic local dataset for testing.
-
-Implemented seed coverage includes:
-
-- 1 organization
-- 5 users with multiple roles
-- 1 OEM connection
-- DTC registry
-- signal definitions
-- 10 depots across Indian cities
-- bay inventory per depot
-- parts catalog and inventory
-- 50 technicians
-- 96 vehicles
-- 24 hours of telemetry history per vehicle
-- active faults and alerts
-- precomputed priority entries
-- sample active service requests with workflow timelines
-- SLA tracking records
-- service history records
-- sample webhook registration
-
-This is enough to exercise both the Phase 1 operational workflow and the Phase 2 analysis views locally.
-
----
-
-## Tech Stack Implemented So Far
-
-### Platform and runtime
-
-- TypeScript 5
-- Node.js 22
-- pnpm workspaces
-- Turborepo
-
-### Backend and APIs
-
-- Express 5
-- Zod
-- pino-http + pino-pretty
-- helmet
-- cors
-
-### Data and async infrastructure
-
-- Prisma 6
-- PostgreSQL
-- TimescaleDB (`timescale/timescaledb:latest-pg16` in Docker)
-- Redis 7
-- ioredis
-- BullMQ
-- Bull Board
-
-### Frontend
-
-- Next.js 15
-- React 19
-- lucide-react
-- shared internal UI package
-
-### Internal domain packages
+### Internal packages in active use
 
 - `@kaz/db`
 - `@kaz/shared`
 - `@kaz/signal-trust`
 - `@kaz/orchestration`
 - `@kaz/forensics`
+- `@kaz/ai`
 - `@kaz/oem-adapters-mock`
+- `@kaz/ui`
 
 ---
 
-## What You Can Test Right Now
+## What You Can Review Right Now
 
-### Full production-style local stack
+### Phase 1 operational review
 
-1. Copy env values if needed:
+- persistent vehicle / depot / technician / workflow state
+- DB-backed dashboard and service workflow endpoints
 
-```bash
-cp .env.example .env
-```
+### Phase 2 runtime review
 
-2. Start infrastructure:
+- continuous simulator
+- worker queue execution
+- cohort / anomaly / pattern / investigation / supplier / heatmap endpoints
 
-```bash
-pnpm infra:up
-```
+### Phase 3 AI review
 
-3. Push schema and seed the database:
+- AI-enriched vehicle priority data
+- depot and technician AI reasoning
+- dispatch plan endpoint
+- escalation endpoint
 
-```bash
-pnpm --filter @kaz/db db:push
-pnpm --filter @kaz/db db:seed
-```
+### Phase 4 intelligence review
 
-4. Start the worker:
-
-```bash
-pnpm dev:worker
-```
-
-5. Start the simulator:
-
-```bash
-pnpm dev:simulator
-```
-
-6. Start the API:
-
-```bash
-pnpm dev:api
-```
-
-7. Start the dashboard:
-
-```bash
-pnpm dev:web
-```
-
-### What to verify in this mode
-
-- simulator is continuously enqueueing telemetry and fault changes
-- worker logs show BullMQ jobs completing
-- API returns dashboard, vehicle, service, and forensics payloads
-- Bull Board shows queue traffic at `http://localhost:4000/admin/queues`
-- dashboard updates live at `http://localhost:3000`
-- dispatching and completing service requests changes DB-backed state
-- forensics endpoints return cohort, anomaly, pattern, evidence, and supplier data
-
-### Useful API checks
-
-```bash
-curl http://localhost:4000/health
-curl http://localhost:4000/api/v1/dashboard | jq '.overview'
-curl http://localhost:4000/api/v1/orchestration/priority-queue | jq '.[0:5]'
-curl http://localhost:4000/api/v1/service-requests
-curl http://localhost:4000/api/v1/forensics/anomalies | jq '.[0]'
-curl http://localhost:4000/api/v1/forensics/patterns | jq '.[0]'
-curl http://localhost:4000/api/v1/forensics/suppliers/scorecards | jq '.[0]'
-curl -N http://localhost:4000/api/v1/events
-```
-
-### Demo-only fallback mode
-
-If you only want the old lightweight flow without Redis/Postgres/worker/simulator, you can still run the API with `USE_DEMO_STORE=true`. That mode is useful for UI smoke testing, but it is not the production architecture path anymore.
+- intelligence snapshot endpoint
+- decision audit trail endpoint
+- reward signals in persistence
+- dashboard intelligence summary
 
 ---
 
-## What Is Done vs What Is Still Incomplete
+## What Is Still Not Implemented
 
-### Done for Phase 1 and Phase 2
-
-- production database schema exists
-- Dockerized local Postgres/TimescaleDB and Redis exist
-- Redis cache and pub/sub exist
-- BullMQ queues and worker processors exist
-- continuous simulator exists
-- repository-backed API exists
-- dashboard integrates with the repository-backed API and SSE
-- service workflow persistence exists
-- phase 2 endpoints and UI exist
-
-### Still incomplete or intentionally deferred
-
-- auth/RBAC is modeled in schema but not wired into request handling yet
-- real OEM adapters beyond the mock simulator are not implemented yet
-- Phase 2 overlay state is not fully persisted as a long-lived analytics workflow system
-- CI/CD and cloud deployment are still outside the currently implemented runtime path
-- Phase 3 predictive warranty features are still not started
+- Phase 5 enterprise dashboard redesign
+- Phase 6 auth, RBAC, multi-tenancy enforcement, and formal test coverage target
+- Phase 7 CI/CD and cloud deployment
+- real OEM adapters beyond the mock adapter
 
 ---
 
 ## Bottom Line
 
-At this point, the application is a working local production-style fleet service platform for Phase 1 and Phase 2:
+The repository now implements a working production-style local platform through Phase 4.
 
-- telemetry is generated continuously
-- jobs are processed asynchronously
-- health and priority are recalculated automatically
-- depot and technician recommendations are refreshed
-- service requests move through a real persisted workflow
-- live dashboard updates are pushed through Redis pub/sub and SSE
-- forensic analysis is available from the same operational dataset
+- Phase 1 provides durable data and repository-backed operations.
+- Phase 2 provides the live async runtime.
+- Phase 3 provides AI-assisted orchestration.
+- Phase 4 provides reward-driven review and learning surfaces.
 
-That means you can already test the platform as a real multi-process system, not just as an in-memory product demo.
+That means the current system is no longer just an orchestration demo; it is a persisted, asynchronous, AI-assisted, reviewable fleet service platform through the first four planned phases.

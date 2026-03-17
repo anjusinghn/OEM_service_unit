@@ -152,6 +152,15 @@ export const createServer = (): express.Express => {
     res.json(dashboard.aiEscalations ?? [])
   })
 
+  app.get("/api/v1/intelligence", async (_req, res) => {
+    res.json(await store.getIntelligenceSnapshot())
+  })
+
+  app.get("/api/v1/intelligence/decisions", async (req, res) => {
+    const vehicleId = typeof req.query.vehicleId === "string" ? req.query.vehicleId : undefined
+    res.json(await store.getDecisionAuditTrail(vehicleId))
+  })
+
   app.get("/api/v1/depots", async (_req, res) => {
     res.json((await store.getDashboardPayload()).depots)
   })

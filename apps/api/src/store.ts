@@ -25,6 +25,7 @@ import {
   type ForensicsSnapshot,
   type HealthScore,
   type InvestigationStatus,
+  type IntelligenceSnapshot,
   type LivePulse,
   type PatternStatus,
   type ServiceHistoryRecord,
@@ -115,6 +116,24 @@ export class DemoStore {
 
   getForensics(): ForensicsSnapshot {
     return this.state.forensics
+  }
+
+  getIntelligenceSnapshot(): IntelligenceSnapshot {
+    return {
+      rewardSignals: [],
+      qualityTrend: [],
+      confidenceCalibration: [],
+      bestDecisions: [],
+      worstDecisions: [],
+      overrideRate: 0,
+      fewShotExamples: [],
+      weightAdjustmentProposals: [],
+      learnedPatterns: []
+    }
+  }
+
+  getDecisionAuditTrail(_vehicleId?: string) {
+    return []
   }
 
   getCohorts() {

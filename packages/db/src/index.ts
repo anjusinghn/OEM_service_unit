@@ -20,7 +20,6 @@ export {
   queueConcurrency,
   queueNames,
   queues,
-  techMatchQueue,
   telemetryIngestQueue
 } from "./queues";
 export { resetAndSeed, resetDatabase, seedDatabase } from "./seed";
@@ -39,6 +38,7 @@ export {
 export type { CacheSetOptions, RedisMessageHandler } from "./redis";
 
 export {
+  apiKeyRepository,
   cacheRepository,
   depotRepository,
   faultRepository,
@@ -50,6 +50,7 @@ export {
   serviceRequestRepository,
   signalRepository,
   technicianRepository,
+  userRepository,
   vehicleRepository
 } from "./repositories"
 
@@ -80,6 +81,5 @@ export type {
   RewardComputeJob,
   QueueName,
   QueuePayloadMap,
-  TechMatchJob,
   TelemetryIngestJob
 } from "./queues"

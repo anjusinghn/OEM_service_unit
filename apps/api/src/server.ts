@@ -16,10 +16,10 @@ import {
   notificationsQueue,
   priorityRerankQueue,
   subscribe as subscribeToChannel,
-  techMatchQueue,
   telemetryIngestQueue
 } from "@kaz/db"
 
+import { handleLogin, handleMe, requireAuth, requireRole } from "./auth.js"
 import { repositoryStore } from "./repository-store.js"
 import { demoStore } from "./store.js"
 
@@ -51,6 +51,10 @@ const completionSchema = z.object({
   priorityRating: z.number().min(1).max(5).optional().nullable()
 })
 
+function param(v: string | string[] | undefined): string {
+  return Array.isArray(v) ? v[0] ?? "" : v ?? ""
+}
+
 export const createServer = (): express.Express => {
   const app = express()
   const useDemoStore = process.env.USE_DEMO_STORE === "true"
@@ -80,7 +84,6 @@ export const createServer = (): express.Express => {
         priorityRerankQueue,
         aiReasoningQueue,
         depotMatchQueue,
-        techMatchQueue,
         notificationsQueue
       ].map((queue) => new BullMQAdapter(queue)),
       serverAdapter: bullBoardAdapter
@@ -97,19 +100,27 @@ export const createServer = (): express.Express => {
   }
 
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", name: "kazindustries-api", phase: "phase-1-demo" })
+    res.json({ status: "ok", name: "kazindustries-api", phase: "phase-6" })
   })
 
-  app.get("/api/v1/dashboard", async (_req, res) => {
+  app.post("/api/v1/auth/login", async (req, res) => {
+    await handleLogin(req, res)
+  })
+
+  app.get("/api/v1/auth/me", requireAuth, async (req, res) => {
+    await handleMe(req, res)
+  })
+
+  app.get("/api/v1/dashboard", requireAuth, async (_req, res) => {
     res.json(await store.getDashboardPayload())
   })
 
-  app.get("/api/v1/vehicles", async (_req, res) => {
+  app.get("/api/v1/vehicles", requireAuth, async (_req, res) => {
     res.json(await store.getVehicles())
   })
 
-  app.get("/api/v1/vehicles/:vehicleId", async (req, res) => {
-    const vehicle = await store.getVehicle(req.params.vehicleId)
+  app.get("/api/v1/vehicles/:vehicleId", requireAuth, async (req, res) => {
+    const vehicle = await store.getVehicle(param(req.params.vehicleId))
     if (!vehicle) {
       res.status(404).json({ error: "Vehicle not found" })
       return
@@ -117,12 +128,12 @@ export const createServer = (): express.Express => {
     res.json(vehicle)
   })
 
-  app.get("/api/v1/orchestration/priority-queue", async (_req, res) => {
+  app.get("/api/v1/orchestration/priority-queue", requireAuth, async (_req, res) => {
     res.json(await store.getPriorityQueue())
   })
 
-  app.get("/api/v1/orchestration/vehicles/:vehicleId/priority", async (req, res) => {
-    const priority = await store.getPriority(req.params.vehicleId)
+  app.get("/api/v1/orchestration/vehicles/:vehicleId/priority", requireAuth, async (req, res) => {
+    const priority = await store.getPriority(param(req.params.vehicleId))
     if (!priority) {
       res.status(404).json({ error: "Priority entry not found" })
       return
@@ -130,16 +141,12 @@ export const createServer = (): express.Express => {
     res.json(priority)
   })
 
-  app.get("/api/v1/orchestration/vehicles/:vehicleId/depot-match", async (req, res) => {
-    res.json(await store.getDepotRecommendations(req.params.vehicleId))
+  app.get("/api/v1/orchestration/vehicles/:vehicleId/depot-match", requireAuth, async (req, res) => {
+    res.json(await store.getDepotRecommendations(param(req.params.vehicleId)))
   })
 
-  app.get("/api/v1/orchestration/vehicles/:vehicleId/tech-match", async (req, res) => {
-    res.json(await store.getTechRecommendations(req.params.vehicleId))
-  })
-
-  app.get("/api/v1/orchestration/vehicles/:vehicleId/dispatch-plan", async (req, res) => {
-    const plan = await repositoryStore.getDispatchPlan(req.params.vehicleId)
+  app.get("/api/v1/orchestration/vehicles/:vehicleId/dispatch-plan", requireAuth, async (req, res) => {
+    const plan = await repositoryStore.getDispatchPlan(param(req.params.vehicleId))
     if (!plan) {
       res.status(404).json({ error: "Unable to build dispatch plan" })
       return
@@ -147,33 +154,32 @@ export const createServer = (): express.Express => {
     res.json(plan)
   })
 
-  app.get("/api/v1/orchestration/escalations", async (_req, res) => {
+  app.get("/api/v1/orchestration/escalations", requireAuth, async (_req, res) => {
     const dashboard = await store.getDashboardPayload()
     res.json(dashboard.aiEscalations ?? [])
   })
 
-  app.get("/api/v1/intelligence", async (_req, res) => {
+  app.get("/api/v1/intelligence", requireAuth, async (_req, res) => {
     res.json(await store.getIntelligenceSnapshot())
   })
 
-  app.get("/api/v1/intelligence/decisions", async (req, res) => {
+  app.get("/api/v1/intelligence/decisions", requireAuth, async (req, res) => {
     const vehicleId = typeof req.query.vehicleId === "string" ? req.query.vehicleId : undefined
     res.json(await store.getDecisionAuditTrail(vehicleId))
   })
 
-  app.get("/api/v1/depots", async (_req, res) => {
+  app.get("/api/v1/depots", requireAuth, async (_req, res) => {
     res.json((await store.getDashboardPayload()).depots)
   })
 
-  app.get("/api/v1/service-requests", async (_req, res) => {
+  app.get("/api/v1/service-requests", requireAuth, async (_req, res) => {
     res.json(await store.getServiceRequests())
   })
 
-  app.post("/api/v1/orchestration/vehicles/:vehicleId/dispatch", async (req, res) => {
+  app.post("/api/v1/orchestration/vehicles/:vehicleId/dispatch", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN", "DEPOT_MANAGER"), async (req, res) => {
     const overrides = req.body && typeof req.body === "object" ? req.body : {}
     const depotId = typeof overrides.depotId === "string" ? overrides.depotId : undefined
-    const technicianId = typeof overrides.technicianId === "string" ? overrides.technicianId : undefined
-    const result = await store.dispatchVehicle(req.params.vehicleId, depotId, technicianId)
+    const result = await store.dispatchVehicle(param(req.params.vehicleId), depotId)
     if (!result) {
       res.status(404).json({ error: "Unable to dispatch vehicle" })
       return
@@ -181,13 +187,13 @@ export const createServer = (): express.Express => {
     res.json(result)
   })
 
-  app.patch("/api/v1/service-requests/:requestId/status", async (req, res) => {
+  app.patch("/api/v1/service-requests/:requestId/status", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN", "DEPOT_MANAGER", "TECHNICIAN"), async (req, res) => {
     const parsed = statusSchema.safeParse(req.body)
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() })
       return
     }
-    const result = await store.advanceRequest(req.params.requestId, parsed.data.status)
+    const result = await store.advanceRequest(param(req.params.requestId), parsed.data.status)
     if (!result) {
       res.status(404).json({ error: "Unable to advance service request" })
       return
@@ -195,7 +201,7 @@ export const createServer = (): express.Express => {
     res.json(result)
   })
 
-  app.post("/api/v1/service-requests/:requestId/complete", async (req, res) => {
+  app.post("/api/v1/service-requests/:requestId/complete", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN", "DEPOT_MANAGER", "TECHNICIAN"), async (req, res) => {
     const parsed = completionSchema.safeParse(req.body ?? {})
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() })
@@ -203,8 +209,8 @@ export const createServer = (): express.Express => {
     }
 
     const result = useDemoStore
-      ? await store.completeRequest(req.params.requestId)
-      : await repositoryStore.completeRequest(req.params.requestId, parsed.data)
+      ? await store.completeRequest(param(req.params.requestId))
+      : await repositoryStore.completeRequest(param(req.params.requestId), parsed.data)
     if (!result) {
       res.status(404).json({ error: "Unable to complete service request" })
       return
@@ -212,16 +218,16 @@ export const createServer = (): express.Express => {
     res.json(result)
   })
 
-  app.post("/api/v1/demo/reset", async (_req, res) => {
+  app.post("/api/v1/demo/reset", requireAuth, requireRole("PLATFORM_ADMIN"), async (_req, res) => {
     res.json(await store.reset())
   })
 
-  app.get("/api/v1/forensics/cohorts", async (_req, res) => {
+  app.get("/api/v1/forensics/cohorts", requireAuth, async (_req, res) => {
     res.json(await store.getCohorts())
   })
 
-  app.get("/api/v1/forensics/cohorts/:cohortId", async (req, res) => {
-    const cohort = await store.getCohort(req.params.cohortId)
+  app.get("/api/v1/forensics/cohorts/:cohortId", requireAuth, async (req, res) => {
+    const cohort = await store.getCohort(param(req.params.cohortId))
     if (!cohort) {
       res.status(404).json({ error: "Cohort not found" })
       return
@@ -229,8 +235,8 @@ export const createServer = (): express.Express => {
     res.json(cohort)
   })
 
-  app.get("/api/v1/forensics/cohorts/:cohortId/compare", async (req, res) => {
-    const comparison = await store.getCohortComparison(req.params.cohortId)
+  app.get("/api/v1/forensics/cohorts/:cohortId/compare", requireAuth, async (req, res) => {
+    const comparison = await store.getCohortComparison(param(req.params.cohortId))
     if (!comparison) {
       res.status(404).json({ error: "Cohort not found" })
       return
@@ -238,16 +244,16 @@ export const createServer = (): express.Express => {
     res.json(comparison)
   })
 
-  app.get("/api/v1/forensics/anomalies", async (_req, res) => {
+  app.get("/api/v1/forensics/anomalies", requireAuth, async (_req, res) => {
     res.json(await store.getAnomalies())
   })
 
-  app.get("/api/v1/forensics/patterns", async (_req, res) => {
+  app.get("/api/v1/forensics/patterns", requireAuth, async (_req, res) => {
     res.json(await store.getPatterns())
   })
 
-  app.get("/api/v1/forensics/patterns/:patternId", async (req, res) => {
-    const pattern = await store.getPattern(req.params.patternId)
+  app.get("/api/v1/forensics/patterns/:patternId", requireAuth, async (req, res) => {
+    const pattern = await store.getPattern(param(req.params.patternId))
     if (!pattern) {
       res.status(404).json({ error: "Pattern not found" })
       return
@@ -255,13 +261,13 @@ export const createServer = (): express.Express => {
     res.json(pattern)
   })
 
-  app.patch("/api/v1/forensics/patterns/:patternId/status", async (req, res) => {
+  app.patch("/api/v1/forensics/patterns/:patternId/status", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN"), async (req, res) => {
     const { status } = req.body
     if (!status) {
       res.status(400).json({ error: "status is required" })
       return
     }
-    const pattern = await store.updatePatternStatus(req.params.patternId, status)
+    const pattern = await store.updatePatternStatus(param(req.params.patternId), status)
     if (!pattern) {
       res.status(404).json({ error: "Pattern not found" })
       return
@@ -269,12 +275,12 @@ export const createServer = (): express.Express => {
     res.json(pattern)
   })
 
-  app.get("/api/v1/forensics/investigations", async (_req, res) => {
+  app.get("/api/v1/forensics/investigations", requireAuth, async (_req, res) => {
     res.json(await store.getInvestigations())
   })
 
-  app.get("/api/v1/forensics/investigations/:investigationId", async (req, res) => {
-    const investigation = await store.getInvestigation(req.params.investigationId)
+  app.get("/api/v1/forensics/investigations/:investigationId", requireAuth, async (req, res) => {
+    const investigation = await store.getInvestigation(param(req.params.investigationId))
     if (!investigation) {
       res.status(404).json({ error: "Investigation not found" })
       return
@@ -282,14 +288,14 @@ export const createServer = (): express.Express => {
     res.json(investigation)
   })
 
-  app.post("/api/v1/forensics/investigations", async (req, res) => {
+  app.post("/api/v1/forensics/investigations", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN"), async (req, res) => {
     const { anomalyId, patternId } = req.body ?? {}
     const result = await store.openInvestigation(anomalyId, patternId)
     res.status(201).json(result)
   })
 
-  app.patch("/api/v1/forensics/investigations/:investigationId/status", async (req, res) => {
-    const result = await store.advanceInvestigationStatus(req.params.investigationId, req.body?.status)
+  app.patch("/api/v1/forensics/investigations/:investigationId/status", requireAuth, requireRole("PLATFORM_ADMIN", "OEM_ADMIN"), async (req, res) => {
+    const result = await store.advanceInvestigationStatus(param(req.params.investigationId), req.body?.status)
     if (!result) {
       res.status(404).json({ error: "Investigation not found" })
       return
@@ -297,8 +303,8 @@ export const createServer = (): express.Express => {
     res.json(result)
   })
 
-  app.get("/api/v1/forensics/investigations/:investigationId/evidence", async (req, res) => {
-    const evidence = await store.getEvidencePackage(req.params.investigationId)
+  app.get("/api/v1/forensics/investigations/:investigationId/evidence", requireAuth, async (req, res) => {
+    const evidence = await store.getEvidencePackage(param(req.params.investigationId))
     if (!evidence) {
       res.status(404).json({ error: "Investigation not found" })
       return
@@ -306,11 +312,11 @@ export const createServer = (): express.Express => {
     res.json(evidence)
   })
 
-  app.get("/api/v1/forensics/suppliers/scorecards", async (_req, res) => {
+  app.get("/api/v1/forensics/suppliers/scorecards", requireAuth, async (_req, res) => {
     res.json(await store.getSupplierScorecards())
   })
 
-  app.get("/api/v1/forensics/heatmap", async (_req, res) => {
+  app.get("/api/v1/forensics/heatmap", requireAuth, async (_req, res) => {
     res.json(await store.getHeatmapData())
   })
 

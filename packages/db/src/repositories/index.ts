@@ -1,3 +1,4 @@
+export { apiKeyRepository } from "./api-key-repository"
 export { cacheRepository } from "./cache-repository"
 export { depotRepository } from "./depot-repository"
 export { faultRepository } from "./fault-repository"
@@ -9,6 +10,7 @@ export { serviceHistoryRepository } from "./service-history-repository"
 export { serviceRequestRepository } from "./service-request-repository"
 export { signalRepository } from "./signal-repository"
 export { technicianRepository } from "./technician-repository"
+export { userRepository } from "./user-repository"
 export { vehicleRepository } from "./vehicle-repository"
 
 export type { HealthTrendOptions, HealthSnapshotCreateInput } from "./health-repository"

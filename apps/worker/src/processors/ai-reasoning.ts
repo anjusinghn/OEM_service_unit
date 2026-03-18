@@ -3,8 +3,7 @@ import type { Job } from "bullmq"
 import {
   runDepotReasoning,
   runEscalationReasoning,
-  runPriorityReasoning,
-  runTechnicianReasoning
+  runPriorityReasoning
 } from "@kaz/ai"
 import {
   cacheRepository,
@@ -14,7 +13,7 @@ import {
   type Prisma,
   type QueuePayloadMap
 } from "@kaz/db"
-import { recommendDepots, recommendTechnicians } from "@kaz/orchestration"
+import { recommendDepots } from "@kaz/orchestration"
 
 import { loadOperationalState } from "../state-loader.js"
 
@@ -40,7 +39,7 @@ const priorityHeuristic = async (vehicleId: string) => {
 }
 
 export const processAiReasoning = async (job: Job<QueuePayloadMap[typeof queueNames.aiReasoning]>) => {
-  const { decisionType, vehicleId, depotId, weakestSubsystem, timestamp } = job.data
+  const { decisionType, vehicleId, timestamp } = job.data
   const { state, healthByVehicle } = await loadOperationalState()
 
   if (decisionType === "escalation") {
@@ -174,46 +173,6 @@ export const processAiReasoning = async (job: Job<QueuePayloadMap[typeof queueNa
           : recommendation
       )
       await cacheRepository.setVehicleDepotMatch(vehicleId, merged)
-    }
-
-    return { decisionType, vehicleId, aiApplied: Boolean(aiAssessment) }
-  }
-
-  if (decisionType === "technician") {
-    const effectiveDepotId = depotId ?? recommendDepots(vehicle, state, health.weakestSubsystem)[0]?.depotId
-    const effectiveSubsystem = weakestSubsystem ?? health.weakestSubsystem
-    if (!effectiveDepotId) {
-      return { decisionType, vehicleId, skipped: true }
-    }
-
-    const heuristicRecommendations = recommendTechnicians(state, effectiveDepotId, effectiveSubsystem as Parameters<typeof recommendTechnicians>[2])
-    const aiAssessment = await runTechnicianReasoning({
-      vehicle,
-      health,
-      faults,
-      heuristicRecommendations,
-      serviceHistory
-    })
-
-    await prisma.aiDecisionLog.create({
-      data: {
-        vehicleId,
-        decisionType,
-        heuristicOutput: toJsonValue(heuristicRecommendations),
-        aiOutput: aiAssessment ? toJsonValue(aiAssessment) : undefined,
-        finalDecision: aiAssessment ? toJsonValue({ recommendedTechnicianId: aiAssessment.recommendedTechnicianId }) : undefined,
-        modelName: aiAssessment?.model ?? null,
-        latencyMs: aiAssessment?.latencyMs ?? null
-      }
-    })
-
-    if (aiAssessment) {
-      const merged = heuristicRecommendations.map((recommendation) =>
-        recommendation.technicianId === aiAssessment.recommendedTechnicianId
-          ? { ...recommendation, aiAssessment }
-          : recommendation
-      )
-      await cacheRepository.setVehicleTechMatch(vehicleId, merged)
     }
 
     return { decisionType, vehicleId, aiApplied: Boolean(aiAssessment) }

@@ -1,7 +1,7 @@
 import type { Job } from "bullmq"
 
 import { cacheRepository, enqueueJob, priorityRepository, queueNames, type QueuePayloadMap } from "@kaz/db"
-import { buildPriorityQueue, recommendDepots } from "@kaz/orchestration"
+import { buildPriorityQueue } from "@kaz/orchestration"
 
 import { loadOperationalState } from "../state-loader.js"
 
@@ -56,24 +56,13 @@ export const processPriorityRerank = async (job: Job<QueuePayloadMap[typeof queu
     })
   }
 
-  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
   const health = healthByVehicle[vehicleId]
-  const topDepot = vehicle && health ? recommendDepots(vehicle, state, health.weakestSubsystem)[0] : undefined
 
   await enqueueJob(queueNames.depotMatch, {
     vehicleId,
     weakestSubsystem: health.weakestSubsystem,
     timestamp
   })
-
-  if (topDepot) {
-    await enqueueJob(queueNames.techMatch, {
-      vehicleId,
-      depotId: topDepot.depotId,
-      weakestSubsystem: health.weakestSubsystem,
-      timestamp
-    })
-  }
 
   await enqueueJob(queueNames.notifications, {
     type: "priority_change",

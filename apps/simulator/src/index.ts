@@ -2,6 +2,7 @@ import { closeQueues, enqueueJob, queueNames } from "@kaz/db"
 import { applyMockTick, createMockState } from "@kaz/oem-adapters-mock"
 
 const TICK_INTERVAL_MS = Number(process.env.TICK_INTERVAL_MS ?? 10_000)
+const SIMULATOR_STARTUP_DELAY_MS = Number(process.env.SIMULATOR_STARTUP_DELAY_MS ?? 4_000)
 const SIMULATOR_SEED = Number(process.env.SIMULATOR_SEED ?? 101)
 const SOURCE_ID = process.env.SIMULATOR_SOURCE_ID ?? "mock-oem-demo"
 
@@ -107,8 +108,12 @@ const shutdown = async (signal: string) => {
 console.log("[simulator] continuous simulator ready")
 console.log(`[simulator] vehicles=${currentState.vehicles.length} depots=${currentState.depots.length} technicians=${currentState.technicians.length}`)
 console.log(`[simulator] intervalMs=${TICK_INTERVAL_MS} source=${SOURCE_ID}`)
+console.log(`[simulator] startupDelayMs=${SIMULATOR_STARTUP_DELAY_MS}`)
 
-void runTick(true)
+setTimeout(() => {
+  void runTick(true)
+}, SIMULATOR_STARTUP_DELAY_MS)
+
 tickHandle = setInterval(() => {
   void runTick(false)
 }, TICK_INTERVAL_MS)

@@ -167,6 +167,16 @@ export const serviceRequestRepository = {
     })
   },
 
+  findByOrganization(organizationId: string, options: { skip?: number; take?: number } = {}) {
+    return prisma.serviceRequest.findMany({
+      where: { vehicle: { organizationId } },
+      orderBy: { createdAt: "desc" },
+      skip: options.skip,
+      take: options.take,
+      include: fullInclude
+    })
+  },
+
   updateStatus(input: UpdateServiceStatusInput) {
     const { requestId, targetStatus, note } = input
 

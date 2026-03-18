@@ -18,6 +18,14 @@ export const depotRepository = {
     })
   },
 
+  findByOrganization(organizationId: string) {
+    return prisma.depot.findMany({
+      where: { organizationId },
+      orderBy: [{ region: "asc" }, { city: "asc" }],
+      include: depotInclude
+    })
+  },
+
   findById(id: string) {
     return prisma.depot.findUnique({
       where: { id },

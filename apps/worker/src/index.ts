@@ -10,7 +10,6 @@ import { processNotification } from "./processors/notifications.js"
 import { processPriorityRerank } from "./processors/priority-rerank.js"
 import { processRewardCompute } from "./processors/reward-compute.js"
 import { processSignalIngest } from "./processors/signal-ingest.js"
-import { processTechMatch } from "./processors/tech-match.js"
 
 const REDIS_URL = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 const redisUrl = new URL(REDIS_URL)
@@ -53,10 +52,6 @@ const workers = [
     connection,
     concurrency: queueConcurrency[queueNames.depotMatch]
   }),
-  new Worker<QueuePayloadMap[typeof queueNames.techMatch]>(queueNames.techMatch, processTechMatch, {
-    connection,
-    concurrency: queueConcurrency[queueNames.techMatch]
-  }),
   new Worker<QueuePayloadMap[typeof queueNames.notifications]>(queueNames.notifications, processNotification, {
     connection,
     concurrency: queueConcurrency[queueNames.notifications]
@@ -64,6 +59,7 @@ const workers = [
 ]
 
 const ESCALATION_SCAN_INTERVAL_MS = Number(process.env.AI_ESCALATION_INTERVAL_MS ?? 300000)
+const WORKER_LOG_COMPLETED = process.env.WORKER_LOG_COMPLETED === "true"
 const escalationTimer = setInterval(() => {
   void enqueueJob(queueNames.aiReasoning, {
     decisionType: "escalation",
@@ -72,9 +68,11 @@ const escalationTimer = setInterval(() => {
 }, ESCALATION_SCAN_INTERVAL_MS)
 
 for (const worker of workers) {
-  worker.on("completed", (job: Job<unknown>) => {
-    console.log(`[worker] completed queue=${worker.name} job=${job.id}`)
-  })
+  if (WORKER_LOG_COMPLETED) {
+    worker.on("completed", (job: Job<unknown>) => {
+      console.log(`[worker] completed queue=${worker.name} job=${job.id}`)
+    })
+  }
 
   worker.on("failed", (job: Job<unknown> | undefined, error: Error) => {
     console.error(`[worker] failed queue=${worker.name} job=${job?.id ?? "unknown"}`, error)
@@ -92,6 +90,7 @@ const shutdown = async (signal: string) => {
 console.log("[worker] BullMQ worker cluster ready")
 console.log(`[worker] queues=${workers.map((worker) => worker.name).join(",")}`)
 console.log(`[worker] escalationIntervalMs=${ESCALATION_SCAN_INTERVAL_MS}`)
+console.log(`[worker] logCompleted=${WORKER_LOG_COMPLETED}`)
 
 process.on("SIGINT", () => {
   void shutdown("SIGINT")

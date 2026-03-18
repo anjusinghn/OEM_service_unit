@@ -15,6 +15,14 @@ export const vehicleRepository = {
     })
   },
 
+  findByOrganization(organizationId: string) {
+    return prisma.vehicle.findMany({
+      where: { organizationId },
+      orderBy: { id: "asc" },
+      include: vehicleInclude
+    })
+  },
+
   findById(id: string) {
     return prisma.vehicle.findUnique({
       where: { id },

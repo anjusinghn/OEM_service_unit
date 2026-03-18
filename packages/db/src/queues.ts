@@ -14,7 +14,6 @@ export const queueNames = {
   aiReasoning: "ai-reasoning",
   rewardCompute: "reward-compute",
   depotMatch: "depot-match",
-  techMatch: "tech-match",
   notifications: "notifications"
 } as const
 
@@ -26,7 +25,6 @@ export const queueConcurrency = {
   [queueNames.aiReasoning]: 3,
   [queueNames.rewardCompute]: 2,
   [queueNames.depotMatch]: 3,
-  [queueNames.techMatch]: 3,
   [queueNames.notifications]: 2
 } as const
 
@@ -60,10 +58,8 @@ export type PriorityRerankJob = {
 }
 
 export type AiReasoningJob = {
-  decisionType: "priority" | "depot" | "technician" | "escalation"
+  decisionType: "priority" | "depot" | "escalation"
   vehicleId?: string
-  depotId?: string
-  weakestSubsystem?: string
   timestamp: string
 }
 
@@ -78,13 +74,6 @@ export type RewardComputeJob = {
 
 export type DepotMatchJob = {
   vehicleId: string
-  weakestSubsystem: string
-  timestamp: string
-}
-
-export type TechMatchJob = {
-  vehicleId: string
-  depotId: string
   weakestSubsystem: string
   timestamp: string
 }
@@ -105,7 +94,6 @@ export type QueuePayloadMap = {
   [queueNames.aiReasoning]: AiReasoningJob
   [queueNames.rewardCompute]: RewardComputeJob
   [queueNames.depotMatch]: DepotMatchJob
-  [queueNames.techMatch]: TechMatchJob
   [queueNames.notifications]: NotificationJob
 }
 
@@ -138,7 +126,6 @@ export const priorityRerankQueue = new Queue<QueuePayloadMap[typeof queueNames.p
 export const aiReasoningQueue = new Queue<QueuePayloadMap[typeof queueNames.aiReasoning], void, string>(queueNames.aiReasoning, queueOptions)
 export const rewardComputeQueue = new Queue<QueuePayloadMap[typeof queueNames.rewardCompute], void, string>(queueNames.rewardCompute, queueOptions)
 export const depotMatchQueue = new Queue<QueuePayloadMap[typeof queueNames.depotMatch], void, string>(queueNames.depotMatch, queueOptions)
-export const techMatchQueue = new Queue<QueuePayloadMap[typeof queueNames.techMatch], void, string>(queueNames.techMatch, queueOptions)
 export const notificationsQueue = new Queue<QueuePayloadMap[typeof queueNames.notifications], void, string>(queueNames.notifications, queueOptions)
 
 export const queues: { [K in QueueName]: Queue<QueuePayloadMap[K], void, string> } = {
@@ -149,7 +136,6 @@ export const queues: { [K in QueueName]: Queue<QueuePayloadMap[K], void, string>
   [queueNames.aiReasoning]: aiReasoningQueue,
   [queueNames.rewardCompute]: rewardComputeQueue,
   [queueNames.depotMatch]: depotMatchQueue,
-  [queueNames.techMatch]: techMatchQueue,
   [queueNames.notifications]: notificationsQueue
 } as const
 
@@ -175,8 +161,6 @@ export const enqueueJob = <TName extends QueueName>(
       return rewardComputeQueue.add("job", payload as QueuePayloadMap[typeof queueNames.rewardCompute], options)
     case queueNames.depotMatch:
       return depotMatchQueue.add("job", payload as QueuePayloadMap[typeof queueNames.depotMatch], options)
-    case queueNames.techMatch:
-      return techMatchQueue.add("job", payload as QueuePayloadMap[typeof queueNames.techMatch], options)
     case queueNames.notifications:
       return notificationsQueue.add("job", payload as QueuePayloadMap[typeof queueNames.notifications], options)
   }
@@ -191,7 +175,6 @@ export const closeQueues = async (): Promise<void> => {
     aiReasoningQueue.close(),
     rewardComputeQueue.close(),
     depotMatchQueue.close(),
-    techMatchQueue.close(),
     notificationsQueue.close()
   ])
 }

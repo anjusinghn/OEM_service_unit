@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import { pathToFileURL } from "node:url";
 
 import { prisma } from "./schema";
@@ -257,36 +258,42 @@ export async function seedDatabase(db: PrismaClient = prisma) {
 
   // ── 2. Users ────────────────────────────────────────────
   console.log("  → Creating users...");
+  const defaultPasswordHash = await bcrypt.hash("kazadmin123", 12);
   const users = [
     {
       id: "user-admin-001",
       name: "Admin User",
       email: "admin@kazindustries.dev",
       role: "PLATFORM_ADMIN" as const,
+      passwordHash: defaultPasswordHash,
     },
     {
       id: "user-oem-001",
       name: "OEM Manager",
       email: "oem@kazindustries.dev",
       role: "OEM_ADMIN" as const,
+      passwordHash: defaultPasswordHash,
     },
     {
       id: "user-depot-001",
       name: "Depot Manager (Pune)",
       email: "depot-pune@kazindustries.dev",
       role: "DEPOT_MANAGER" as const,
+      passwordHash: defaultPasswordHash,
     },
     {
       id: "user-tech-001",
       name: "Rajesh K",
       email: "rajesh@kazindustries.dev",
       role: "TECHNICIAN" as const,
+      passwordHash: defaultPasswordHash,
     },
     {
       id: "user-viewer-001",
       name: "Dashboard Viewer",
       email: "viewer@kazindustries.dev",
       role: "VIEWER" as const,
+      passwordHash: defaultPasswordHash,
     },
   ];
 

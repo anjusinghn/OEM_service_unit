@@ -17,7 +17,6 @@ import {
   type ServiceRequest,
   type ServiceRequestStatus,
   type SubsystemKey,
-  type TechnicianRecommendation,
   type Vehicle
 } from "@kaz/shared"
 
@@ -117,31 +116,6 @@ export const recommendDepots = (
     .slice(0, 3)
 }
 
-export const recommendTechnicians = (
-  state: DemoState,
-  depotId: string,
-  weakestSubsystem: SubsystemKey
-): TechnicianRecommendation[] => {
-  return state.technicians
-    .filter((technician) => technician.depotId === depotId)
-    .map((technician) => {
-      const skillMatch = technician.certifications.includes(weakestSubsystem)
-      const capacity = technician.maxLoad - technician.currentLoad
-      const score = round((skillMatch ? 44 : 12) + technician.firstTimeFixRate * 34 + capacity * 6, 1)
-      return {
-        technicianId: technician.id,
-        score,
-        reasons: [
-          skillMatch ? `certified in ${weakestSubsystem}` : `adjacent skill coverage`,
-          `${capacity}/${technician.maxLoad} workload slots open`,
-          `${round(technician.firstTimeFixRate * 100, 0)}% first-time-fix rate`
-        ]
-      }
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-}
-
 export const buildOverview = (state: DemoState, healthByVehicle: Record<string, HealthScore>): FleetOverview => {
   const healthValues = Object.values(healthByVehicle)
   const healthyVehicles = healthValues.filter((item) => item.status === "healthy").length
@@ -182,21 +156,12 @@ export const buildSnapshot = (
       return [vehicle.id, recommendDepots(vehicle, state, healthByVehicle[vehicle.id].weakestSubsystem)]
     })
   )
-  const technicianRecommendations = Object.fromEntries(
-    Object.entries(depotRecommendations).map(([vehicleId, depots]) => {
-      const bestDepot = depots[0]
-      const weakestSubsystem = healthByVehicle[vehicleId].weakestSubsystem
-      return [vehicleId, recommendTechnicians(state, bestDepot.depotId, weakestSubsystem)]
-    })
-  )
-
   return {
     overview: buildOverview(state, healthByVehicle),
     healthByVehicle,
     alerts,
     priorityQueue,
     depotRecommendations,
-    technicianRecommendations,
     livePulse: state.livePulse
   }
 }
@@ -207,7 +172,7 @@ export const createServiceRequest = (
   priorityScore: number,
   weakestSubsystem: SubsystemKey,
   depotId: string,
-  technicianId: string,
+  technicianId: string | null,
   requiredPartNumbers: string[]
 ): ServiceRequest => {
   const createdAt = new Date().toISOString()

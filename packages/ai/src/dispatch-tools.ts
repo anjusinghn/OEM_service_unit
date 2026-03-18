@@ -1,14 +1,13 @@
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
 
-import type { DepotRecommendation, HealthScore, ServiceHistoryRecord, TechnicianRecommendation, Vehicle, VehicleFault } from "@kaz/shared"
+import type { DepotRecommendation, HealthScore, ServiceHistoryRecord, Vehicle, VehicleFault } from "@kaz/shared"
 
 export type DispatchToolContext = {
   vehicle: Vehicle
   health: HealthScore
   faults: VehicleFault[]
   depotRecommendations: DepotRecommendation[]
-  technicianRecommendations: TechnicianRecommendation[]
   serviceHistory: ServiceHistoryRecord[]
   partsToStage: string[]
 }
@@ -30,11 +29,6 @@ export const createDispatchTools = (context: DispatchToolContext) => {
     tool(async () => JSON.stringify({ partsToStage: context.partsToStage, depotRecommendation: context.depotRecommendations[0] ?? null }), {
       name: "parts_check",
       description: "Return staged parts and current depot readiness.",
-      schema: emptySchema
-    }),
-    tool(async () => JSON.stringify(context.technicianRecommendations), {
-      name: "tech_lookup",
-      description: "Return technician recommendation candidates with scores and reasons.",
       schema: emptySchema
     }),
     tool(async () => JSON.stringify(context.serviceHistory.slice(0, 10)), {

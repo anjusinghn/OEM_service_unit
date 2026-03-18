@@ -1,7 +1,7 @@
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages"
 import { ChatPromptTemplate } from "@langchain/core/prompts"
 
-import type { AiDispatchPlan, DepotRecommendation, HealthScore, ServiceHistoryRecord, TechnicianRecommendation, Vehicle, VehicleFault } from "@kaz/shared"
+import type { AiDispatchPlan, DepotRecommendation, HealthScore, ServiceHistoryRecord, Vehicle, VehicleFault } from "@kaz/shared"
 
 import { aiConfig, canUseAi, createOpenRouterClient } from "./client"
 import { createDispatchTools } from "./dispatch-tools"
@@ -12,7 +12,6 @@ export type DispatchReasoningInput = {
   health: HealthScore
   faults: VehicleFault[]
   depotRecommendations: DepotRecommendation[]
-  technicianRecommendations: TechnicianRecommendation[]
   serviceHistory: ServiceHistoryRecord[]
   partsToStage: string[]
   fewShotExamples?: string
@@ -21,7 +20,7 @@ export type DispatchReasoningInput = {
 const planningPrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
-    "You are a fleet dispatch planner. Use tools when needed to inspect vehicle, depot, parts, technician, service history, fleet stats, and similar cases before proposing a dispatch plan."
+    "You are a fleet dispatch planner. Use tools when needed to inspect vehicle, depot, parts, service history, fleet stats, and similar cases before proposing a dispatch plan."
   ],
   ["human", "Create a dispatch plan for vehicle {vehicleId}." ]
 ])
@@ -36,13 +35,10 @@ const summarizationPrompt = ChatPromptTemplate.fromMessages([
 
 const heuristicDispatchFallback = (input: DispatchReasoningInput): AiDispatchPlan => {
   const depot = input.depotRecommendations[0]
-  const technician = input.technicianRecommendations[0]
 
   return {
     depotId: depot?.depotId ?? "",
     depotReasoning: depot?.reasons.join(" ") ?? "No depot recommendation available.",
-    technicianId: technician?.technicianId ?? "",
-    techReasoning: technician?.reasons.join(" ") ?? "No technician recommendation available.",
     partsToStage: input.partsToStage,
     estimatedRepairHours: 4,
     estimatedTotalCost: Math.max(1, input.partsToStage.length) * 2500,
@@ -51,7 +47,6 @@ const heuristicDispatchFallback = (input: DispatchReasoningInput): AiDispatchPla
     alternativePlan: input.depotRecommendations[1]
       ? {
           depotId: input.depotRecommendations[1].depotId,
-          technicianId: input.technicianRecommendations[1]?.technicianId ?? null,
           reasoning: input.depotRecommendations[1].reasons.join(" ")
         }
       : null,
@@ -60,7 +55,6 @@ const heuristicDispatchFallback = (input: DispatchReasoningInput): AiDispatchPla
       "vehicle_lookup",
       "depot_lookup",
       "parts_check",
-      "tech_lookup",
       "service_history",
       "fleet_stats",
       "similar_cases",
@@ -116,7 +110,6 @@ export const runDispatchReasoning = async (input: DispatchReasoningInput): Promi
         health: input.health,
         faults: input.faults,
         depotRecommendations: input.depotRecommendations,
-        technicianRecommendations: input.technicianRecommendations,
         serviceHistory: input.serviceHistory.slice(0, 10),
         partsToStage: input.partsToStage
       }),

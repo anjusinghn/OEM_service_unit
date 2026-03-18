@@ -18,19 +18,9 @@ export const depotAssessmentSchema = z.object({
   logisticsNote: z.string().nullable()
 })
 
-export const technicianAssessmentSchema = z.object({
-  recommendedTechnicianId: z.string().min(1),
-  reasoning: z.string().min(1).max(500),
-  confidence: z.number().min(0).max(1),
-  skillGapWarning: z.string().nullable(),
-  estimatedRepairHours: z.number().min(0).nullable()
-})
-
 export const dispatchPlanSchema = z.object({
   depotId: z.string().min(1),
   depotReasoning: z.string().min(1),
-  technicianId: z.string().min(1),
-  techReasoning: z.string().min(1),
   partsToStage: z.array(z.string()),
   estimatedRepairHours: z.number().min(0),
   estimatedTotalCost: z.number().min(0),
@@ -39,7 +29,6 @@ export const dispatchPlanSchema = z.object({
   alternativePlan: z
     .object({
       depotId: z.string().min(1),
-      technicianId: z.string().nullable(),
       reasoning: z.string().min(1)
     })
     .nullable(),

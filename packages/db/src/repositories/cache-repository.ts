@@ -2,7 +2,6 @@ import type {
   DepotRecommendation,
   HealthScore,
   PriorityEntry as SharedPriorityEntry,
-  TechnicianRecommendation,
   VehicleSignalSnapshot
 } from "@kaz/shared"
 
@@ -17,7 +16,6 @@ const signalKey = (vehicleId: string) => `vehicle:signal:${vehicleId}`
 const healthKey = (vehicleId: string) => `vehicle:health:${vehicleId}`
 const priorityKey = (vehicleId: string) => `vehicle:priority:${vehicleId}`
 const depotMatchKey = (vehicleId: string) => `vehicle:depot-match:${vehicleId}`
-const techMatchKey = (vehicleId: string) => `vehicle:tech-match:${vehicleId}`
 
 export const cacheRepository = {
   getVehicleSignal(vehicleId: string) {
@@ -52,21 +50,12 @@ export const cacheRepository = {
     return cacheSetJson(depotMatchKey(vehicleId), recommendations, { ttlSeconds: MATCH_TTL_SECONDS })
   },
 
-  getVehicleTechMatch(vehicleId: string) {
-    return cacheGetJson<TechnicianRecommendation[]>(techMatchKey(vehicleId))
-  },
-
-  setVehicleTechMatch(vehicleId: string, recommendations: TechnicianRecommendation[]) {
-    return cacheSetJson(techMatchKey(vehicleId), recommendations, { ttlSeconds: MATCH_TTL_SECONDS })
-  },
-
   async invalidateVehicle(vehicleId: string): Promise<void> {
     await Promise.all([
       cacheDelete(signalKey(vehicleId)),
       cacheDelete(healthKey(vehicleId)),
       cacheDelete(priorityKey(vehicleId)),
-      cacheDelete(depotMatchKey(vehicleId)),
-      cacheDelete(techMatchKey(vehicleId))
+      cacheDelete(depotMatchKey(vehicleId))
     ])
   }
 }

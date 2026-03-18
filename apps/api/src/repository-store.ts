@@ -27,7 +27,7 @@ import {
   compareCohort,
   createInvestigation as createInvestigationEngine
 } from "@kaz/forensics"
-import { buildSnapshot, recommendDepots, recommendTechnicians } from "@kaz/orchestration"
+import { buildSnapshot, recommendDepots } from "@kaz/orchestration"
 import { computeHealthScore, dedupeAlerts } from "@kaz/signal-trust"
 import {
   nowIso,
@@ -64,7 +64,6 @@ type DashboardPayload = DashboardSnapshot & {
     faults: VehicleFault[]
     priority: DashboardSnapshot["priorityQueue"][number] | null
     depotRecommendations: DashboardSnapshot["depotRecommendations"][string]
-    technicianRecommendations: DashboardSnapshot["technicianRecommendations"][string]
     currentRequest: ServiceRequest | null
   }>
   depots: Depot[]
@@ -414,19 +413,6 @@ class RepositoryStore {
         recommendDepots(vehicle, state, healthByVehicle[vehicle.id].weakestSubsystem)
       ])
     )
-    const technicianRecommendations = Object.fromEntries(
-      Object.entries(depotRecommendations).map(([vehicleId, depots]) => [
-        vehicleId,
-        (depots[0]
-          ? recommendTechnicians(state, depots[0].depotId, healthByVehicle[vehicleId].weakestSubsystem)
-          : []).map((recommendation) => {
-            const aiAssessment = aiByVehicle[`${vehicleId}:technician`]
-            return aiAssessment && typeof aiAssessment === "object" && !Array.isArray(aiAssessment)
-              ? { ...recommendation, aiAssessment: recommendation.technicianId === (aiAssessment as { recommendedTechnicianId?: string }).recommendedTechnicianId ? (aiAssessment as unknown as DashboardSnapshot["technicianRecommendations"][string][number]["aiAssessment"]) : null }
-              : recommendation
-          })
-      ])
-    )
     const snapshot: DashboardSnapshot = {
       ...baseSnapshot,
       priorityQueue: baseSnapshot.priorityQueue.map((entry) => ({
@@ -449,7 +435,6 @@ class RepositoryStore {
           })
         ])
       ),
-      technicianRecommendations,
       aiEscalations: latestAiRows
         .filter((row) => row.decisionType === "escalation" && row.aiOutput && typeof row.aiOutput === "object" && !Array.isArray(row.aiOutput))
         .map((row) => row.aiOutput as unknown as NonNullable<DashboardSnapshot["aiEscalations"]>[number])
@@ -463,7 +448,6 @@ class RepositoryStore {
       faults: state.faults[vehicle.id] ?? [],
       priority: snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicle.id) ?? null,
       depotRecommendations: snapshot.depotRecommendations[vehicle.id] ?? [],
-      technicianRecommendations: snapshot.technicianRecommendations[vehicle.id] ?? [],
       currentRequest: state.serviceRequests.find((request) => request.vehicleId === vehicle.id && request.status !== "CLOSED") ?? null
     }))
 
@@ -489,18 +473,20 @@ class RepositoryStore {
       })
     ])
 
-    const rewardRecords = rewardSignals.map((signal: Awaited<ReturnType<typeof rewardSignalRepository.findRecent>>[number]) => ({
-      id: signal.id,
-      aiDecisionLogId: signal.aiDecisionLogId,
-      rewardType: signal.rewardType,
-      rewardScore: signal.rewardScore,
-      rewardBreakdown: signal.rewardBreakdown && typeof signal.rewardBreakdown === "object" && !Array.isArray(signal.rewardBreakdown)
-        ? Object.fromEntries(
-            Object.entries(signal.rewardBreakdown).filter(([, value]) => typeof value === "number") as Array<[string, number]>
-          )
-        : {},
-      createdAt: signal.createdAt.toISOString()
-    }))
+    const rewardRecords = rewardSignals
+      .map((signal: Awaited<ReturnType<typeof rewardSignalRepository.findRecent>>[number]) => ({
+        id: signal.id,
+        aiDecisionLogId: signal.aiDecisionLogId,
+        rewardType: signal.rewardType,
+        rewardScore: signal.rewardScore,
+        rewardBreakdown: signal.rewardBreakdown && typeof signal.rewardBreakdown === "object" && !Array.isArray(signal.rewardBreakdown)
+          ? Object.fromEntries(
+              Object.entries(signal.rewardBreakdown).filter(([, value]) => typeof value === "number") as Array<[string, number]>
+            )
+          : {},
+        createdAt: signal.createdAt.toISOString()
+      }))
+      .filter((signal) => signal.rewardType !== "technician")
 
     const groupedByType = new Map<string, typeof rewardRecords>()
     for (const signal of rewardRecords) {
@@ -515,8 +501,12 @@ class RepositoryStore {
       heuristicScore: 0.5
     }))
 
+    const activeDecisionLogs = decisionLogs.filter(
+      (log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) =>
+        log.decisionType !== "technician"
+    )
     const scoredLogIds = new Set(rewardRecords.map((item: (typeof rewardRecords)[number]) => item.aiDecisionLogId))
-    const scoredDecisionLogs = decisionLogs.filter((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => scoredLogIds.has(log.id))
+    const scoredDecisionLogs = activeDecisionLogs.filter((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => scoredLogIds.has(log.id))
 
     const confidenceBuckets = new Map<number, { correct: number; total: number }>()
     for (const log of scoredDecisionLogs) {
@@ -553,8 +543,8 @@ class RepositoryStore {
 
     const bestDecisions = [...reviewItems].sort((a, b) => b.rewardScore - a.rewardScore).slice(0, 10)
     const worstDecisions = [...reviewItems].sort((a, b) => a.rewardScore - b.rewardScore).slice(0, 10)
-    const overrideRate = decisionLogs.length
-      ? decisionLogs.filter((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => log.humanOverride).length / decisionLogs.length
+    const overrideRate = activeDecisionLogs.length
+      ? activeDecisionLogs.filter((log: Awaited<ReturnType<typeof prisma.aiDecisionLog.findMany>>[number]) => log.humanOverride).length / activeDecisionLogs.length
       : 0
     const fewShotExamples = buildFewShotExamples(bestDecisions, worstDecisions)
     const weightAdjustmentProposals = buildWeightAdjustmentProposals(reviewItems)
@@ -627,11 +617,6 @@ class RepositoryStore {
     return snapshot.depotRecommendations[vehicleId] ?? []
   }
 
-  async getTechRecommendations(vehicleId: string) {
-    const { snapshot } = await this.buildPayload()
-    return snapshot.technicianRecommendations[vehicleId] ?? []
-  }
-
   async getDispatchPlan(vehicleId: string) {
     const { state, snapshot } = await this.buildPayload()
     const vehicle = state.vehicles.find((item) => item.id === vehicleId)
@@ -639,7 +624,6 @@ class RepositoryStore {
     if (!vehicle || !health) return null
 
     const depotRecommendations = snapshot.depotRecommendations[vehicleId] ?? []
-    const technicianRecommendations = snapshot.technicianRecommendations[vehicleId] ?? []
     const partsToStage = depotRecommendations[0]?.requiredParts.map((part) => part.partNumber) ?? []
     const serviceHistory = state.serviceHistory.filter((record) => record.vehicleId === vehicleId)
     const intelligence = await this.buildIntelligenceSnapshot()
@@ -649,7 +633,6 @@ class RepositoryStore {
       health,
       faults: state.faults[vehicleId] ?? [],
       depotRecommendations,
-      technicianRecommendations,
       serviceHistory,
       partsToStage,
       fewShotExamples: renderFewShotExamples(intelligence.fewShotExamples)
@@ -661,13 +644,11 @@ class RepositoryStore {
         decisionType: "dispatch",
         heuristicOutput: toJsonValue({
           depotRecommendations,
-          technicianRecommendations,
           partsToStage
         }),
         aiOutput: toJsonValue(plan),
         finalDecision: toJsonValue({
           depotId: plan.depotId,
-          technicianId: plan.technicianId,
           urgencyLevel: plan.urgencyLevel
         }),
         modelName: plan.model,
@@ -808,7 +789,7 @@ class RepositoryStore {
     return (await this.getForensics()).heatmapData
   }
 
-  async dispatchVehicle(vehicleId: string, overrideDepotId?: string, overrideTechnicianId?: string): Promise<ServiceActionResult | null> {
+  async dispatchVehicle(vehicleId: string, overrideDepotId?: string): Promise<ServiceActionResult | null> {
     const { state, snapshot } = await this.buildPayload()
     const existing = state.serviceRequests.find((request) => request.vehicleId === vehicleId && request.status !== "CLOSED")
     if (existing) {
@@ -830,13 +811,10 @@ class RepositoryStore {
 
     const depotRec = recommendDepots(vehicle, state, health.weakestSubsystem)[0]
     const selectedDepotId = overrideDepotId ?? depotRec?.depotId
-    const techRec = selectedDepotId ? recommendTechnicians(state, selectedDepotId, health.weakestSubsystem)[0] : undefined
-    const selectedTechId = overrideTechnicianId ?? techRec?.technicianId
-    if (!selectedDepotId || !selectedTechId) return null
+    if (!selectedDepotId) return null
 
     const priorityAi = toAiDecisionData(snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicleId)?.breakdown.aiAssessment as Prisma.JsonValue | null)
     const depotAi = toAiDecisionData((snapshot.depotRecommendations[vehicleId] ?? [])[0]?.aiAssessment as Prisma.JsonValue | null)
-    const technicianAi = toAiDecisionData((snapshot.technicianRecommendations[vehicleId] ?? [])[0]?.aiAssessment as Prisma.JsonValue | null)
 
     await prisma.aiDecisionLog.create({
       data: {
@@ -871,27 +849,12 @@ class RepositoryStore {
       }
     })
 
-    await prisma.aiDecisionLog.create({
-      data: {
-        vehicleId,
-        decisionType: "technician",
-        decisionSubtype: "selected",
-        heuristicOutput: toJsonValue(snapshot.technicianRecommendations[vehicleId] ?? []),
-        aiOutput: technicianAi ?? undefined,
-        finalDecision: toJsonValue({ technicianId: selectedTechId, score: techRec?.score ?? 0 }),
-        humanOverride: !!overrideTechnicianId,
-        overrideReason: overrideTechnicianId ? "User override" : null,
-        modelName: technicianAi && typeof technicianAi.model === "string" ? technicianAi.model : null,
-        latencyMs: technicianAi && typeof technicianAi.latencyMs === "number" ? technicianAi.latencyMs : null
-      }
-    })
-
     const created = await serviceRequestRepository.create({
       vehicleId,
       priorityScore: priority.score,
       weakestSubsystem: health.weakestSubsystem,
       depotId: selectedDepotId,
-      technicianId: selectedTechId,
+      technicianId: null,
       requiredPartNumbers: depotRec?.requiredParts.map((part: { partNumber: string }) => part.partNumber) ?? [],
       initialStatus: "DEPOT_ASSIGNED"
     })
@@ -909,14 +872,12 @@ class RepositoryStore {
         heuristicOutput: toJsonValue({
           priority,
           depot: depotRec,
-          technician: techRec,
           requiredPartNumbers: depotRec?.requiredParts.map((part: { partNumber: string }) => part.partNumber) ?? []
         }),
         aiOutput: undefined,
         finalDecision: toJsonValue({
           serviceRequestId: created.id,
-          depotId: created.depotId,
-          technicianId: created.technicianId
+          depotId: created.depotId
         }),
         humanOverride: false,
         overrideReason: null,
@@ -933,7 +894,7 @@ class RepositoryStore {
       livePulse: {
         id: `pulse-dispatch-${created.id}`,
         kind: "dispatch",
-        message: `Vehicle ${vehicleId} dispatched to ${selectedDepotId} with ${selectedTechId}.`,
+        message: `Vehicle ${vehicleId} dispatched to ${selectedDepotId}.`,
         at: nowIso()
       }
     }

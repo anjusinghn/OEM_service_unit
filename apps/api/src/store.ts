@@ -13,8 +13,7 @@ import {
   buildSnapshot,
   createServiceRequest,
   getNextServiceStatus,
-  recommendDepots,
-  recommendTechnicians
+  recommendDepots
 } from "@kaz/orchestration"
 import { computeHealthScore, dedupeAlerts } from "@kaz/signal-trust"
 import {
@@ -104,10 +103,6 @@ export class DemoStore {
 
   getDepotRecommendations(vehicleId: string) {
     return this.snapshot.depotRecommendations[vehicleId] ?? []
-  }
-
-  getTechRecommendations(vehicleId: string) {
-    return this.snapshot.technicianRecommendations[vehicleId] ?? []
   }
 
   getServiceRequests() {
@@ -219,7 +214,7 @@ export class DemoStore {
     return this.state.forensics.heatmapData
   }
 
-  dispatchVehicle(vehicleId: string, overrideDepotId?: string, overrideTechnicianId?: string): ServiceActionResult | null {
+  dispatchVehicle(vehicleId: string, overrideDepotId?: string): ServiceActionResult | null {
     const existing = this.state.serviceRequests.find(
       (request) => request.vehicleId === vehicleId && request.status !== "CLOSED"
     )
@@ -234,9 +229,7 @@ export class DemoStore {
     const health = this.snapshot.healthByVehicle[vehicleId]
     const depotRec = this.getDepotRecommendations(vehicleId)[0]
     const selectedDepotId = overrideDepotId ?? depotRec?.depotId
-    const techRec = selectedDepotId ? recommendTechnicians(this.state, selectedDepotId, health.weakestSubsystem)[0] : undefined
-    const selectedTechId = overrideTechnicianId ?? techRec?.technicianId
-    if (!priority || !selectedDepotId || !selectedTechId) return null
+    if (!priority || !selectedDepotId) return null
 
     const request = createServiceRequest(
       this.state,
@@ -244,7 +237,7 @@ export class DemoStore {
       priority.score,
       health.weakestSubsystem,
       selectedDepotId,
-      selectedTechId,
+      null,
       depotRec?.requiredParts.map((part) => part.partNumber) ?? []
     )
 
@@ -252,7 +245,7 @@ export class DemoStore {
     this.adjustDepotCapacity(request.depotId, 1)
     const livePulse = this.addLivePulse(
       "dispatch",
-      `Vehicle ${vehicleId} dispatched to ${selectedDepotId} with ${selectedTechId}.`
+      `Vehicle ${vehicleId} dispatched to ${selectedDepotId}.`
     )
     this.recompute()
     return { request, livePulse }
@@ -360,7 +353,6 @@ export class DemoStore {
       faults: this.state.faults[vehicle.id],
       priority: this.getPriority(vehicle.id),
       depotRecommendations: this.getDepotRecommendations(vehicle.id),
-      technicianRecommendations: this.getTechRecommendations(vehicle.id),
       currentRequest:
         this.state.serviceRequests.find((request) => request.vehicleId === vehicle.id && request.status !== "CLOSED") ?? null
     }

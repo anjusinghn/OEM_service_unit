@@ -159,21 +159,9 @@ export interface AiDepotAssessment {
   latencyMs: number | null
 }
 
-export interface AiTechnicianAssessment {
-  recommendedTechnicianId: string
-  reasoning: string
-  confidence: number
-  skillGapWarning: string | null
-  estimatedRepairHours: number | null
-  model: string | null
-  latencyMs: number | null
-}
-
 export interface AiDispatchPlan {
   depotId: string
   depotReasoning: string
-  technicianId: string
-  techReasoning: string
   partsToStage: string[]
   estimatedRepairHours: number
   estimatedTotalCost: number
@@ -181,7 +169,6 @@ export interface AiDispatchPlan {
   watchPoints: string[]
   alternativePlan: {
     depotId: string
-    technicianId: string | null
     reasoning: string
   } | null
   confidence: number
@@ -219,13 +206,6 @@ export interface DepotRecommendation {
   reasons: string[]
   requiredParts: Part[]
   aiAssessment?: AiDepotAssessment | null
-}
-
-export interface TechnicianRecommendation {
-  technicianId: string
-  score: number
-  reasons: string[]
-  aiAssessment?: AiTechnicianAssessment | null
 }
 
 export interface ServiceTimelineEvent {
@@ -378,7 +358,6 @@ export interface DashboardSnapshot {
   alerts: Alert[]
   priorityQueue: PriorityEntry[]
   depotRecommendations: Record<string, DepotRecommendation[]>
-  technicianRecommendations: Record<string, TechnicianRecommendation[]>
   livePulse: LivePulse[]
   aiEscalations?: AiEscalation[]
 }

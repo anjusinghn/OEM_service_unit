@@ -41,7 +41,7 @@ function DispatchPageContent() {
             AI Dispatch Agent
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Multi-step AI reasoning for optimal service dispatch
+            Multi-step AI reasoning for depot selection and service staging
           </p>
         </div>
       </div>

@@ -18,11 +18,9 @@ interface Props {
 export function DispatchActions({ vehicleId, onCancel }: Props) {
   const router = useRouter()
   const depots = useDashboardStore((s) => s.depots)
-  const technicians = useDashboardStore((s) => s.technicians)
   const [loading, setLoading] = useState(false)
   const [modifyOpen, setModifyOpen] = useState(false)
   const [overrideDepotId, setOverrideDepotId] = useState<string>("ai")
-  const [overrideTechId, setOverrideTechId] = useState<string>("ai")
 
   const handleAccept = async () => {
     setLoading(true)
@@ -47,7 +45,6 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
     try {
       const body: Record<string, string> = {}
       if (overrideDepotId !== "ai") body.depotId = overrideDepotId
-      if (overrideTechId !== "ai") body.technicianId = overrideTechId
       await apiPost(`/api/v1/orchestration/vehicles/${vehicleId}/dispatch`, body)
       toast.success("Vehicle dispatched", {
         description: `${vehicleId} has been dispatched with your overrides.`,
@@ -61,12 +58,6 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
       setLoading(false)
     }
   }
-
-  // Filter technicians to those at the selected depot when an override is chosen
-  const filteredTechnicians =
-    overrideDepotId !== "ai"
-      ? technicians.filter((t) => t.depotId === overrideDepotId)
-      : technicians
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -93,7 +84,6 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
         setModifyOpen(open)
         if (open) {
           setOverrideDepotId("ai")
-          setOverrideTechId("ai")
         }
       }}>
         <Dialog.Trigger asChild>
@@ -132,8 +122,7 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
             </div>
 
             <Dialog.Description className="text-sm text-muted-foreground mb-6">
-              Override the AI-recommended depot and technician before
-              dispatching.
+              Override the recommended depot before dispatching.
             </Dialog.Description>
 
             <div className="space-y-4">
@@ -144,10 +133,7 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
                 >
                   Override Depot
                 </label>
-                <Select.Root value={overrideDepotId} onValueChange={(val) => {
-                  setOverrideDepotId(val)
-                  setOverrideTechId("ai")
-                }}>
+                <Select.Root value={overrideDepotId} onValueChange={setOverrideDepotId}>
                   <Select.Trigger
                     id="modify-depot"
                     className={cn(
@@ -180,55 +166,6 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
                           >
                             <Select.ItemText>
                               {depot.name} — {depot.city}
-                            </Select.ItemText>
-                          </Select.Item>
-                        ))}
-                      </Select.Viewport>
-                    </Select.Content>
-                  </Select.Portal>
-                </Select.Root>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="modify-tech"
-                  className="block text-xs font-medium text-foreground mb-1.5"
-                >
-                  Override Technician
-                </label>
-                <Select.Root value={overrideTechId} onValueChange={setOverrideTechId}>
-                  <Select.Trigger
-                    id="modify-tech"
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-md border border-input",
-                      "bg-background px-3 py-2 text-sm text-foreground",
-                      "focus:outline-none focus:ring-2 focus:ring-ring"
-                    )}
-                  >
-                    <Select.Value placeholder="Keep AI recommendation" />
-                    <Select.Icon>
-                      <ChevronDown size={14} />
-                    </Select.Icon>
-                  </Select.Trigger>
-                  <Select.Portal>
-                    <Select.Content className="z-[60] rounded-md border border-border bg-popover p-1 shadow-lg">
-                      <Select.Viewport>
-                        <Select.Item
-                          value="ai"
-                          className="relative flex cursor-pointer select-none items-center rounded px-3 py-1.5 text-sm text-foreground outline-none hover:bg-accent focus:bg-accent"
-                        >
-                          <Select.ItemText>
-                            Keep AI recommendation
-                          </Select.ItemText>
-                        </Select.Item>
-                        {filteredTechnicians.map((tech) => (
-                          <Select.Item
-                            key={tech.id}
-                            value={tech.id}
-                            className="relative flex cursor-pointer select-none items-center rounded px-3 py-1.5 text-sm text-foreground outline-none hover:bg-accent focus:bg-accent"
-                          >
-                            <Select.ItemText>
-                              {tech.name} — {Math.round(tech.firstTimeFixRate * 100)}% FTF
                             </Select.ItemText>
                           </Select.Item>
                         ))}

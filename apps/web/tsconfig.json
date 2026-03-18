@@ -28,6 +28,7 @@
     "lib/**/*.ts",
     "hooks/**/*.ts",
     "stores/**/*.ts",
+    "middleware.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],

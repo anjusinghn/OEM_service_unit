@@ -9,6 +9,7 @@ import { apiPost } from "../../lib/api-client"
 import { SubsystemRadar } from "./subsystem-radar"
 import { HeuristicBreakdown } from "./heuristic-breakdown"
 import { AiReasoningPanel } from "./ai-reasoning-panel"
+import { MinRoleGate } from "../shared/role-gate"
 
 interface PriorityRowExpandedProps {
   vehicle: VehicleRecord
@@ -72,25 +73,27 @@ export function PriorityRowExpanded({ vehicle }: PriorityRowExpandedProps) {
         <AiReasoningPanel aiAssessment={aiAssessment ?? undefined} />
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleAiDispatch}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-        >
-          <Zap size={14} />
-          AI Dispatch
-        </button>
-        <button
-          type="button"
-          onClick={handleQuickDispatch}
-          disabled={dispatching}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {dispatching ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
-          Quick Dispatch
-        </button>
-      </div>
+      <MinRoleGate minRole="DEPOT_MANAGER">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleAiDispatch}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            <Zap size={14} />
+            AI Dispatch
+          </button>
+          <button
+            type="button"
+            onClick={handleQuickDispatch}
+            disabled={dispatching}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {dispatching ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+            Quick Dispatch
+          </button>
+        </div>
+      </MinRoleGate>
     </div>
   )
 }

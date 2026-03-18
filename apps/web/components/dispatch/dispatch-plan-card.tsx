@@ -1,5 +1,5 @@
 import type { AiDispatchPlan } from "@kaz/shared"
-import { AlertTriangle, CheckCircle2, Clock, Copy, MapPin, User, Wrench } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Clock, Copy, MapPin, Wrench } from "lucide-react"
 import { cn } from "../../lib/cn"
 
 interface Props {
@@ -87,19 +87,6 @@ export function DispatchPlanCard({ plan }: Props) {
           </p>
         </div>
 
-        <div className="px-5 py-4">
-          <SectionHeader
-            icon={<User size={13} className="text-ai" />}
-            label="Technician"
-          />
-          <div className="font-semibold text-sm text-foreground mb-1">
-            {plan.technicianId}
-          </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {plan.techReasoning}
-          </p>
-        </div>
-
         {plan.partsToStage.length > 0 && (
           <div className="px-5 py-4">
             <SectionHeader
@@ -180,16 +167,6 @@ export function DispatchPlanCard({ plan }: Props) {
                   {plan.alternativePlan.depotId}
                 </div>
               </div>
-              {plan.alternativePlan.technicianId && (
-                <div>
-                  <div className="text-xs text-muted-foreground mb-0.5">
-                    Technician
-                  </div>
-                  <div className="font-medium text-sm text-foreground">
-                    {plan.alternativePlan.technicianId}
-                  </div>
-                </div>
-              )}
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               {plan.alternativePlan.reasoning}

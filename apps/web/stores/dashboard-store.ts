@@ -17,7 +17,6 @@ export type VehicleRecord = Vehicle & {
   faults: VehicleFault[]
   priority: DashboardSnapshot["priorityQueue"][number] | null
   depotRecommendations: DashboardSnapshot["depotRecommendations"][string]
-  technicianRecommendations: DashboardSnapshot["technicianRecommendations"][string]
   currentRequest: ServiceRequest | null
 }
 

@@ -40,7 +40,6 @@ type VehicleRecord = Vehicle & {
   faults: VehicleFault[]
   priority: DashboardSnapshot["priorityQueue"][number] | null
   depotRecommendations: DashboardSnapshot["depotRecommendations"][string]
-  technicianRecommendations: DashboardSnapshot["technicianRecommendations"][string]
   currentRequest: ServiceRequest | null
 }
 
@@ -420,11 +419,6 @@ export function Dashboard() {
                       <p>{selected.depotRecommendations?.[0]?.aiAssessment?.reasoning ?? selected.depotRecommendations?.[0]?.reasons.join(" \u00b7 ")}</p>
                     </div>
                     <div className="recommendation-card">
-                      <span>Recommended technician</span>
-                      <strong>{selected.technicianRecommendations?.[0]?.technicianId ?? "\u2014"}</strong>
-                      <p>{selected.technicianRecommendations?.[0]?.aiAssessment?.reasoning ?? selected.technicianRecommendations?.[0]?.reasons.join(" \u00b7 ")}</p>
-                    </div>
-                    <div className="recommendation-card">
                       <span>Parts readiness</span>
                       <strong>{selected.depotRecommendations?.[0]?.partsReady ? "All in stock" : "Transfer needed"}</strong>
                       <p>{selected.depotRecommendations?.[0]?.requiredParts.map((p) => p.name).join(", ")}</p>
@@ -449,7 +443,7 @@ export function Dashboard() {
                     >
                       AI dispatch plan
                     </button>
-                    <span className="hint">Creates a service request with the recommended depot, technician, and parts.</span>
+                    <span className="hint">Creates a service request with the recommended depot and staged parts.</span>
                   </div>
 
                   {dispatchPlan ? (
@@ -460,9 +454,9 @@ export function Dashboard() {
                         <p>{dispatchPlan.depotReasoning}</p>
                       </div>
                       <div className="recommendation-card">
-                        <span>Dispatch technician</span>
-                        <strong>{dispatchPlan.technicianId}</strong>
-                        <p>{dispatchPlan.techReasoning}</p>
+                        <span>Parts to stage</span>
+                        <strong>{dispatchPlan.partsToStage.length}</strong>
+                        <p>{dispatchPlan.partsToStage.join(", ") || "No staging list required."}</p>
                       </div>
                       <div className="recommendation-card">
                         <span>Watch points</span>

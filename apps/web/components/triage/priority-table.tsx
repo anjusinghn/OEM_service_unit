@@ -1,7 +1,6 @@
 "use client"
 
 import { Fragment, useCallback, useEffect, useState } from "react"
-import { AnimatePresence, motion } from "framer-motion"
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown, ChevronRight } from "lucide-react"
 import type { PriorityEntry } from "@kaz/shared"
 import type { VehicleRecord } from "../../stores/dashboard-store"
@@ -256,40 +255,27 @@ export function PriorityTable({ vehicles, priorityQueue }: PriorityTableProps) {
                       >
                         <ArrowRight size={13} />
                       </button>
-                      <motion.span
-                        animate={{ rotate: isExpanded ? 90 : 0 }}
-                        transition={{ duration: 0.15, ease: "easeInOut" }}
-                        className="inline-flex"
+                      <span
+                        className={cn(
+                          "inline-flex transition-transform duration-150 ease-in-out",
+                          isExpanded ? "rotate-90" : "rotate-0"
+                        )}
                       >
                         <ChevronRight size={14} className="text-muted-foreground" />
-                      </motion.span>
+                      </span>
                     </div>
                   </td>
                 </tr>
 
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.tr
-                      key={`${row.vehicle.id}-expanded`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      <td colSpan={7} className="border-b border-border p-0">
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: "auto" }}
-                          exit={{ height: 0 }}
-                          transition={{ duration: 0.2, ease: "easeInOut" }}
-                          style={{ overflow: "hidden" }}
-                        >
-                          <PriorityRowExpanded vehicle={row.vehicle} />
-                        </motion.div>
-                      </td>
-                    </motion.tr>
-                  )}
-                </AnimatePresence>
+                {isExpanded && (
+                  <tr>
+                    <td colSpan={7} className="border-b border-border p-0">
+                      <div className="overflow-hidden">
+                        <PriorityRowExpanded vehicle={row.vehicle} />
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </Fragment>
             )
           })}

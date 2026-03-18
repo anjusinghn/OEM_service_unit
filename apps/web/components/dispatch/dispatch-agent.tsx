@@ -17,7 +17,6 @@ const DEFAULT_STEPS = [
   "Checking service history",
   "Evaluating depot options",
   "Checking parts availability",
-  "Evaluating technician options",
   "Searching similar cases",
   "Generating dispatch plan",
 ]

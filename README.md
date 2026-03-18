@@ -354,7 +354,7 @@ kazindustries/
 
 ## What's Built vs. Planned
 
-### ✅ Implemented (Phases 1–4)
+### ✅ Implemented (Phases 1–6)
 
 - Dockerized infrastructure with PostgreSQL/TimescaleDB and Redis
 - Complete telemetry ingestion pipeline with BullMQ workers
@@ -366,12 +366,14 @@ kazindustries/
 - Reinforcement learning feedback loop
 - Enterprise dashboard with real-time SSE updates
 - Forensics module for cohort analysis and anomaly detection
+- JWT authentication with bcrypt password hashing
+- Role-based access control (RBAC) on API and UI
+- Multi-tenancy foundations with org-scoped queries
+- Login page with route protection middleware
+- Comprehensive test coverage (80%+) with Vitest
 
-### 🚧 Planned (Phases 5–7)
+### 🚧 Planned (Phase 7)
 
-- Dashboard rebuild with shadcn/ui, Tailwind, Recharts, Framer Motion
-- Authentication (NextAuth.js) with RBAC and multi-tenancy
-- Comprehensive test coverage (80%+)
 - CI/CD with GitHub Actions
 - Azure deployment with Terraform (AKS, managed DB, cache)
 
@@ -399,6 +401,7 @@ kazindustries/
 pnpm dev               # Start all services
 pnpm build             # Build all packages
 pnpm typecheck         # Type-check everything
+pnpm test              # Run all tests with coverage
 
 pnpm infra:up          # Start PostgreSQL + Redis
 pnpm infra:down        # Stop infrastructure

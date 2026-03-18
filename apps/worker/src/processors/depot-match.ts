@@ -20,7 +20,6 @@ export const processDepotMatch = async (job: Job<QueuePayloadMap[typeof queueNam
   await enqueueJob(queueNames.aiReasoning, {
     decisionType: "depot",
     vehicleId,
-    weakestSubsystem: health.weakestSubsystem,
     timestamp: job.data.timestamp
   })
 

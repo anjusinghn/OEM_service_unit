@@ -37,7 +37,7 @@
 | **Signal Trust** | `computeHealthScore()` — 8-subsystem scoring, fault severity weighting, trend detection, `dedupeAlerts()` | ~75 | ✅ |
 | **Priority Engine** | 5-factor weighted scoring (safety 30%, failure 25%, business 20%, downtime 15%, window 10%) | — | ✅ |
 | **Depot Matching** | Specialty match (+35), parts availability (+30), capacity (+7/bay), distance penalty (-0.45/km) | — | ✅ |
-| **Technician Assignment** | Skill match (+44), first-time-fix rate weighting, workload capacity, top 3 recommendations | — | ✅ |
+| **Technician Roster** | Depot staffing, certifications, workload capacity, first-time-fix performance | — | ✅ |
 | **Service Workflow** | Full state machine: DETECTED → PRIORITIZED → DEPOT_ASSIGNED → … → COMPLETED → CLOSED | — | ✅ |
 | **Dashboard** | Single-file 674-line Next.js dashboard, custom CSS, SSE streaming, Lucide icons | ~674 | ✅ |
 | **API** | 25+ REST endpoints + SSE live stream | ~645 | ✅ |
@@ -112,7 +112,6 @@
 │  │  queue:priority-rerank     (concurrency: 2)      │                           │
 │  │  queue:ai-reasoning        (concurrency: 3)      │                           │
 │  │  queue:depot-match         (concurrency: 3)      │                           │
-│  │  queue:tech-match          (concurrency: 3)      │                           │
 │  │  queue:notifications       (concurrency: 2)      │                           │
 │  └────────────────────┬────────────────────────────┘                           │
 └───────────────────────┼─────────────────────────────────────────────────────────┘
@@ -146,7 +145,7 @@
 │  │  ├─ Update Redis sorted set (queue:priority)                             │   │
 │  │  ├─ Write priority snapshot → TimescaleDB (priority_snapshots)           │   │
 │  │  ├─ Emit job → queue:ai-reasoning (for top 20 vehicles)                  │   │
-│  │  └─ Emit job → queue:depot-match + queue:tech-match (top 16)             │   │
+│  │  └─ Emit job → queue:depot-match (top 16)                                │   │
 │  │                                                                          │   │
 │  │  AIReasoningProcessor                                                    │   │
 │  │  ├─ Call OpenRouter via LangChain (priority reasoning chain)             │   │
@@ -158,11 +157,6 @@
 │  │  ├─ Run recommendDepots() (existing heuristic logic)                     │   │
 │  │  ├─ Optionally augment with AI depot reasoning chain                     │   │
 │  │  └─ Cache in Redis (vehicle:depot-match:{id}, TTL 120s)                  │   │
-│  │                                                                          │   │
-│  │  TechMatchProcessor                                                      │   │
-│  │  ├─ Run recommendTechnicians() (existing heuristic logic)                │   │
-│  │  ├─ Optionally augment with AI technician reasoning chain                │   │
-│  │  └─ Cache in Redis (vehicle:tech-match:{id}, TTL 120s)                   │   │
 │  │                                                                          │   │
 │  │  NotificationProcessor                                                   │   │
 │  │  ├─ Build SSE payload → publish to Redis pub/sub (channel:dashboard)     │   │
@@ -493,7 +487,7 @@ interface OEMAdapter {
    ├─ Vehicle jumped from position #31 to position #5 in the queue
    ├─ Writes to TimescaleDB: INSERT INTO priority_snapshots (...)
    ├─ Emits job → queue:ai-reasoning { vehicleId: "VEH-042" }
-   └─ Emits job → queue:depot-match + queue:tech-match { vehicleId: "VEH-042" }
+   └─ Emits job → queue:depot-match { vehicleId: "VEH-042" }
 
 6. Worker: AIReasoningProcessor picks up the job (async, non-blocking)
    ├─ Builds LangChain prompt with vehicle data, health, faults, service history
@@ -670,22 +664,6 @@ packages/ai/                    @kaz/ai
 │   │   │   └── Enriched with: depot avg turnaround, first-time-fix rate,
 │   │   │       recent workload trend, parts stock trend for this fault type
 │   │   │
-│   │   ├── technician-reasoning.ts
-│   │   │   │
-│   │   │   │  PURPOSE: Evaluate technician recommendations with performance context.
-│   │   │   │
-│   │   │   │  OUTPUT:
-│   │   │   │    {
-│   │   │   │      recommendedTechnicianId: string,
-│   │   │   │      reasoning: string,
-│   │   │   │      skillGapWarning: string | null,
-│   │   │   │      estimatedRepairHours: number,
-│   │   │   │      confidence: number
-│   │   │   │    }
-│   │   │   │
-│   │   │   └── Enriched with: tech's history on this exact DTC code,
-│   │   │       recent workload (burnout risk), skill gap analysis
-│   │   │
 │   │   ├── dispatch-reasoning.ts
 │   │   │   │
 │   │   │   │  PURPOSE: Full dispatch decision — this is a LangChain AGENT
@@ -695,7 +673,6 @@ packages/ai/                    @kaz/ai
 │   │   │   │    - vehicle_lookup(vehicleId) → full vehicle data
 │   │   │   │    - depot_lookup(depotId) → depot + capacity + perf metrics
 │   │   │   │    - parts_check(depotId, subsystem) → stock levels
-│   │   │   │    - tech_lookup(techId) → profile + perf history
 │   │   │   │    - service_history(vehicleId) → last 20 service records
 │   │   │   │    - fleet_stats() → fleet health distribution + open requests
 │   │   │   │    - similar_cases(subsystem, dtcCode) → past cases with outcomes
@@ -704,7 +681,7 @@ packages/ai/                    @kaz/ai
 │   │   │   │    "You are the service orchestration AI for kazindustries.
 │   │   │   │     A vehicle has been flagged for service. Use your tools to
 │   │   │   │     gather the information you need, then produce a complete
-│   │   │   │     dispatch plan: which depot, which technician, what parts
+│   │   │   │     dispatch plan: which depot, what parts
 │   │   │   │     to stage, estimated timeline, and what to watch for.
 │   │   │   │     Explain your reasoning at each step."
 │   │   │   │
@@ -713,8 +690,6 @@ packages/ai/                    @kaz/ai
 │   │   │   │      dispatchPlan: {
 │   │   │   │        depotId: string,
 │   │   │   │        depotReasoning: string,
-│   │   │   │        technicianId: string,
-│   │   │   │        techReasoning: string,
 │   │   │   │        partsToStage: string[],
 │   │   │   │        estimatedRepairHours: number,
 │   │   │   │        estimatedTotalCost: number,
@@ -761,7 +736,6 @@ packages/ai/                    @kaz/ai
 │   │   ├── vehicle-lookup.ts    # DynamicTool: fetch vehicle + signals + health + faults
 │   │   ├── depot-lookup.ts      # DynamicTool: fetch depot + capacity + performance
 │   │   ├── parts-check.ts       # DynamicTool: check parts availability at depot
-│   │   ├── tech-lookup.ts       # DynamicTool: fetch technician profile + history
 │   │   ├── service-history.ts   # DynamicTool: fetch past services for vehicle
 │   │   ├── fleet-stats.ts       # DynamicTool: fleet-wide health/queue statistics
 │   │   └── similar-cases.ts    # DynamicTool: find similar past cases and their outcomes
@@ -1074,16 +1048,15 @@ The main operational view. Where the fleet manager decides what to act on.
 │  │  │  • Coolant temp spiked to 104°C — 12°C above threshold.     │ │  │
 │  │  │    This is a 3.2σ deviation from this vehicle's 30-day avg. │ │  │
 │  │  │  • Service history shows a cooling intervention 45 days ago  │ │  │
-│  │  │    (REQ-031, Pune depot, Tech Rajesh K). The repair may not  │ │  │
-│  │  │    have addressed the root cause — this looks like a         │ │  │
+│  │  │    (REQ-031, Pune depot). The repair may not have addressed  │ │  │
+│  │  │    the root cause — this looks like a                        │ │  │
 │  │  │    recurring failure pattern.                                 │ │  │
 │  │  │  • This vehicle operates on Pune Corridor 2, which has 14%   │ │  │
 │  │  │    higher ambient temperatures than fleet average.            │ │  │
 │  │  │                                                              │ │  │
 │  │  │  Recommendation: Immediate dispatch to Pune depot for        │ │  │
-│  │  │  extended cooling system diagnostics. Do NOT assign same     │ │  │
-│  │  │  technician as last time — consider Mira Rao for fresh       │ │  │
-│  │  │  diagnostic perspective."                                    │ │  │
+│  │  │  extended cooling system diagnostics with both likely parts  │ │  │
+│  │  │  staged before intake."                                      │ │  │
 │  │  │                                                              │ │  │
 │  │  │  Confidence: 87%          Tokens used: 1,847                 │ │  │
 │  │  └──────────────────────────────────────────────────────────────┘ │  │
@@ -1135,18 +1108,13 @@ This is the star feature. A full-screen interface where the AI agent runs a mult
 │  │  Step 4: Evaluating Bengaluru Response Hub              ✓ 0.2s  │    │
 │  │  → 5/12 bays open, cooling specialty ✓, but 487km away         │    │
 │  │                                                                  │    │
-│  │  Step 5: Checking technician availability at Pune       ✓ 0.3s  │    │
-│  │  → Mira Rao: cooling certified, 92% FTF, 1/5 workload ✓       │    │
-│  │  → Rajesh K: cooling certified, 94% FTF, BUT handled prior     │    │
-│  │    repair that may have missed root cause — SKIPPING            │    │
-│  │                                                                  │    │
-│  │  Step 6: Searching similar past cases                   ✓ 0.5s  │    │
+│  │  Step 5: Searching similar past cases                   ✓ 0.5s  │    │
 │  │  → 3 similar P0217 recurrences found in fleet history           │    │
 │  │  → 2 of 3 were resolved by replacing coolant pump (not sensor)  │    │
 │  │                                                                  │    │
-│  │  Step 7: Generating dispatch plan                       ✓ 1.2s  │    │
+│  │  Step 6: Generating dispatch plan                       ✓ 1.2s  │    │
 │  │                                                                  │    │
-│  │  Total: 7 steps, 3.1 seconds, 2,341 tokens              ● Done │    │
+│  │  Total: 6 steps, 2.8 seconds, 1,980 tokens              ● Done │    │
 │  └──────────────────────────────────────────────────────────────────┘    │
 │                                                                          │
 │  ┌─ DISPATCH PLAN ─────────────────────────────────────────────────┐    │
@@ -1154,11 +1122,6 @@ This is the star feature. A full-screen interface where the AI agent runs a mult
 │  │  📍 DEPOT: Pune Response Hub                                     │    │
 │  │     42km away • 3 open bays • cooling specialty                 │    │
 │  │     ETA: 1.1 hours                                               │    │
-│  │                                                                  │    │
-│  │  👤 TECHNICIAN: Mira Rao                                         │    │
-│  │     Cooling certified • 92% first-time-fix • 1/5 workload      │    │
-│  │     "Assigned instead of Rajesh K (prior repair may have        │    │
-│  │      missed root cause — fresh perspective recommended)"         │    │
 │  │                                                                  │    │
 │  │  🔧 PARTS TO STAGE:                                              │    │
 │  │     ✓ COOL-SENS-15  Coolant temperature sensor    (in stock: 4) │    │
@@ -1181,7 +1144,7 @@ This is the star feature. A full-screen interface where the AI agent runs a mult
 │                                                                          │
 │  ┌───────────────────────────────┐  ┌────────────────────────────────┐ │
 │  │  ✓ Accept & Dispatch          │  │  ✏️ Modify & Dispatch          │ │
-│  │    (execute this plan)        │  │    (change depot/tech/parts)   │ │
+│  │    (execute this plan)        │  │    (change depot/parts)        │ │
 │  └───────────────────────────────┘  └────────────────────────────────┘ │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -1190,7 +1153,7 @@ This is the star feature. A full-screen interface where the AI agent runs a mult
 **Key interactions:**
 - **Agent trace** — streams in real-time as the AI agent calls tools. Each step appears with a typing animation and a spinner that becomes a checkmark when done
 - **Accept & Dispatch** — creates the service request with all pre-filled data. Optimistic UI update. Toast: "VEH-042 dispatched to Pune Response Hub"
-- **Modify & Dispatch** — opens a Sheet (shadcn/ui) where the user can change depot, technician, or parts before confirming
+- **Modify & Dispatch** — opens a Sheet (shadcn/ui) where the user can change depot or parts before confirming
 - **The entire trace is stored** in `decision_logs` for audit and RL training
 
 ---
@@ -1227,7 +1190,7 @@ This is the star feature. A full-screen interface where the AI agent runs a mult
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘    │
 │                                                                          │
 │  Each card: click to open detail Sheet with full timeline,              │
-│  AI dispatch reasoning, assigned depot/tech, parts list.                │
+│  AI dispatch reasoning, assigned depot, and parts list.                 │
 │                                                                          │
 │  "Done" button opens COMPLETION FORM (feeds RL loop).                   │
 │  "Advance" button moves card to next column with animation.             │
@@ -1424,7 +1387,7 @@ apps/web/
 │   │   ├── dispatch-agent.tsx         # Full AI dispatch interface
 │   │   ├── agent-trace.tsx            # Step-by-step streaming trace display
 │   │   ├── dispatch-plan-card.tsx     # Formatted dispatch plan output
-│   │   ├── plan-modifier-sheet.tsx    # Sheet to modify depot/tech/parts before confirm
+│   │   ├── plan-modifier-sheet.tsx    # Sheet to modify depot/parts before confirm
 │   │   └── dispatch-confirm-dialog.tsx # Final confirmation dialog
 │   │
 │   ├── workflow/
@@ -1693,7 +1656,6 @@ Finalize the Prisma schema for all service orchestration tables:
 | `vehicle:priority:{id}` | STRING (JSON) | 60s | Latest priority breakdown cache |
 | `ai:priority:{id}` | STRING (JSON) | 300s | AI reasoning cache |
 | `vehicle:depot-match:{id}` | STRING (JSON) | 120s | Depot recommendations cache |
-| `vehicle:tech-match:{id}` | STRING (JSON) | 120s | Technician recommendations cache |
 | `queue:priority` | SORTED SET | persistent | Real-time priority ranking |
 | `depot:capacity:{id}` | STRING | 30s | Live bay availability |
 | `lock:dispatch:{vehicleId}` | STRING | 30s | Distributed dispatch lock |
@@ -1783,11 +1745,10 @@ Replace `setInterval` with Redis pub/sub-driven SSE:
 - AI reviews top 20 vehicles per tick
 - Dashboard shows both scores + AI reasoning panel
 
-#### Sub-phase 3.3 — AI-Augmented Depot + Technician Matching
+#### Sub-phase 3.3 — AI-Augmented Depot Matching + Dispatch
 
 - Depot reasoning chain with performance context
-- Technician reasoning chain with DTC-specific history
-- Full dispatch agent with 7 LangChain tools
+- Full dispatch agent with 6 LangChain tools
 
 #### Sub-phase 3.4 — AI Escalation Detection
 
@@ -1795,7 +1756,7 @@ Replace `setInterval` with Redis pub/sub-driven SSE:
 - Detects: SLA risk, batch patterns, capacity crunch, rapid degradation
 - Escalation cards on dashboard with purple AI styling
 
-**Demo:** "AI Dispatch" button runs the full agent. 7 tool calls in 3-5 seconds. Complete dispatch plan with reasoning. "Why not Rajesh K?" is explained.
+**Demo:** "AI Dispatch" button runs the full agent. 6 tool calls in 3-5 seconds. Complete dispatch plan with reasoning and staged-parts guidance.
 
 ---
 
@@ -1813,7 +1774,7 @@ Replace `setInterval` with Redis pub/sub-driven SSE:
 
 #### Sub-phase 4.2 — Reward Signal Computation
 
-Three reward functions (priority, depot, technician) — each weighted composite of:
+Two reward functions (priority, depot) — each weighted composite of:
 - Diagnosis accuracy, urgency calibration, first-time-fix, turnaround efficiency, etc.
 - Rewards stored in `reward_signals` table, linked to `decision_logs`
 - Aggregate statistics computed as materialized views

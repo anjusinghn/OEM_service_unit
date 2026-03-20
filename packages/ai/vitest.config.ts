@@ -18,11 +18,7 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       exclude: [
         "src/__tests__/**",
-        "src/index.ts",
-        "src/priority-reasoning.ts",
-        "src/depot-reasoning.ts",
-        "src/technician-reasoning.ts",
-        "src/dispatch-reasoning.ts"
+        "src/index.ts"
       ],
       thresholds: {
         branches: 80,

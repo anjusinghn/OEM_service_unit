@@ -1,9 +1,34 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+const promptMocks = vi.hoisted(() => {
+  const pipe = vi.fn((model) => model)
+  const fromMessages = vi.fn(() => ({
+    pipe
+  }))
+
+  return { pipe, fromMessages }
+})
+
+const clientMocks = vi.hoisted(() => {
+  const canUseAi = vi.fn(() => false)
+  const withStructuredOutput = vi.fn()
+  const createOpenRouterClient = vi.fn(() => ({
+    withStructuredOutput
+  }))
+
+  return { canUseAi, withStructuredOutput, createOpenRouterClient }
+})
+
+vi.mock("@langchain/core/prompts", () => ({
+  ChatPromptTemplate: {
+    fromMessages: promptMocks.fromMessages
+  }
+}))
 
 vi.mock("../client", () => ({
-  canUseAi: vi.fn(() => false),
+  canUseAi: clientMocks.canUseAi,
   aiConfig: { model: "test-model", maxToolSteps: 8 },
-  createOpenRouterClient: vi.fn()
+  createOpenRouterClient: clientMocks.createOpenRouterClient
 }))
 
 import type { DepotReasoningInput } from "../depot-reasoning"
@@ -34,7 +59,59 @@ const input: DepotReasoningInput = {
 }
 
 describe("runDepotReasoning", () => {
+  beforeEach(() => {
+    clientMocks.canUseAi.mockReturnValue(false)
+    clientMocks.withStructuredOutput.mockReset()
+    clientMocks.createOpenRouterClient.mockClear()
+    promptMocks.pipe.mockClear()
+  })
+
   it("returns null when AI is disabled", async () => {
     expect(await runDepotReasoning(input)).toBeNull()
+  })
+
+  it("returns a structured depot assessment when AI is enabled", async () => {
+    clientMocks.canUseAi.mockReturnValue(true)
+
+    const invoke = vi.fn().mockResolvedValue({
+      recommendedDepotId: "d-1",
+      reasoning: "The closest depot already has the required parts staged.",
+      confidence: 0.87,
+      partsRisk: null,
+      logisticsNote: "Shortest ETA among viable depots."
+    })
+
+    clientMocks.withStructuredOutput.mockReturnValue({ invoke })
+
+    const result = await runDepotReasoning(input)
+
+    expect(clientMocks.createOpenRouterClient).toHaveBeenCalledTimes(1)
+    expect(clientMocks.withStructuredOutput).toHaveBeenCalledTimes(1)
+    expect(promptMocks.pipe).toHaveBeenCalledTimes(1)
+    expect(invoke).toHaveBeenCalledWith({
+      vehicle: JSON.stringify(input.vehicle),
+      health: JSON.stringify(input.health),
+      faults: JSON.stringify(input.faults),
+      recommendations: JSON.stringify(input.heuristicRecommendations),
+      serviceHistory: JSON.stringify(input.serviceHistory.slice(0, 10))
+    })
+    expect(result).toMatchObject({
+      recommendedDepotId: "d-1",
+      reasoning: "The closest depot already has the required parts staged.",
+      confidence: 0.87,
+      partsRisk: null,
+      logisticsNote: "Shortest ETA among viable depots.",
+      model: "test-model"
+    })
+    expect(result?.latencyMs).toEqual(expect.any(Number))
+  })
+
+  it("returns null when the AI call fails", async () => {
+    clientMocks.canUseAi.mockReturnValue(true)
+    clientMocks.withStructuredOutput.mockReturnValue({
+      invoke: vi.fn().mockRejectedValue(new Error("boom"))
+    })
+
+    await expect(runDepotReasoning(input)).resolves.toBeNull()
   })
 })

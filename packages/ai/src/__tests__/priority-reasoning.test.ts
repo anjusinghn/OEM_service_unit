@@ -1,9 +1,34 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+const promptMocks = vi.hoisted(() => {
+  const pipe = vi.fn((model) => model)
+  const fromMessages = vi.fn(() => ({
+    pipe
+  }))
+
+  return { pipe, fromMessages }
+})
+
+const clientMocks = vi.hoisted(() => {
+  const canUseAi = vi.fn(() => false)
+  const withStructuredOutput = vi.fn()
+  const createOpenRouterClient = vi.fn(() => ({
+    withStructuredOutput
+  }))
+
+  return { canUseAi, withStructuredOutput, createOpenRouterClient }
+})
+
+vi.mock("@langchain/core/prompts", () => ({
+  ChatPromptTemplate: {
+    fromMessages: promptMocks.fromMessages
+  }
+}))
 
 vi.mock("../client", () => ({
-  canUseAi: vi.fn(() => false),
+  canUseAi: clientMocks.canUseAi,
   aiConfig: { model: "test-model", maxToolSteps: 8 },
-  createOpenRouterClient: vi.fn()
+  createOpenRouterClient: clientMocks.createOpenRouterClient
 }))
 
 import type { PriorityReasoningInput } from "../priority-reasoning"
@@ -42,7 +67,64 @@ const input: PriorityReasoningInput = {
 }
 
 describe("runPriorityReasoning", () => {
+  beforeEach(() => {
+    clientMocks.canUseAi.mockReturnValue(false)
+    clientMocks.withStructuredOutput.mockReset()
+    clientMocks.createOpenRouterClient.mockClear()
+    promptMocks.pipe.mockClear()
+  })
+
   it("returns null when AI is disabled", async () => {
     expect(await runPriorityReasoning(input)).toBeNull()
+  })
+
+  it("returns a structured assessment when AI is enabled", async () => {
+    clientMocks.canUseAi.mockReturnValue(true)
+
+    const invoke = vi.fn().mockResolvedValue({
+      adjustedScore: 88,
+      adjustment: 16,
+      urgency: "urgent",
+      riskFactors: ["repeated cooling fault"],
+      recommendation: "Dispatch within the next stop window.",
+      confidence: 0.82,
+      shouldEscalate: true
+    })
+
+    clientMocks.withStructuredOutput.mockReturnValue({ invoke })
+
+    const result = await runPriorityReasoning(input)
+
+    expect(clientMocks.createOpenRouterClient).toHaveBeenCalledTimes(1)
+    expect(clientMocks.withStructuredOutput).toHaveBeenCalledTimes(1)
+    expect(promptMocks.pipe).toHaveBeenCalledTimes(1)
+    expect(invoke).toHaveBeenCalledWith({
+      vehicle: JSON.stringify(input.vehicle),
+      signal: JSON.stringify(input.signal),
+      health: JSON.stringify(input.health),
+      faults: JSON.stringify(input.faults),
+      heuristic: JSON.stringify(input.heuristic),
+      serviceHistory: JSON.stringify(input.serviceHistory.slice(0, 10))
+    })
+    expect(result).toMatchObject({
+      adjustedScore: 88,
+      adjustment: 16,
+      urgency: "urgent",
+      riskFactors: ["repeated cooling fault"],
+      recommendation: "Dispatch within the next stop window.",
+      confidence: 0.82,
+      shouldEscalate: true,
+      model: "test-model"
+    })
+    expect(result?.latencyMs).toEqual(expect.any(Number))
+  })
+
+  it("returns null when the AI call fails", async () => {
+    clientMocks.canUseAi.mockReturnValue(true)
+    clientMocks.withStructuredOutput.mockReturnValue({
+      invoke: vi.fn().mockRejectedValue(new Error("boom"))
+    })
+
+    await expect(runPriorityReasoning(input)).resolves.toBeNull()
   })
 })

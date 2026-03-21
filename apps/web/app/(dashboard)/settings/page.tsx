@@ -15,7 +15,7 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight"><span className="text-primary">Settings</span></h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Organization configuration, priority weights, and system settings.
         </p>
@@ -54,7 +54,7 @@ export default function SettingsPage() {
                 <span className="text-sm text-foreground">{item.factor}</span>
                 <span className="font-mono text-xs font-semibold text-muted-foreground">{item.weight}%</span>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-glass">
                 <div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.weight}%` }} />
               </div>
             </div>
@@ -91,7 +91,7 @@ export default function SettingsPage() {
       <SectionCard
         title="API Keys"
         action={
-          <span className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+          <span className="flex items-center gap-1.5 rounded-full bg-glass px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
             <Lock className="h-3 w-3" /> Phase 6
           </span>
         }
@@ -106,7 +106,7 @@ export default function SettingsPage() {
       <SectionCard
         title="User Management"
         action={
-          <span className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+          <span className="flex items-center gap-1.5 rounded-full bg-glass px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
             <Lock className="h-3 w-3" /> Phase 6
           </span>
         }

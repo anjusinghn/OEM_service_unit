@@ -23,7 +23,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback
       return (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-12">
+        <div className="flex flex-col items-center justify-center glass-card rounded-xl border-dashed py-12">
           <AlertTriangle className="mb-3 h-8 w-8 text-watch" />
           <p className="text-sm font-medium text-foreground">Something went wrong</p>
           <p className="mt-1 max-w-md text-center text-xs text-muted-foreground">

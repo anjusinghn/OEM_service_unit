@@ -14,21 +14,20 @@ interface MetricCardProps {
   trend?: TrendProps
 }
 
-const toneTopBorder: Record<string, string> = {
-  default: "border-t-border",
-  healthy: "border-t-healthy",
-  watch: "border-t-watch",
-  critical: "border-t-critical",
+const toneDot: Record<string, string> = {
+  default: "bg-primary/50",
+  healthy: "bg-healthy",
+  watch: "bg-watch",
+  critical: "bg-critical",
 }
 
 export function MetricCard({ label, value, detail, tone = "default", trend }: MetricCardProps) {
   return (
     <div className={cn(
-      "rounded-lg border border-border bg-card p-5 shadow-sm transition-shadow duration-200 hover:shadow-md",
-      "border-t-2",
-      toneTopBorder[tone]
+      "glass-card rounded-xl p-5 transition-all duration-200 hover:bg-glass-hover"
     )}>
-      <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+      <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+        <span className={cn("h-2 w-2 rounded-full", toneDot[tone])} />
         {label}
       </p>
       <div className="mt-2 flex items-end gap-2">

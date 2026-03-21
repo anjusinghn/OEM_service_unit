@@ -61,7 +61,7 @@ export default function CommandCenterPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Fleet Command Center</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground"><span className="text-primary">Fleet</span> Command Center</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Real-time fleet health, triage, and dispatch overview.
           </p>
@@ -76,7 +76,7 @@ export default function CommandCenterPage() {
           <button
             type="button"
             onClick={handleReset}
-            className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+            className="flex items-center gap-1.5 glass-card rounded-md px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
           >
             <RefreshCw className="h-3 w-3" />
             Reset demo

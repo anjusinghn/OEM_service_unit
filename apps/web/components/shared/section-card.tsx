@@ -12,8 +12,8 @@ interface SectionCardProps {
 
 export function SectionCard({ title, description, action, children, className }: SectionCardProps) {
   return (
-    <div className={cn("rounded-lg border border-border bg-card", className)}>
-      <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+    <div className={cn("glass-card rounded-xl", className)}>
+      <div className="flex items-center justify-between border-b border-glass-border px-5 py-4">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
           {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}

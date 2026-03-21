@@ -24,7 +24,7 @@ export default function IntelligencePage() {
     return (
       <div className="flex flex-col gap-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Decision Intelligence</h1>
+          <h1 className="text-2xl font-bold tracking-tight"><span className="text-ai">Decision</span> Intelligence</h1>
           <p className="mt-1 text-sm text-muted-foreground">AI vs heuristic performance tracking</p>
         </div>
         <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -42,12 +42,12 @@ export default function IntelligencePage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Decision Intelligence</h1>
+          <h1 className="text-2xl font-bold tracking-tight"><span className="text-ai">Decision</span> Intelligence</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             AI performance, reward signals, and decision quality tracking
           </p>
         </div>
-        <span className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
+        <span className="glass-card rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground">
           Last 30 days
         </span>
       </div>
@@ -101,7 +101,7 @@ export default function IntelligencePage() {
         <SectionCard title="Weight Adjustment Proposals" description="AI-suggested priority weight changes">
           <div className="flex flex-col gap-3">
             {intelligence.weightAdjustmentProposals.map((proposal) => (
-              <div key={`${proposal.decisionType}-${proposal.proposedWeight}`} className="rounded-md border border-border bg-muted/30 p-4">
+              <div key={`${proposal.decisionType}-${proposal.proposedWeight}`} className="glass-card rounded-xl p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium capitalize text-foreground">{proposal.decisionType}</span>
                   <span className="font-mono text-xs text-muted-foreground">
@@ -119,7 +119,7 @@ export default function IntelligencePage() {
         <SectionCard title="Learned Patterns" description="Patterns discovered from service outcomes">
           <div className="flex flex-col gap-2">
             {intelligence.learnedPatterns.map((pattern) => (
-              <div key={pattern.pattern} className="flex items-start gap-3 rounded-md border border-border p-3">
+              <div key={pattern.pattern} className="flex items-start gap-3 glass-card rounded-xl p-3">
                 <Brain className="mt-0.5 h-4 w-4 shrink-0 text-ai" />
                 <div>
                   <p className="text-sm text-foreground">{pattern.pattern}</p>

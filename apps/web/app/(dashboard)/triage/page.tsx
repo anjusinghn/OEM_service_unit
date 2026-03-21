@@ -62,7 +62,7 @@ export default function TriagePage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Triage Queue</h1>
+          <h1 className="text-2xl font-bold tracking-tight"><span className="text-critical">Triage</span> Queue</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Prioritized fleet vehicles ranked by service urgency. Click a row to expand AI reasoning.
           </p>
@@ -75,10 +75,10 @@ export default function TriagePage() {
               placeholder="Search vehicles..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-56 rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none ring-ring focus:ring-2"
+              className="h-9 w-56 rounded-md glass-input pl-9 pr-3 text-sm outline-none ring-ring focus:ring-2"
             />
           </div>
-          <div className="flex items-center gap-1 rounded-md border border-border bg-muted p-0.5">
+          <div className="flex items-center gap-1 rounded-md glass-card p-0.5">
             {STATUSES.map((s) => (
               <button
                 key={s}

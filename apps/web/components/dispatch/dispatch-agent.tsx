@@ -106,9 +106,9 @@ export function DispatchAgent({ vehicleId }: Props) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       {vehicle ? (
-        <div className="rounded-lg border border-border bg-card px-5 py-4">
+        <div className="glass-card rounded-xl px-5 py-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-secondary">
@@ -191,7 +191,7 @@ export function DispatchAgent({ vehicleId }: Props) {
           )}
         </div>
       ) : (
-        <div className="rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground">
+        <div className="glass-card rounded-xl px-5 py-4 text-sm text-muted-foreground">
           Vehicle data not yet loaded. Ensure the dashboard SSE connection is
           active.
         </div>
@@ -214,7 +214,7 @@ export function DispatchAgent({ vehicleId }: Props) {
       )}
 
       {error && (
-        <div className="rounded-lg border border-critical/30 bg-critical-muted px-4 py-3 text-sm text-critical">
+        <div className="glass-card rounded-xl border-critical/30 px-4 py-3 text-sm text-critical">
           {error}
         </div>
       )}

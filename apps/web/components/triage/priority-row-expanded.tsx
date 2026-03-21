@@ -45,7 +45,7 @@ export function PriorityRowExpanded({ vehicle }: PriorityRowExpandedProps) {
   return (
     <div className="px-4 pb-4 pt-2">
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div className="glass-card rounded-xl p-4">
           <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Subsystem Health
           </h4>
@@ -56,14 +56,14 @@ export function PriorityRowExpanded({ vehicle }: PriorityRowExpandedProps) {
         </div>
 
         {breakdown ? (
-          <div className="rounded-lg border border-border bg-card p-4">
+          <div className="glass-card rounded-xl p-4">
             <HeuristicBreakdown
               breakdown={breakdown}
               aiAdjustedScore={aiAssessment?.adjustedScore}
             />
           </div>
         ) : (
-          <div className="flex items-center justify-center rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center justify-center glass-card rounded-xl p-4">
             <p className="text-sm text-muted-foreground">No priority breakdown available</p>
           </div>
         )}

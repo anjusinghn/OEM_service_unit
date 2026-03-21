@@ -20,7 +20,7 @@ export function AgentTrace({ steps, isRunning }: Props) {
     steps.reduce((acc, s) => acc + (s.durationMs ?? 0), 0) / 1000
 
   return (
-    <div className="rounded-lg border border-ai-border bg-card overflow-hidden">
+    <div className="glass-card rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-ai-border bg-ai-muted">
         <div className="flex items-center gap-2.5">
           <span

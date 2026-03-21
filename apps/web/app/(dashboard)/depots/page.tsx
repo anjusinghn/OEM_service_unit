@@ -24,7 +24,7 @@ export default function DepotsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Depot Network</h1>
+        <h1 className="text-2xl font-bold tracking-tight"><span className="text-healthy">Depot</span> Network</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {depots.length} service centers · {totalBays - occupiedBays} bays available of {totalBays} total
         </p>
@@ -37,8 +37,8 @@ export default function DepotsPage() {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16 text-muted-foreground">
-          <Building2 className="mb-3 h-8 w-8 opacity-40" />
+        <div className="flex flex-col items-center justify-center glass-card rounded-lg border-dashed py-16 text-muted-foreground">
+          <Building2 className="mb-3 h-8 w-8 text-healthy/40" />
           <p className="text-sm">No depot data available. Connect to a running API.</p>
         </div>
       )}

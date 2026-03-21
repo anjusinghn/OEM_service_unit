@@ -31,7 +31,7 @@ export default function WorkflowPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Service Workflow</h1>
+        <h1 className="text-2xl font-bold tracking-tight"><span className="text-info">Service</span> Workflow</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Track service requests through the full lifecycle. Advance or complete requests from each card.
         </p>

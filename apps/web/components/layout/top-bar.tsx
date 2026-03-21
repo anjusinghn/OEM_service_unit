@@ -20,7 +20,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   const initials = displayName.slice(0, 2).toUpperCase()
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border glass-topbar px-4 sm:px-6">
       <button
         type="button"
         onClick={onMenuClick}
@@ -63,7 +63,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         <div className="relative">
           <button
             type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
             aria-label="Notifications"
           >
             <Bell size={17} />
@@ -97,7 +97,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             <DropdownMenu.Content
               align="end"
               sideOffset={8}
-              className="z-50 min-w-[188px] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
+              className="z-50 min-w-[188px] glass-popover rounded-xl border border-border p-1.5 text-popover-foreground shadow-lg"
             >
               <div className="px-2.5 py-1.5">
                 <p className="text-[11px] font-medium text-foreground">{displayName}</p>

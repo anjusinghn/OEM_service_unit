@@ -62,7 +62,7 @@ export function HeuristicBreakdown({
               <span className="text-xs text-muted-foreground">{label}</span>
               <span className="text-xs font-medium text-foreground">{score}</span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-glass">
               <div
                 className={cn("h-full rounded-full transition-all", scoreBarColor(score))}
                 style={{ width: `${Math.min(100, Math.max(0, score))}%` }}

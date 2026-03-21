@@ -17,7 +17,7 @@ export function DecisionList({ decisions, tone = "healthy" }: DecisionListProps)
   return (
     <div className="flex flex-col gap-2">
       {decisions.slice(0, 5).map((item) => (
-        <div key={item.decisionLogId} className="flex items-center justify-between rounded-md border border-border p-3">
+        <div key={item.decisionLogId} className="flex items-center justify-between glass-card rounded-xl p-3">
           <div>
             <p className="text-sm font-medium text-foreground">
               {item.decisionType} · {item.vehicleId}

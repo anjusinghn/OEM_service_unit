@@ -37,7 +37,7 @@ export function KanbanBoard() {
       {COLUMNS.map((col) => {
         const items = serviceRequests.filter((r) => r.status === col)
         return (
-          <div key={col} className="flex w-72 shrink-0 flex-col rounded-lg bg-muted/50 p-3">
+          <div key={col} className="flex w-72 shrink-0 flex-col rounded-xl bg-glass/30 p-3">
             <div className="mb-3 flex items-center justify-between px-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {COLUMN_LABELS[col]}

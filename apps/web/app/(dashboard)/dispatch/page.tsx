@@ -33,20 +33,18 @@ function DispatchPageContent() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-ai-muted mt-0.5">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg glass-card mt-0.5">
           <Sparkles size={16} className="text-ai" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            AI Dispatch Agent
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground"><span className="text-ai">AI</span> Dispatch Agent</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Multi-step AI reasoning for depot selection and service staging
           </p>
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-card px-5 py-4">
+      <div className="glass-card rounded-xl px-5 py-4">
         <label
           htmlFor="vehicle-select"
           className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2"
@@ -73,7 +71,7 @@ function DispatchPageContent() {
               </Select.Icon>
             </Select.Trigger>
             <Select.Portal>
-              <Select.Content className="z-50 max-h-72 overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
+              <Select.Content className="z-50 max-h-72 overflow-y-auto rounded-md glass-popover border border-glass-border shadow-lg">
                 <Select.Viewport className="p-1">
                   {sortedVehicles.map((v) => {
                     const priority = priorityQueue.find(

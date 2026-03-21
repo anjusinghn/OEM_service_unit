@@ -11,25 +11,25 @@ export function AiEscalationCard({ escalations }: AiEscalationCardProps) {
   if (escalations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
-        <Shield className="h-8 w-8 text-muted-foreground/40" />
+        <Shield className="h-8 w-8 text-ai/40" />
         <p className="text-sm text-muted-foreground">No AI escalations currently active.</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {escalations.map((escalation, idx) => (
         <div
           key={`${escalation.type}-${idx}`}
           className={cn(
-            "rounded-lg border bg-card p-4",
-            "border-l-2",
+            "glass-card rounded-xl p-4",
+            "!border-l-2",
             escalation.severity === "critical"
-              ? "border-critical border-l-critical"
+              ? "!border-l-critical"
               : escalation.severity === "warning"
-                ? "border-watch border-l-watch"
-                : "border-border border-l-ai"
+                ? "!border-l-watch"
+                : "!border-l-ai"
           )}
         >
           <div className="flex items-start gap-3">

@@ -57,7 +57,7 @@ export function HealthDonut({ healthy, watch, critical }: HealthDonutProps) {
 
 function LegendItem({ status, count, label }: { status: "healthy" | "watch" | "critical"; count: number; label: string }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
       <StatusDot status={status} />
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs font-semibold text-foreground">{count}</span>

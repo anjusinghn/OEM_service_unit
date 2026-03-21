@@ -9,14 +9,14 @@ interface AiReasoningPanelProps {
 export function AiReasoningPanel({ aiAssessment }: AiReasoningPanelProps) {
   if (!aiAssessment) {
     return (
-      <div className="rounded-lg border border-ai-border bg-ai-muted px-4 py-3">
+      <div className="glass-card rounded-xl border-ai-border px-4 py-3">
         <p className="text-sm italic text-muted-foreground">AI assessment pending…</p>
       </div>
     )
   }
 
   return (
-    <div className="relative overflow-hidden rounded-lg border-2 border-ai-border bg-ai-muted">
+    <div className="relative overflow-hidden glass-card rounded-xl border-ai-border">
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-ai/[0.04] to-transparent" />
 
       <div className="relative p-4">

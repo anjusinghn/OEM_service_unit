@@ -25,7 +25,7 @@ export default function AlertsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Alerts & Escalations</h1>
+        <h1 className="text-2xl font-bold tracking-tight"><span className="text-watch">Alerts</span> & Escalations</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {alerts.length} active alerts · {aiEscalations.length} AI escalations
         </p>
@@ -46,7 +46,7 @@ export default function AlertsPage() {
                 <div
                   key={alert.id}
                   className={cn(
-                    "flex items-start gap-3 rounded-md border-l-2 bg-card p-3 transition-colors hover:bg-muted/50",
+                    "flex items-start gap-3 glass-card rounded-xl border-l-2 p-3 transition-colors hover:bg-glass-hover/50",
                     isCritical ? "border-l-critical" : "border-l-watch",
                   )}
                 >

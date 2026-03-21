@@ -79,7 +79,7 @@ export function CompletionForm({ requestId, onClose, onComplete }: CompletionFor
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/40">
-      <div className="relative w-full max-w-md rounded-xl border border-border bg-card shadow-xl">
+      <div className="relative w-full max-w-md glass-card rounded-xl shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold text-foreground">Complete Service Request</h2>
           <button

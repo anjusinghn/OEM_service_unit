@@ -7,7 +7,7 @@ export function DepotCard({ depot }: { depot: Depot }) {
   const tone = utilization > 85 ? "critical" : utilization > 60 ? "watch" : "healthy"
 
   return (
-    <div className="rounded-lg border border-border bg-card p-5 transition-shadow hover:shadow-md">
+    <div className="glass-card rounded-xl p-5 transition-all duration-200 hover:bg-glass-hover">
       <div className="flex items-start justify-between">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{depot.name}</h3>
@@ -43,7 +43,7 @@ export function DepotCard({ depot }: { depot: Depot }) {
 
       <div className="mt-3 flex flex-wrap gap-1">
         {depot.specialties.map((s) => (
-          <span key={s} className="rounded bg-muted px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+          <span key={s} className="rounded-md bg-glass px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
             {s}
           </span>
         ))}

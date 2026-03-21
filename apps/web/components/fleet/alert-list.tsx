@@ -21,7 +21,7 @@ export function AlertList({ alerts }: AlertListProps) {
 
   return (
     <div className="flex flex-col">
-      <div className="divide-y divide-border">
+      <div className="divide-y divide-glass-border">
         {shown.map((alert) => {
           const isCritical = alert.severity === "critical" || alert.severity === "safety"
           return (
@@ -51,7 +51,7 @@ export function AlertList({ alerts }: AlertListProps) {
         })}
       </div>
       {alerts.length > 0 && (
-        <div className="mt-3 border-t border-border pt-3">
+        <div className="mt-3 border-t border-glass-border pt-3">
           <Link
             href="/alerts"
             className="flex items-center justify-end text-xs font-medium text-primary hover:underline"

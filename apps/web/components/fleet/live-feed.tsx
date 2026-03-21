@@ -10,13 +10,13 @@ interface LiveFeedProps {
 function PulseIcon({ kind }: { kind: LivePulse["kind"] }) {
   switch (kind) {
     case "dispatch":
-      return <RadioTower className="h-3.5 w-3.5" />
+      return <RadioTower className="h-3.5 w-3.5 text-ai" />
     case "complete":
-      return <CheckCircle className="h-3.5 w-3.5" />
+      return <CheckCircle className="h-3.5 w-3.5 text-healthy" />
     case "progress":
-      return <Wrench className="h-3.5 w-3.5" />
+      return <Wrench className="h-3.5 w-3.5 text-info" />
     default:
-      return <Gauge className="h-3.5 w-3.5" />
+      return <Gauge className="h-3.5 w-3.5 text-primary/60" />
   }
 }
 
@@ -29,7 +29,7 @@ export function LiveFeed({ pulses }: LiveFeedProps) {
       {pulses.map((pulse, idx) => (
         <div
           key={`${pulse.id}-${idx}`}
-          className="flex items-start gap-3 rounded px-1 py-2 transition-colors hover:bg-muted/40"
+          className="flex items-start gap-3 rounded px-1 py-2 transition-colors hover:bg-glass-hover/30"
         >
           <span className="mt-0.5 shrink-0 text-muted-foreground">
             <PulseIcon kind={pulse.kind} />

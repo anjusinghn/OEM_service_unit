@@ -18,7 +18,7 @@ export function AiBadge({ urgency, size = "sm" }: AiBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full font-medium capitalize",
+        "inline-flex items-center rounded-full font-medium capitalize backdrop-blur-sm",
         size === "sm" ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-sm",
         style
       )}

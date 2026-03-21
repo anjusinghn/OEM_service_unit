@@ -30,14 +30,14 @@ export function PriorityQueuePreview() {
               href="/triage"
               className={cn(
                 "flex items-center gap-3 px-1 py-2.5 transition-colors duration-150",
-                "hover:bg-muted/50 rounded"
+                "hover:bg-glass-hover/50 rounded"
               )}
             >
               <span className={cn(
                 "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
                 entry.status === "critical" ? "bg-critical-muted text-critical" :
                 entry.status === "watch" ? "bg-watch-muted text-watch" :
-                "bg-muted text-muted-foreground"
+                "bg-glass text-muted-foreground"
               )}>
                 {idx + 1}
               </span>
@@ -55,7 +55,7 @@ export function PriorityQueuePreview() {
           )
         })}
       </div>
-      <div className="mt-3 border-t border-border pt-3">
+      <div className="mt-3 border-t border-glass-border pt-3">
         <Link
           href="/triage"
           className="flex items-center justify-end text-xs font-medium text-primary hover:underline"

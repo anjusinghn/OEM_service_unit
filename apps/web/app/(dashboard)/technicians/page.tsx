@@ -35,7 +35,7 @@ export default function TechniciansPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Technicians</h1>
+        <h1 className="text-2xl font-bold tracking-tight"><span className="text-watch">Technicians</span></h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Team roster, certifications, and workload distribution.
         </p>
@@ -72,7 +72,7 @@ export default function TechniciansPage() {
                       <td className="py-3 pr-4">
                         <div className="flex flex-wrap gap-1">
                           {tech.certifications.map((c) => (
-                            <span key={c} className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+                            <span key={c} className="rounded-md bg-glass px-1.5 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
                               {c}
                             </span>
                           ))}
@@ -110,8 +110,8 @@ export default function TechniciansPage() {
           </div>
         </SectionCard>
       ) : (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16 text-muted-foreground">
-          <Users className="mb-3 h-8 w-8 opacity-40" />
+        <div className="flex flex-col items-center justify-center glass-card rounded-lg border-dashed py-16 text-muted-foreground">
+          <Users className="mb-3 h-8 w-8 text-watch/40" />
           <p className="text-sm">No technician data available. Connect to a running API.</p>
         </div>
       )}

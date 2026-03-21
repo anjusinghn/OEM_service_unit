@@ -51,7 +51,7 @@ export function CommandPalette() {
         onKeyDown={(e) => { if (e.key === "Escape") setOpen(false) }}
       />
       <div className="fixed left-1/2 top-[20%] z-50 w-full max-w-lg -translate-x-1/2">
-        <Command className="rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+        <Command className="glass-popover rounded-2xl border border-border shadow-2xl overflow-hidden">
           <div className="flex items-center gap-2 border-b border-border px-4">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             <Command.Input

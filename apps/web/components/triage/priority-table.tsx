@@ -102,10 +102,10 @@ export function PriorityTable({ vehicles, priorityQueue }: PriorityTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card">
+    <div className="overflow-x-auto glass-card rounded-xl overflow-hidden">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border bg-muted/40">
+          <tr className="border-b border-border bg-glass/50">
             <th className="px-4 py-3 text-left">
               <button
                 type="button"
@@ -165,10 +165,10 @@ export function PriorityTable({ vehicles, priorityQueue }: PriorityTableProps) {
                   className={cn(
                     "cursor-pointer select-none border-b border-border transition-colors",
                     isExpanded
-                      ? "bg-muted/50"
+                      ? "bg-glass/30"
                       : isSelected
-                        ? "bg-primary/5 ring-1 ring-inset ring-primary/30"
-                        : "hover:bg-muted/20"
+                        ? "bg-primary/8 ring-1 ring-inset ring-primary/20"
+                        : "hover:bg-glass-hover/30"
                   )}
                   onClick={() => {
                     setSelectedIdx(idx)

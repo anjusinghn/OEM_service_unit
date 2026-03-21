@@ -52,7 +52,7 @@ export function KanbanCard({ request, vehicle }: KanbanCardProps) {
 
   return (
     <>
-      <div className="rounded-md border border-border bg-card p-3 shadow-sm transition-shadow hover:shadow">
+      <div className="glass-card rounded-xl p-3 transition-colors hover:bg-glass-hover">
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="font-mono text-xs font-semibold text-foreground">{request.id}</p>

@@ -34,7 +34,7 @@ export function DispatchPlanCard({ plan }: Props) {
   const confidencePct = Math.round(plan.confidence * 100)
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
+    <div className="glass-card rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-secondary/40">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-foreground">
@@ -153,7 +153,7 @@ export function DispatchPlanCard({ plan }: Props) {
         )}
 
         {plan.alternativePlan && (
-          <div className="px-5 py-4 bg-secondary/20">
+          <div className="px-5 py-4 bg-glass">
             <SectionHeader
               icon={<Copy size={13} className="text-muted-foreground" />}
               label="Alternative Plan"

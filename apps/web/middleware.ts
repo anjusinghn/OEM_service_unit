@@ -5,6 +5,13 @@ const PUBLIC_PATHS = ["/login"]
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  const demoOrigin = process.env.CHENNAI_DEMO_ORIGIN
+  if (process.env.SIMULATION_SCENARIO === "chennai-ashok-leyland" && demoOrigin) {
+    if (pathname === "/login" || pathname.startsWith("/login/")) {
+      return NextResponse.redirect(new URL("/", demoOrigin))
+    }
+    return NextResponse.next()
+  }
   const token = request.cookies.get(TOKEN_COOKIE)?.value
   const isPublicPath = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 

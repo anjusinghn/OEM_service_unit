@@ -36,7 +36,7 @@ The first release is ready when the full path works through the existing local d
 
 ## Run the first demo
 
-In the Chennai checkout, install the workspace dependencies with `pnpm install`, start Docker, and run `pnpm dev:chennai`. Open http://localhost:3116 and sign in with the existing local demo credentials (`oem@kazindustries.dev`, password `kazadmin123`). The dashboard and API run on 3116 and 4116. PostgreSQL and Redis use dedicated local endpoints.
+In the Chennai checkout, install the workspace dependencies with `pnpm install`, start Docker, and run `pnpm dev:chennai`. Open http://localhost:3116 to go straight to the dashboard. The local launcher connects the dashboard to the seeded Fleet Manager account automatically. The dashboard and API run on 3116 and 4116. PostgreSQL and Redis use dedicated local endpoints.
 
 1. Open Triage and wait for `chennai-truck-01` to develop its scripted fault. It starts about 30 seconds after a fresh seed.
 2. Select that truck in Dispatch and choose **Compare workshops**. The default scenario delays the cooling pump at Poonamallee, so Madhavaram should finish sooner.

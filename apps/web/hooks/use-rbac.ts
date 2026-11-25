@@ -1,4 +1,5 @@
 "use client"
+import { IS_CHENNAI_DEMO } from "../lib/api-client"
 import { useAuth } from "./use-auth"
 
 type Role = "PLATFORM_ADMIN" | "OEM_ADMIN" | "DEPOT_MANAGER" | "TECHNICIAN" | "VIEWER"
@@ -13,7 +14,7 @@ const ROLE_HIERARCHY: Record<Role, number> = {
 
 export function useRbac() {
   const { user } = useAuth()
-  const role = (user?.role ?? "VIEWER") as Role
+  const role = (IS_CHENNAI_DEMO ? "OEM_ADMIN" : user?.role ?? "VIEWER") as Role
 
   const hasRole = (...roles: Role[]) => roles.includes(role)
 

@@ -1,13 +1,14 @@
 import { getAuthHeaders } from "./auth"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+export const IS_CHENNAI_DEMO = process.env.NEXT_PUBLIC_CHENNAI_DEMO === "true"
+const API_BASE = IS_CHENNAI_DEMO ? "" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000")
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...getAuthHeaders(),
+      ...(IS_CHENNAI_DEMO ? {} : getAuthHeaders()),
       ...options?.headers,
     },
   })

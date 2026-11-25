@@ -3,6 +3,7 @@ import { Bell, Menu, Search, LogOut, ChevronDown } from "lucide-react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { useDashboardStore } from "../../stores/dashboard-store"
 import { ThemeToggle } from "./theme-toggle"
+import { IS_CHENNAI_DEMO } from "../../lib/api-client"
 import { cn } from "../../lib/cn"
 import { useAuth } from "../../hooks/use-auth"
 
@@ -77,7 +78,9 @@ export function TopBar({ onMenuClick }: TopBarProps) {
 
         <ThemeToggle />
 
-        <DropdownMenu.Root>
+        {IS_CHENNAI_DEMO ? (
+          <span className="text-xs font-medium text-muted-foreground">Local demo</span>
+        ) : <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
             <button
               type="button"
@@ -126,7 +129,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+        </DropdownMenu.Root>}
       </div>
     </header>
   )

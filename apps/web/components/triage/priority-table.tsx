@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useCallback, useEffect, useState } from "react"
-import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown, ChevronRight } from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, Minus, TrendingDown, TrendingUp } from "lucide-react"
 import type { PriorityEntry } from "@kaz/shared"
 import type { VehicleRecord } from "../../stores/dashboard-store"
 import { cn } from "../../lib/cn"
@@ -95,196 +95,140 @@ export function PriorityTable({ vehicles, priorityQueue }: PriorityTableProps) {
   }, [sorted, selectedIdx, toggleExpand])
 
   function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col)
-      return <ArrowUpDown size={12} className="text-muted-foreground/40" />
-    if (sortDir === "asc") return <ArrowUp size={12} className="text-primary" />
-    return <ArrowDown size={12} className="text-primary" />
+    if (sortKey !== col) return <ArrowUpDown size={14} className="text-faint/60" />
+    if (sortDir === "asc") return <ArrowUp size={14} className="text-sky-400" />
+    return <ArrowDown size={14} className="text-sky-400" />
   }
 
+  const th = "px-4 py-4 text-left font-mono text-xs font-medium uppercase tracking-[0.12em] text-faint"
+  const sortBtn = "flex items-center gap-1.5 uppercase tracking-[0.12em] transition-colors hover:text-foreground"
+
   return (
-    <div className="overflow-x-auto glass-card rounded-xl overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-glass/50">
-            <th className="px-4 py-3 text-left">
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => handleSort("rank")}
-              >
-                # <SortIcon col="rank" />
-              </button>
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Vehicle
-            </th>
-            <th className="px-4 py-3 text-left">
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => handleSort("health")}
-              >
-                Health <SortIcon col="health" />
-              </button>
-            </th>
-            <th className="px-4 py-3 text-left">
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => handleSort("score")}
-              >
-                Priority <SortIcon col="score" />
-              </button>
-            </th>
-            <th className="px-4 py-3 text-left">
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => handleSort("status")}
-              >
-                Status <SortIcon col="status" />
-              </button>
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              AI Assessment
-            </th>
-            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Action
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((row, idx) => {
-            const isExpanded = expandedId === row.vehicle.id
-            const isSelected = selectedIdx === idx
-            const ai = row.entry.breakdown.aiAssessment
+    <div className="glass-panel overflow-hidden rounded-2xl">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[880px] text-[15px]">
+          <thead>
+            <tr className="border-b border-border bg-white/[0.02]">
+              <th className={th}>
+                <button type="button" className={sortBtn} onClick={() => handleSort("rank")}>
+                  Rank <SortIcon col="rank" />
+                </button>
+              </th>
+              <th className={th}>Vehicle</th>
+              <th className={th}>
+                <button type="button" className={sortBtn} onClick={() => handleSort("health")}>
+                  Health <SortIcon col="health" />
+                </button>
+              </th>
+              <th className={th}>
+                <button type="button" className={sortBtn} onClick={() => handleSort("score")}>
+                  Priority <SortIcon col="score" />
+                </button>
+              </th>
+              <th className={th}>
+                <button type="button" className={sortBtn} onClick={() => handleSort("status")}>
+                  Status <SortIcon col="status" />
+                </button>
+              </th>
+              <th className={th}>AI assessment</th>
+              <th className={cn(th, "text-right")}>
+                <span className="sr-only">Expand</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row, idx) => {
+              const isExpanded = expandedId === row.vehicle.id
+              const isSelected = selectedIdx === idx
+              const ai = row.entry.breakdown.aiAssessment
 
-            return (
-              <Fragment key={row.vehicle.id}>
-                <tr
-                  className={cn(
-                    "cursor-pointer select-none border-b border-border transition-colors",
-                    isExpanded
-                      ? "bg-glass/30"
-                      : isSelected
-                        ? "bg-primary/8 ring-1 ring-inset ring-primary/20"
-                        : "hover:bg-glass-hover/30"
-                  )}
-                  onClick={() => {
-                    setSelectedIdx(idx)
-                    toggleExpand(row.vehicle.id)
-                  }}
-                >
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {row.rank + 1}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-mono text-xs font-semibold text-foreground">
-                        {row.vehicle.id}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {row.vehicle.model} · {row.vehicle.region}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={cn(
-                          "text-sm font-bold tabular-nums",
-                          row.vehicle.health.overall >= 75
-                            ? "text-healthy"
-                            : row.vehicle.health.overall >= 50
-                              ? "text-watch"
-                              : "text-critical"
-                        )}
-                      >
-                        {row.vehicle.health.overall}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-xs",
-                          row.vehicle.health.trend === "improving"
-                            ? "text-healthy"
-                            : row.vehicle.health.trend === "degrading"
-                              ? "text-critical"
-                              : "text-muted-foreground"
-                        )}
-                      >
-                        {row.vehicle.health.trend === "improving"
-                          ? "↑"
-                          : row.vehicle.health.trend === "degrading"
-                            ? "↓"
-                            : "→"}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sm font-bold tabular-nums text-foreground">
-                      {row.entry.score}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={row.entry.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    {ai ? (
-                      <div className="flex items-center gap-2">
-                        <AiBadge urgency={ai.urgency} />
-                        <span className="max-w-[160px] truncate text-xs text-muted-foreground">
-                          {ai.recommendation.length > 60
-                            ? `${ai.recommendation.slice(0, 60)}…`
-                            : ai.recommendation}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs italic text-muted-foreground">Pending</span>
+              return (
+                <Fragment key={row.vehicle.id}>
+                  <tr
+                    className={cn(
+                      "cursor-pointer select-none border-b border-border transition-colors",
+                      isExpanded
+                        ? "bg-accent/60"
+                        : isSelected
+                          ? "bg-white/[0.045] shadow-[inset_3px_0_0_0_var(--color-sky-500)]"
+                          : "hover:bg-glass-hover"
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleExpand(row.vehicle.id)
-                        }}
-                        aria-label="Dispatch"
-                      >
-                        <ArrowRight size={13} />
-                      </button>
-                      <span
-                        className={cn(
-                          "inline-flex transition-transform duration-150 ease-in-out",
-                          isExpanded ? "rotate-90" : "rotate-0"
+                    onClick={() => {
+                      setSelectedIdx(idx)
+                      toggleExpand(row.vehicle.id)
+                    }}
+                  >
+                    <td className="px-4 py-4 font-mono text-sm text-faint">{String(row.rank + 1).padStart(2, "0")}</td>
+                    <td className="px-4 py-4">
+                      <p className="font-mono text-[15px] font-medium text-foreground">{row.vehicle.id}</p>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {row.vehicle.model} · {row.vehicle.region}
+                      </p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "stat text-xl",
+                            row.vehicle.health.status === "critical" ? "text-critical" : "text-foreground"
+                          )}
+                        >
+                          {row.vehicle.health.overall}
+                        </span>
+                        {row.vehicle.health.trend === "improving" ? (
+                          <TrendingUp size={16} className="text-healthy" />
+                        ) : row.vehicle.health.trend === "degrading" ? (
+                          <TrendingDown size={16} className="text-critical" />
+                        ) : (
+                          <Minus size={16} className="text-faint" />
                         )}
-                      >
-                        <ChevronRight size={14} className="text-muted-foreground" />
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-
-                {isExpanded && (
-                  <tr>
-                    <td colSpan={7} className="border-b border-border p-0">
-                      <div className="overflow-hidden">
-                        <PriorityRowExpanded vehicle={row.vehicle} />
                       </div>
                     </td>
+                    <td className="px-4 py-4">
+                      <span className="stat text-xl text-foreground">{row.entry.score}</span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <StatusBadge status={row.entry.status} />
+                    </td>
+                    <td className="px-4 py-4">
+                      {ai ? (
+                        <div className="flex items-center gap-3">
+                          <AiBadge urgency={ai.urgency} />
+                          <span className="max-w-[260px] truncate text-sm text-muted-foreground">{ai.recommendation}</span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-faint">Pending</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <span
+                        className={cn(
+                          "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-transform duration-200",
+                          isExpanded && "rotate-90 border-sky-500/30 text-sky-400"
+                        )}
+                      >
+                        <ChevronRight size={17} />
+                      </span>
+                    </td>
                   </tr>
-                )}
-              </Fragment>
-            )
-          })}
-        </tbody>
-      </table>
+
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={7} className="border-b border-border bg-ink-950/30 p-0">
+                        <PriorityRowExpanded vehicle={row.vehicle} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {sorted.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <span className="text-sm text-muted-foreground">No vehicles in triage queue</span>
+        <div className="flex items-center justify-center py-20 text-center">
+          <span className="text-base text-muted-foreground">No vehicles match these filters.</span>
         </div>
       )}
     </div>

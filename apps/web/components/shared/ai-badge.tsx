@@ -5,24 +5,24 @@ interface AiBadgeProps {
   size?: "sm" | "md"
 }
 
+const urgencyDot: Record<string, string> = {
+  emergency: "bg-critical",
+  urgent: "bg-critical",
+  elevated: "bg-watch",
+  routine: "bg-healthy",
+}
+
 export function AiBadge({ urgency, size = "sm" }: AiBadgeProps) {
-  const urgencyStyle: Record<string, string> = {
-    emergency: "bg-critical-muted text-critical border border-critical/20",
-    urgent: "bg-watch-muted text-watch border border-watch/20",
-    elevated: "bg-ai-muted text-ai border border-ai-border",
-    routine: "bg-healthy-muted text-healthy border border-healthy/20",
-  }
-
-  const style = urgencyStyle[urgency] ?? "bg-ai-muted text-ai border border-ai-border"
-
+  const hot = urgency === "emergency" || urgency === "urgent"
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full font-medium capitalize backdrop-blur-sm",
-        size === "sm" ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-sm",
-        style
+        "inline-flex items-center gap-2 rounded-full border font-medium capitalize",
+        size === "sm" ? "px-3 py-1 text-xs" : "px-3.5 py-1 text-sm",
+        hot ? "border-critical/30 bg-critical-muted text-frost" : "border-border bg-white/[0.04] text-muted-foreground"
       )}
     >
+      <span className={cn("h-1.5 w-1.5 rounded-full", urgencyDot[urgency] ?? "bg-ai")} />
       {urgency}
     </span>
   )

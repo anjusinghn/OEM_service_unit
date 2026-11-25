@@ -7,11 +7,9 @@ export function useTheme() {
   const [theme, setThemeState] = useState<Theme>("light")
 
   useEffect(() => {
-    const stored = localStorage.getItem("kaz-theme") as Theme | null
-    const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-    const initial = stored ?? preferred
-    setThemeState(initial)
-    document.documentElement.classList.toggle("dark", initial === "dark")
+    setThemeState("dark")
+    document.documentElement.classList.add("dark")
+    localStorage.setItem("kaz-theme", "dark")
   }, [])
 
   const setTheme = useCallback((t: Theme) => {

@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect } from "react"
+import { Warehouse } from "lucide-react"
 import { useDashboardStore } from "@/stores/dashboard-store"
 import { apiFetch } from "@/lib/api-client"
+import { PageHeader } from "@/components/shared/page-header"
 import { DepotCard } from "@/components/depot/depot-card"
-import { Building2 } from "lucide-react"
 
 export default function DepotsPage() {
   const depots = useDashboardStore((s) => s.depots)
@@ -22,24 +23,34 @@ export default function DepotsPage() {
   const occupiedBays = depots.reduce((sum, d) => sum + d.occupiedBays, 0)
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight"><span className="text-healthy">Depot</span> Network</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {depots.length} service centers · {totalBays - occupiedBays} bays available of {totalBays} total
-        </p>
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        eyebrow="Depot network"
+        title={
+          <>
+            Capacity across <span className="text-gradient">every service bay.</span>
+          </>
+        }
+        description="Live bay occupancy and specialties for each service center, used by dispatch to route vehicles."
+        actions={
+          depots.length > 0 && (
+            <span className="chip">
+              {depots.length} depots · {totalBays - occupiedBays} of {totalBays} bays open
+            </span>
+          )
+        }
+      />
 
       {depots.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {depots.map((depot) => (
             <DepotCard key={depot.id} depot={depot} />
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center glass-card rounded-lg border-dashed py-16 text-muted-foreground">
-          <Building2 className="mb-3 h-8 w-8 text-healthy/40" />
-          <p className="text-sm">No depot data available. Connect to a running API.</p>
+        <div className="glass-panel flex flex-col items-center justify-center rounded-2xl py-20 text-muted-foreground">
+          <Warehouse className="mb-4 h-10 w-10 text-faint" strokeWidth={1.5} />
+          <p className="text-base">Depot data is loading…</p>
         </div>
       )}
     </div>

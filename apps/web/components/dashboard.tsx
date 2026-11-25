@@ -52,7 +52,7 @@ type DashboardPayload = DashboardSnapshot & {
   generatedAt: string
 }
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
 
 const NAV_ITEMS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -190,7 +190,7 @@ export function Dashboard() {
         <div className="sidebar__brand">
           <div className="sidebar__logo">K</div>
           <div className="sidebar__brand-text">
-            <span className="sidebar__name">kazindustries</span>
+            <span className="sidebar__name">Fleet Command</span>
             <span className="sidebar__env">Phase 1 Demo</span>
           </div>
         </div>
@@ -236,7 +236,7 @@ export function Dashboard() {
           <div className="mobile-header">
             <div className="mobile-header__brand">
               <div className="mobile-header__logo">K</div>
-              <span className="mobile-header__name">kazindustries</span>
+              <span className="mobile-header__name">Fleet Command</span>
             </div>
             <button type="button" className="mobile-menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
               {sidebarOpen ? <X size={20} /> : <Menu size={20} />}

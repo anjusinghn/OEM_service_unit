@@ -5,27 +5,24 @@ interface StatusBadgeProps {
   size?: "sm" | "md"
 }
 
+const dotColor = {
+  healthy: "bg-healthy",
+  watch: "bg-watch",
+  critical: "bg-critical shadow-[0_0_0_3px_rgb(244_151_142/0.18)]",
+}
+
 export function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
-  const base = cn(
-    "inline-flex items-center gap-1.5 rounded-full font-medium backdrop-blur-sm",
-    size === "sm" ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-sm"
-  )
-
-  const variant = {
-    healthy: "bg-healthy-muted text-healthy",
-    watch: "bg-watch-muted text-watch",
-    critical: "bg-critical-muted text-critical",
-  }[status]
-
-  const dotColor = {
-    healthy: "bg-healthy",
-    watch: "bg-watch",
-    critical: "bg-critical",
-  }[status]
-
   return (
-    <span className={cn(base, variant)}>
-      <span className={cn("h-1.5 w-1.5 rounded-full", dotColor)} />
+    <span
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full border font-medium capitalize",
+        size === "sm" ? "px-3 py-1 text-xs" : "px-3.5 py-1 text-sm",
+        status === "critical"
+          ? "border-critical/30 bg-critical-muted text-frost"
+          : "border-border bg-white/[0.04] text-muted-foreground"
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", dotColor[status])} />
       {status}
     </span>
   )

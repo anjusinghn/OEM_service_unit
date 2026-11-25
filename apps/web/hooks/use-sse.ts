@@ -3,6 +3,14 @@ import { useEffect, useRef } from "react"
 import { useDashboardStore } from "../stores/dashboard-store"
 import { API_BASE_URL } from "../lib/api-client"
 
+function eventsUrl() {
+  if (API_BASE_URL) return `${API_BASE_URL}/api/v1/events`
+  if (typeof window !== "undefined" && window.location.port === "3000") {
+    return `${window.location.protocol}//${window.location.hostname}:4000/api/v1/events`
+  }
+  return "/api/v1/events"
+}
+
 export function useSSE() {
   const setSnapshot = useDashboardStore((s) => s.setSnapshot)
   const setSseConnected = useDashboardStore((s) => s.setSseConnected)
@@ -13,7 +21,7 @@ export function useSSE() {
     let timer: ReturnType<typeof setTimeout> | null = null
 
     function connect() {
-      sse = new EventSource(`${API_BASE_URL}/api/v1/events`)
+      sse = new EventSource(eventsUrl())
 
       sse.onopen = () => {
         setSseConnected(true)

@@ -2,7 +2,7 @@
 
 import type { AiDispatchPlan } from "@kaz/shared"
 import { motion } from "framer-motion"
-import { AlertTriangle, Car, Cpu, Minus, TrendingDown, TrendingUp } from "lucide-react"
+import { Cpu, Minus, TrendingDown, TrendingUp, TriangleAlert, Truck } from "lucide-react"
 import { useState } from "react"
 import { apiFetch } from "../../lib/api-client"
 import { cn } from "../../lib/cn"
@@ -106,81 +106,64 @@ export function DispatchAgent({ vehicleId }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {vehicle ? (
-        <div className="glass-card rounded-xl px-5 py-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-secondary">
-                <Car size={17} className="text-muted-foreground" />
-              </div>
+        <div className="glass-panel rounded-2xl p-6">
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-sky-500/25 bg-accent text-sky-400">
+                <Truck size={22} strokeWidth={1.75} />
+              </span>
               <div>
-                <div className="font-semibold text-sm text-foreground">
-                  {vehicle.vin}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {vehicle.year} {vehicle.make} {vehicle.model} &middot;{" "}
-                  {vehicle.routeName}
-                </div>
+                <p className="font-mono text-lg font-medium text-foreground">{vehicle.vin}</p>
+                <p className="mt-0.5 text-[15px] text-muted-foreground">
+                  {vehicle.year} {vehicle.make} {vehicle.model} · {vehicle.routeName}
+                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-5 text-xs">
-              <div>
-                <div className="text-muted-foreground mb-0.5">Health</div>
-                <div
-                  className={cn(
-                    "font-semibold tabular-nums",
-                    healthColors[vehicle.health.status]
-                  )}
-                >
-                  {vehicle.health.overall}
-                </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-xl border border-border bg-ink-950/40 px-4 py-3">
+                <p className="text-xs text-faint">Health</p>
+                <p className={cn("stat mt-1 text-2xl", vehicle.health.status === "critical" ? "text-critical" : "text-foreground")}>{vehicle.health.overall}</p>
               </div>
-              <div>
-                <div className="text-muted-foreground mb-0.5">Status</div>
-                <div
-                  className={cn(
-                    "font-semibold capitalize",
-                    healthColors[vehicle.health.status]
-                  )}
-                >
+              <div className="rounded-xl border border-border bg-ink-950/40 px-4 py-3">
+                <p className="text-xs text-faint">Status</p>
+                <p className={cn("mt-1.5 text-base font-semibold capitalize", healthColors[vehicle.health.status])}>
                   {vehicle.health.status}
-                </div>
+                </p>
               </div>
-              <div>
-                <div className="text-muted-foreground mb-0.5">Trend</div>
-                <div className="font-medium text-foreground flex items-center gap-1 capitalize">
+              <div className="rounded-xl border border-border bg-ink-950/40 px-4 py-3">
+                <p className="text-xs text-faint">Trend</p>
+                <p className="mt-1.5 flex items-center gap-1.5 text-base font-medium capitalize text-foreground">
                   {vehicle.health.trend === "improving" ? (
-                    <TrendingUp size={12} className="text-healthy" />
+                    <TrendingUp size={16} className="text-healthy" />
                   ) : vehicle.health.trend === "degrading" ? (
-                    <TrendingDown size={12} className="text-critical" />
+                    <TrendingDown size={16} className="text-critical" />
                   ) : (
-                    <Minus size={12} className="text-muted-foreground" />
+                    <Minus size={16} className="text-faint" />
                   )}
                   {vehicle.health.trend}
-                </div>
+                </p>
               </div>
             </div>
           </div>
 
           {vehicle.faults.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-border">
-              <div className="flex items-center gap-1.5 mb-2">
-                <AlertTriangle size={12} className="text-watch" />
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Active Faults
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {vehicle.faults.slice(0, 5).map((f) => (
+            <div className="mt-5 border-t border-border pt-5">
+              <p className="label mb-3 flex items-center gap-2">
+                <TriangleAlert size={15} className="text-watch" />
+                Active faults
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {vehicle.faults.slice(0, 6).map((f) => (
                   <span
                     key={f.id}
                     className={cn(
-                      "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+                      "inline-flex items-center rounded-lg border px-2.5 py-1 font-mono text-sm",
                       f.severity === "critical" || f.severity === "safety"
-                        ? "bg-critical-muted text-critical"
-                        : "bg-watch-muted text-watch"
+                        ? "border-critical/25 bg-critical-muted text-critical"
+                        : "border-watch/25 bg-watch-muted text-watch"
                     )}
                   >
                     {f.dtcCode}
@@ -191,32 +174,22 @@ export function DispatchAgent({ vehicleId }: Props) {
           )}
         </div>
       ) : (
-        <div className="glass-card rounded-xl px-5 py-4 text-sm text-muted-foreground">
-          Vehicle data not yet loaded. Ensure the dashboard SSE connection is
-          active.
+        <div className="glass-panel rounded-2xl px-6 py-5 text-[15px] text-muted-foreground">
+          Vehicle data is still loading from the live stream.
         </div>
       )}
 
       {!isRunning && !done && (
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-          <button
-            type="button"
-            onClick={runDispatch}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-semibold",
-              "bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-            )}
-          >
-            <Cpu size={15} />
-            {vehicle?.buildBatch === "CHENNAI-SIM" ? "Compare workshops" : "Run AI Dispatch"}
+          <button type="button" onClick={runDispatch} className="btn btn-sky btn-lg">
+            <Cpu size={18} />
+            {vehicle?.buildBatch === "CHENNAI-SIM" ? "Compare workshops" : "Run AI dispatch"}
           </button>
         </motion.div>
       )}
 
       {error && (
-        <div className="glass-card rounded-xl border-critical/30 px-4 py-3 text-sm text-critical">
-          {error}
-        </div>
+        <div className="rounded-2xl border border-critical/30 bg-critical-muted px-5 py-4 text-[15px] text-critical">{error}</div>
       )}
 
       {(isRunning || traceSteps.length > 0) && (
@@ -226,22 +199,13 @@ export function DispatchAgent({ vehicleId }: Props) {
       )}
 
       {plan && (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <DispatchPlanCard plan={plan} />
         </motion.div>
       )}
 
       {plan && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="pt-1"
-        >
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
           <DispatchActions
             vehicleId={vehicleId}
             recommendedDepotId={plan.candidates ? plan.depotId : undefined}

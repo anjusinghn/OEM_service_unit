@@ -1,139 +1,112 @@
 "use client"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import {
-  Bell,
-  Brain,
-  Building2,
-  GitBranch,
-  LayoutDashboard,
-  Settings,
-  Shield,
-  Sparkles,
-  Users,
-  X,
-} from "lucide-react"
+import { X } from "lucide-react"
 import { cn } from "../../lib/cn"
-
-const navItems = [
-  { href: "/", label: "Command Center", icon: LayoutDashboard, color: "text-indigo-400/70" },
-  { href: "/triage", label: "Triage Queue", icon: Shield, color: "text-rose-400/70" },
-  { href: "/dispatch", label: "AI Dispatch", icon: Sparkles, color: "text-violet-400/70" },
-  { href: "/workflow", label: "Workflow", icon: GitBranch, color: "text-sky-400/70" },
-  { href: "/depots", label: "Depot Network", icon: Building2, color: "text-emerald-400/70" },
-  { href: "/technicians", label: "Technicians", icon: Users, color: "text-amber-400/70" },
-  { href: "/intelligence", label: "Intelligence", icon: Brain, color: "text-fuchsia-400/70" },
-  { href: "/alerts", label: "Alerts", icon: Bell, color: "text-orange-400/70" },
-]
-
-const footerItems = [
-  { href: "/settings", label: "Settings", icon: Settings, color: "text-zinc-400/70" },
-]
+import { NAV_SECTIONS, SETTINGS_ITEM, isActivePath, type NavItem } from "../../lib/nav"
+import { useDashboardStore } from "../../stores/dashboard-store"
+import { FleetBrand } from "../brand/fleet-mark"
 
 interface SidebarProps {
   open: boolean
   onClose: () => void
 }
 
+function NavLink({ item, active, badge, onClick }: { item: NavItem; active: boolean; badge?: number; onClick: () => void }) {
+  const Icon = item.icon
+  return (
+    <Link
+      href={item.href}
+      onClick={onClick}
+      className={cn(
+        "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-medium transition-colors duration-200",
+        active
+          ? "bg-sidebar-accent text-sidebar-active shadow-[inset_0_0_0_1px_rgb(89_175_212/0.22)]"
+          : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active"
+      )}
+    >
+      {active && (
+        <span className="absolute -left-4 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-gradient-to-b from-sky-300 to-sky-500" />
+      )}
+      <Icon
+        size={19}
+        strokeWidth={1.75}
+        className={cn("shrink-0 transition-colors", active ? "text-sky-400" : "text-faint group-hover:text-sky-300")}
+      />
+      <span className="flex-1 truncate">{item.label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="rounded-full bg-critical-muted px-2 py-px font-mono text-xs font-medium text-critical">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
+    </Link>
+  )
+}
+
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname()
+  const alerts = useDashboardStore((s) => s.alerts)
+  const sseConnected = useDashboardStore((s) => s.sseConnected)
+  const criticalAlerts = alerts.filter((a) => a.severity === "critical" || a.severity === "safety").length
 
   return (
     <>
-      {open && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={onClose}
-        />
-      )}
+      {open && <div className="fixed inset-0 z-40 bg-ink-950/70 backdrop-blur-sm lg:hidden" onClick={onClose} />}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[248px] flex-col",
-          "glass-sidebar border-r border-sidebar-border",
-          "transition-transform duration-300 ease-out",
-          "lg:translate-x-0",
+          "glass-sidebar fixed inset-y-0 left-0 z-50 flex w-[272px] flex-col border-r border-sidebar-border",
+          "transition-transform duration-300 ease-out lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="flex items-center justify-between px-5 pb-7 pt-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-              K
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold leading-tight text-sidebar-active">
-                kazindustries
-              </span>
-              <span className="text-[11px] font-medium leading-tight text-sidebar-foreground">
-                Production
-              </span>
-            </div>
-          </div>
+        <div className="flex h-[72px] items-center justify-between px-6">
+          <Link href="/" onClick={onClose} aria-label="Fleet Command home">
+            <FleetBrand />
+          </Link>
           <button
+            type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-hover lg:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-hover lg:hidden"
+            aria-label="Close navigation"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-0.5 px-3">
-          {navItems.map(({ href, label, icon: Icon, color }) => {
-            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href)
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={onClose}
-                className={cn(
-                  "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] font-medium",
-                  "transition-all duration-200",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-active font-semibold"
-                    : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active"
-                )}
-              >
-                {isActive && (
-                  <span className="absolute -left-3 top-1/2 h-5 w-[4px] -translate-y-1/2 rounded-full bg-primary" />
-                )}
-                <Icon
-                  size={17}
-                  className={cn("flex-shrink-0", isActive ? "text-sidebar-active" : color)}
-                />
-                {label}
-              </Link>
-            )
-          })}
+        <div className="mx-6 hairline opacity-70" />
 
-          <div className="my-2 h-px bg-sidebar-border" />
-
-          {footerItems.map(({ href, label, icon: Icon, color }) => {
-            const isActive = pathname.startsWith(href)
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={onClose}
-                className={cn(
-                  "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] font-medium",
-                  "transition-all duration-200",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-active font-semibold"
-                    : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-active"
-                )}
-              >
-                {isActive && (
-                  <span className="absolute -left-3 top-1/2 h-5 w-[4px] -translate-y-1/2 rounded-full bg-primary" />
-                )}
-                <Icon
-                  size={17}
-                  className={cn("flex-shrink-0", isActive ? "text-sidebar-active" : color)}
+        <nav className="flex flex-1 flex-col gap-7 overflow-y-auto px-4 py-6">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.title} className="flex flex-col gap-1">
+              <p className="mb-1.5 px-3 font-mono text-[12px] font-medium uppercase tracking-[0.16em] text-faint">
+                {section.title}
+              </p>
+              {section.items.map((item) => (
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  active={isActivePath(pathname, item.href)}
+                  badge={item.href === "/alerts" ? criticalAlerts : undefined}
+                  onClick={onClose}
                 />
-                {label}
-              </Link>
-            )
-          })}
+              ))}
+            </div>
+          ))}
         </nav>
+
+        <div className="flex flex-col gap-3 border-t border-sidebar-border px-4 py-4">
+          <NavLink item={SETTINGS_ITEM} active={isActivePath(pathname, SETTINGS_ITEM.href)} onClick={onClose} />
+          <div className="glass-card flex items-center gap-3 rounded-xl px-3.5 py-3">
+            <span className="relative flex h-2.5 w-2.5">
+              {sseConnected && <span className="absolute inset-0 animate-ping rounded-full bg-healthy/60" />}
+              <span className={cn("relative h-2.5 w-2.5 rounded-full", sseConnected ? "bg-healthy" : "bg-faint")} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">{sseConnected ? "Telemetry live" : "Connecting…"}</p>
+              <p className="text-xs text-faint">Read-only public view</p>
+            </div>
+          </div>
+        </div>
       </aside>
     </>
   )

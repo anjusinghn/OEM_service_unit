@@ -1,6 +1,6 @@
 "use client"
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts"
-import { StatusDot } from "@/components/shared/status-dot"
+import { cn } from "@/lib/cn"
 
 interface HealthDonutProps {
   healthy: number
@@ -8,30 +8,32 @@ interface HealthDonutProps {
   critical: number
 }
 
-export function HealthDonut({ healthy, watch, critical }: HealthDonutProps) {
-  const total = healthy + watch + critical
+const SEGMENTS = [
+  { key: "healthy", label: "Healthy", fill: "var(--color-healthy)", dot: "bg-healthy" },
+  { key: "watch", label: "Watch", fill: "var(--color-watch)", dot: "bg-watch" },
+  { key: "critical", label: "Critical", fill: "var(--color-critical)", dot: "bg-critical" },
+] as const
 
-  const data = [
-    { name: "Healthy", value: healthy, fill: "var(--color-healthy)" },
-    { name: "Watch", value: watch, fill: "var(--color-watch)" },
-    { name: "Critical", value: critical, fill: "var(--color-critical)" },
-  ]
+export function HealthDonut({ healthy, watch, critical }: HealthDonutProps) {
+  const counts = { healthy, watch, critical }
+  const total = healthy + watch + critical
+  const data = SEGMENTS.map((s) => ({ name: s.label, value: counts[s.key], fill: s.fill }))
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <div className="relative min-h-[200px] w-full">
-        <ResponsiveContainer width="100%" height={200}>
+    <div className="flex flex-col items-center gap-6">
+      <div className="relative h-[240px] w-full">
+        <ResponsiveContainer width="100%" height={240}>
           <PieChart>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={55}
-              outerRadius={80}
-              paddingAngle={2}
+              innerRadius={78}
+              outerRadius={108}
+              paddingAngle={2.5}
+              cornerRadius={6}
               dataKey="value"
               isAnimationActive
-              animationBegin={0}
               animationDuration={600}
             >
               {data.map((entry) => (
@@ -41,26 +43,29 @@ export function HealthDonut({ healthy, watch, critical }: HealthDonutProps) {
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold tracking-tight text-foreground">{total}</span>
-          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">vehicles</span>
+          <span className="stat text-[44px] leading-none text-foreground">{total}</span>
+          <span className="label mt-2">Vehicles</span>
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-6">
-        <LegendItem status="healthy" count={healthy} label="Healthy" />
-        <LegendItem status="watch" count={watch} label="Watch" />
-        <LegendItem status="critical" count={critical} label="Critical" />
+      <div className="grid w-full grid-cols-3 gap-3">
+        {SEGMENTS.map((s) => {
+          const count = counts[s.key]
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0
+          return (
+            <div key={s.key} className="glass-card rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className={cn("h-2.5 w-2.5 rounded-full", s.dot)} />
+                <span className="text-sm text-muted-foreground">{s.label}</span>
+              </div>
+              <p className="stat mt-1.5 text-2xl text-foreground">
+                {count}
+                <span className="ml-1.5 font-sans text-sm font-normal tracking-normal text-faint">{pct}%</span>
+              </p>
+            </div>
+          )
+        })}
       </div>
-    </div>
-  )
-}
-
-function LegendItem({ status, count, label }: { status: "healthy" | "watch" | "critical"; count: number; label: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <StatusDot status={status} />
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-semibold text-foreground">{count}</span>
     </div>
   )
 }

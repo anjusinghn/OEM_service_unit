@@ -1,135 +1,84 @@
 "use client"
-import { Bell, Menu, Search, LogOut, ChevronDown } from "lucide-react"
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { BellRing, LogOut, Menu, Search } from "lucide-react"
 import { useDashboardStore } from "../../stores/dashboard-store"
-import { ThemeToggle } from "./theme-toggle"
-import { IS_CHENNAI_DEMO } from "../../lib/api-client"
+import { ALL_NAV_ITEMS, isActivePath } from "../../lib/nav"
 import { cn } from "../../lib/cn"
 import { useAuth } from "../../hooks/use-auth"
+import { IS_CHENNAI_DEMO } from "../../lib/api-client"
 
 interface TopBarProps {
   onMenuClick: () => void
 }
 
 export function TopBar({ onMenuClick }: TopBarProps) {
+  const pathname = usePathname()
+  const { user, logout } = useAuth()
   const sseConnected = useDashboardStore((s) => s.sseConnected)
   const alerts = useDashboardStore((s) => s.alerts)
-  const criticalCount = alerts.filter((a) => a.severity === "critical").length
-  const { user, logout } = useAuth()
-
-  const displayName = user?.email?.split("@")[0] ?? "Account"
-  const initials = displayName.slice(0, 2).toUpperCase()
+  const criticalCount = alerts.filter((a) => a.severity === "critical" || a.severity === "safety").length
+  const current = ALL_NAV_ITEMS.find((item) => isActivePath(pathname, item.href))
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border glass-topbar px-4 sm:px-6">
+    <header className="glass-topbar sticky top-0 z-30 flex h-[72px] items-center gap-4 border-b border-border px-4 sm:px-8">
       <button
         type="button"
         onClick={onMenuClick}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden"
-        aria-label="Toggle sidebar"
+        className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-glass-hover hover:text-foreground lg:hidden"
+        aria-label="Open navigation"
       >
-        <Menu size={18} />
+        <Menu size={20} />
       </button>
 
-      <div className="flex items-center gap-3 ml-auto">
+      <div className="hidden items-center gap-2.5 text-[15px] sm:flex">
+        <span className="text-faint">Fleet Command</span>
+        <span className="text-ink-400">/</span>
+        <span className="font-medium text-foreground">{current?.label ?? "Overview"}</span>
+      </div>
+
+      <div className="ml-auto flex items-center gap-3">
         <button
           type="button"
-          className="hidden items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2.5 py-1 text-[11px] text-muted-foreground sm:flex"
+          className="glass-input hidden h-11 w-72 items-center gap-2.5 rounded-xl px-3.5 text-[15px] text-faint transition-colors hover:border-border-strong md:flex"
           onClick={() => {
             document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))
           }}
         >
-          <Search className="h-3 w-3" />
-          Search
-          <kbd className="ml-1 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]">⌘K</kbd>
+          <Search size={17} strokeWidth={1.75} />
+          <span className="flex-1 text-left">Jump to a page…</span>
+          <kbd className="rounded-md border border-border bg-white/5 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">⌘K</kbd>
         </button>
 
         <div
           className={cn(
-            "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+            "flex items-center gap-2 rounded-full border px-3.5 py-1.5 font-mono text-xs font-medium uppercase tracking-[0.12em]",
             sseConnected
-              ? "bg-healthy-muted text-healthy"
-              : "bg-critical-muted text-critical"
+              ? "border-healthy/25 bg-healthy-muted text-healthy"
+              : "border-border bg-white/5 text-muted-foreground"
           )}
         >
-          <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              sseConnected ? "animate-pulse bg-healthy" : "bg-critical"
-            )}
-          />
+          <span className={cn("h-2 w-2 rounded-full", sseConnected ? "animate-pulse bg-healthy" : "bg-faint")} />
           {sseConnected ? "Live" : "Offline"}
         </div>
 
-        <div className="relative">
-          <button
-            type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
-            aria-label="Notifications"
-          >
-            <Bell size={17} />
-          </button>
+        <Link
+          href="/alerts"
+          className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-white/[0.03] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+          aria-label="Alerts"
+        >
+          <BellRing size={19} strokeWidth={1.75} />
           {criticalCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-critical text-[10px] font-bold text-critical-foreground">
+            <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-critical px-1 font-mono text-[11px] font-medium text-critical-foreground">
               {criticalCount > 9 ? "9+" : criticalCount}
             </span>
           )}
-        </div>
-
-        <ThemeToggle />
-
-        {IS_CHENNAI_DEMO ? (
-          <span className="text-xs font-medium text-muted-foreground">Local demo</span>
-        ) : <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus:outline-none"
-            >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[11px] font-semibold text-primary">
-                {initials}
-              </div>
-              <span className="hidden max-w-[96px] truncate text-[12px] font-medium text-foreground sm:block">
-                {displayName}
-              </span>
-              <ChevronDown size={12} className="hidden shrink-0 sm:block" />
-            </button>
-          </DropdownMenu.Trigger>
-
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              align="end"
-              sideOffset={8}
-              className="z-50 min-w-[188px] glass-popover rounded-xl border border-border p-1.5 text-popover-foreground shadow-lg"
-            >
-              <div className="px-2.5 py-1.5">
-                <p className="text-[11px] font-medium text-foreground">{displayName}</p>
-                <p className="truncate text-[11px] text-muted-foreground">{user?.email ?? ""}</p>
-              </div>
-
-              <DropdownMenu.Separator className="my-1 h-px bg-border" />
-
-              {user?.role && (
-                <>
-                  <div className="px-2.5 py-1">
-                    <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                      {user.role}
-                    </span>
-                  </div>
-                  <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                </>
-              )}
-
-              <DropdownMenu.Item
-                onSelect={logout}
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10"
-              >
-                <LogOut size={13} />
-                Sign out
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>}
+        </Link>
+        {!IS_CHENNAI_DEMO && user && (
+          <button type="button" onClick={logout} className="btn btn-ghost btn-sm">
+            <LogOut size={16} /> Sign out
+          </button>
+        )}
       </div>
     </header>
   )

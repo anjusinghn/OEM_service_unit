@@ -1,13 +1,6 @@
 "use client"
 
-import {
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  Radar,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts"
+import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, Tooltip } from "recharts"
 import type { SubsystemKey } from "@kaz/shared"
 
 interface SubsystemRadarProps {
@@ -27,46 +20,35 @@ const SUBSYSTEM_LABELS: Record<SubsystemKey, string> = {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  healthy: "hsl(160 60% 45%)",
-  watch: "hsl(38 92% 50%)",
-  critical: "hsl(346 77% 50%)",
+  healthy: "#7fc4e2",
+  watch: "#7fc4e2",
+  critical: "#f4978e",
 }
 
 export function SubsystemRadar({ subsystems, status }: SubsystemRadarProps) {
-  const data = (Object.entries(subsystems) as [SubsystemKey, number][]).map(
-    ([key, value]) => ({
-      subject: SUBSYSTEM_LABELS[key],
-      score: value,
-      fullMark: 100,
-    })
-  )
+  const data = (Object.entries(subsystems) as [SubsystemKey, number][]).map(([key, value]) => ({
+    subject: SUBSYSTEM_LABELS[key],
+    score: value,
+    fullMark: 100,
+  }))
 
-  const fillColor = STATUS_COLORS[status] ?? STATUS_COLORS.healthy
+  const color = STATUS_COLORS[status] ?? STATUS_COLORS.healthy
 
   return (
-    <ResponsiveContainer width="100%" height={250} minWidth={250}>
-      <RadarChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-        <PolarGrid stroke="hsl(220 13% 91% / 0.4)" />
-        <PolarAngleAxis
-          dataKey="subject"
-          tick={{ fontSize: 11, fill: "hsl(215 20% 65%)" }}
-        />
-        <Radar
-          name="Health"
-          dataKey="score"
-          stroke={fillColor}
-          fill={fillColor}
-          fillOpacity={0.2}
-          strokeWidth={1.5}
-        />
+    <ResponsiveContainer width="100%" height={290} minWidth={260}>
+      <RadarChart data={data} margin={{ top: 12, right: 28, bottom: 12, left: 28 }}>
+        <PolarGrid stroke="rgb(202 229 241 / 0.14)" />
+        <PolarAngleAxis dataKey="subject" tick={{ fontSize: 14, fill: "#a9bcc7" }} />
+        <Radar name="Health" dataKey="score" stroke={color} fill={color} fillOpacity={0.22} strokeWidth={2} />
         <Tooltip
           contentStyle={{
-            background: "hsl(224 50% 8%)",
-            border: "1px solid hsl(223 47% 16%)",
-            borderRadius: 8,
-            fontSize: 12,
-            color: "hsl(213 31% 91%)",
+            background: "#0d2231",
+            border: "1px solid rgb(202 229 241 / 0.2)",
+            borderRadius: 12,
+            fontSize: 14,
+            color: "#f0f5f7",
           }}
+          itemStyle={{ color: "#f0f5f7" }}
           formatter={(value) => [String(value), "Score"]}
         />
       </RadarChart>

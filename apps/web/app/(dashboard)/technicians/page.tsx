@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { HardHat, Loader2 } from "lucide-react"
+import type { DashboardSnapshot, Depot, ForensicsSnapshot, ServiceRequest, Technician } from "@kaz/shared"
 import { apiFetch } from "@/lib/api-client"
 import { useDashboardStore } from "@/stores/dashboard-store"
-import { cn } from "@/lib/cn"
-import { SectionCard } from "@/components/shared/section-card"
-import { Users, Loader2 } from "lucide-react"
-import type { DashboardSnapshot, Depot, ForensicsSnapshot, ServiceRequest, Technician } from "@kaz/shared"
 import type { VehicleRecord } from "@/stores/dashboard-store"
+import { cn } from "@/lib/cn"
+import { PageHeader } from "@/components/shared/page-header"
+import { SectionCard } from "@/components/shared/section-card"
 
 type DashboardPayload = DashboardSnapshot & {
   vehicles: VehicleRecord[]
@@ -18,89 +19,105 @@ type DashboardPayload = DashboardSnapshot & {
   generatedAt: string
 }
 
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+}
+
 export default function TechniciansPage() {
-  const storeTechnicians = useDashboardStore((s) => s.technicians)
-  const [loading, setLoading] = useState(storeTechnicians.length === 0)
+  const technicians = useDashboardStore((s) => s.technicians)
+  const [loading, setLoading] = useState(technicians.length === 0)
 
   useEffect(() => {
-    if (storeTechnicians.length > 0) return
+    if (technicians.length > 0) return
     apiFetch<DashboardPayload>("/api/v1/dashboard")
       .then((data) => useDashboardStore.getState().setSnapshot(data))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [storeTechnicians.length])
+  }, [technicians.length])
 
-  const technicians = storeTechnicians
+  const th = "pb-4 pr-6 font-mono text-xs font-medium uppercase tracking-[0.12em] text-faint"
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight"><span className="text-watch">Technicians</span></h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Team roster, certifications, and workload distribution.
-        </p>
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        eyebrow="Technicians"
+        title={
+          <>
+            The people who <span className="text-gradient">close the loop.</span>
+          </>
+        }
+        description="Certifications, current workload, and first-time fix rate for every technician in the network."
+        actions={technicians.length > 0 && <span className="chip">{technicians.length} technicians</span>}
+      />
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          <span className="text-sm">Loading technician data...</span>
+        <div className="flex items-center justify-center py-20 text-muted-foreground">
+          <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+          <span className="text-base">Loading technicians…</span>
         </div>
       ) : technicians.length > 0 ? (
-        <SectionCard title="Roster" description={`${technicians.length} technicians across all depots`}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+        <SectionCard title="Roster" description="Sorted as assigned across depots">
+          <div className="-mx-6 overflow-x-auto px-6">
+            <table className="w-full min-w-[820px] text-[15px]">
               <thead>
-                <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <th className="pb-3 pr-4">Name</th>
-                  <th className="pb-3 pr-4">Depot</th>
-                  <th className="pb-3 pr-4">Certifications</th>
-                  <th className="pb-3 pr-4">Workload</th>
-                  <th className="pb-3">FTF Rate</th>
+                <tr className="border-b border-border text-left">
+                  <th className={th}>Technician</th>
+                  <th className={th}>Depot</th>
+                  <th className={th}>Certifications</th>
+                  <th className={th}>Workload</th>
+                  <th className={cn(th, "pr-0 text-right")}>First-time fix</th>
                 </tr>
               </thead>
               <tbody>
                 {technicians.map((tech) => {
                   const loadPct = tech.maxLoad > 0 ? (tech.currentLoad / tech.maxLoad) * 100 : 0
+                  const ftf = Math.round(tech.firstTimeFixRate * 100)
                   return (
                     <tr key={tech.id} className="border-b border-border last:border-0">
-                      <td className="py-3 pr-4">
-                        <p className="font-medium text-foreground">{tech.name}</p>
-                        <p className="font-mono text-[10px] text-muted-foreground">{tech.id}</p>
+                      <td className="py-4 pr-6">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-sky-500/25 bg-accent font-mono text-sm text-sky-300">
+                            {initials(tech.name)}
+                          </span>
+                          <div>
+                            <p className="font-medium text-foreground">{tech.name}</p>
+                            <p className="font-mono text-sm text-faint">{tech.id}</p>
+                          </div>
+                        </div>
                       </td>
-                      <td className="py-3 pr-4 text-muted-foreground">{tech.depotId}</td>
-                      <td className="py-3 pr-4">
-                        <div className="flex flex-wrap gap-1">
+                      <td className="py-4 pr-6 font-mono text-muted-foreground">{tech.depotId}</td>
+                      <td className="py-4 pr-6">
+                        <div className="flex flex-wrap gap-1.5">
                           {tech.certifications.map((c) => (
-                            <span key={c} className="rounded-md bg-glass px-1.5 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+                            <span key={c} className="chip capitalize">
                               {c}
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td className="py-3 pr-4">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+                      <td className="py-4 pr-6">
+                        <div className="flex items-center gap-3">
+                          <div className="h-2 w-28 overflow-hidden rounded-full bg-white/[0.06]">
                             <div
                               className={cn(
                                 "h-full rounded-full",
-                                loadPct > 80 ? "bg-critical" : loadPct > 50 ? "bg-watch" : "bg-healthy",
+                                loadPct > 80 ? "bg-critical" : "bg-gradient-to-r from-sky-600 to-sky-300"
                               )}
                               style={{ width: `${loadPct}%` }}
                             />
                           </div>
-                          <span className="font-mono text-[11px] text-muted-foreground">
+                          <span className="font-mono text-sm text-muted-foreground">
                             {tech.currentLoad}/{tech.maxLoad}
                           </span>
                         </div>
                       </td>
-                      <td className="py-3">
-                        <span className={cn(
-                          "font-mono text-xs font-semibold",
-                          tech.firstTimeFixRate >= 0.9 ? "text-healthy" : tech.firstTimeFixRate >= 0.7 ? "text-watch" : "text-critical",
-                        )}>
-                          {Math.round(tech.firstTimeFixRate * 100)}%
-                        </span>
+                      <td className="py-4 text-right">
+                        <span className={cn("stat text-xl", ftf < 70 ? "text-critical" : "text-foreground")}>{ftf}%</span>
                       </td>
                     </tr>
                   )
@@ -110,9 +127,9 @@ export default function TechniciansPage() {
           </div>
         </SectionCard>
       ) : (
-        <div className="flex flex-col items-center justify-center glass-card rounded-lg border-dashed py-16 text-muted-foreground">
-          <Users className="mb-3 h-8 w-8 text-watch/40" />
-          <p className="text-sm">No technician data available. Connect to a running API.</p>
+        <div className="glass-panel flex flex-col items-center justify-center rounded-2xl py-20 text-muted-foreground">
+          <HardHat className="mb-4 h-10 w-10 text-faint" strokeWidth={1.5} />
+          <p className="text-base">No technician data yet.</p>
         </div>
       )}
     </div>

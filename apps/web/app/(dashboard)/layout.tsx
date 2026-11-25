@@ -12,12 +12,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   useSSE()
 
   return (
-    <div className="flex min-h-screen bg-background/50">
+    <div className="flex min-h-screen">
       <CommandPalette />
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 lg:ml-[248px]">
+      <div className="min-w-0 flex-1 lg:ml-[272px]">
         <TopBar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
+        <main className="mx-auto max-w-[1480px] px-4 pb-16 pt-10 sm:px-8 lg:px-10">
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>

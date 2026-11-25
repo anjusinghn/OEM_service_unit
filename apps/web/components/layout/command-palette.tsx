@@ -2,22 +2,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { Command } from "cmdk"
 import { useRouter } from "next/navigation"
-import {
-  LayoutDashboard, Shield, Sparkles, GitBranch, Building2,
-  Users, Brain, Bell, Settings, Search
-} from "lucide-react"
-
-const ROUTES = [
-  { name: "Command Center", path: "/", icon: LayoutDashboard },
-  { name: "Triage Queue", path: "/triage", icon: Shield },
-  { name: "AI Dispatch", path: "/dispatch", icon: Sparkles },
-  { name: "Workflow Board", path: "/workflow", icon: GitBranch },
-  { name: "Depot Network", path: "/depots", icon: Building2 },
-  { name: "Technicians", path: "/technicians", icon: Users },
-  { name: "Decision Intelligence", path: "/intelligence", icon: Brain },
-  { name: "Alerts", path: "/alerts", icon: Bell },
-  { name: "Settings", path: "/settings", icon: Settings },
-]
+import { CornerDownLeft, Search } from "lucide-react"
+import { ALL_NAV_ITEMS } from "../../lib/nav"
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
@@ -28,16 +14,21 @@ export function CommandPalette() {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         setOpen((o) => !o)
+      } else if (e.key === "Escape") {
+        setOpen(false)
       }
     }
     document.addEventListener("keydown", down)
     return () => document.removeEventListener("keydown", down)
   }, [])
 
-  const navigate = useCallback((path: string) => {
-    router.push(path)
-    setOpen(false)
-  }, [router])
+  const navigate = useCallback(
+    (path: string) => {
+      router.push(path)
+      setOpen(false)
+    },
+    [router]
+  )
 
   if (!open) return null
 
@@ -46,33 +37,35 @@ export function CommandPalette() {
       <button
         type="button"
         aria-label="Close command palette"
-        className="fixed inset-0 w-full bg-black/50 backdrop-blur-sm cursor-default"
+        className="fixed inset-0 w-full cursor-default bg-ink-950/70 backdrop-blur-sm"
         onClick={() => setOpen(false)}
-        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false) }}
       />
-      <div className="fixed left-1/2 top-[20%] z-50 w-full max-w-lg -translate-x-1/2">
-        <Command className="glass-popover rounded-2xl border border-border shadow-2xl overflow-hidden">
-          <div className="flex items-center gap-2 border-b border-border px-4">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="fixed left-1/2 top-[18%] z-50 w-full max-w-xl -translate-x-1/2 px-4">
+        <Command className="glass-popover overflow-hidden rounded-2xl">
+          <div className="flex items-center gap-3 border-b border-border px-5">
+            <Search className="h-5 w-5 shrink-0 text-faint" />
             <Command.Input
-              placeholder="Search pages..."
-              className="h-12 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+              autoFocus
+              placeholder="Search pages…"
+              className="h-14 w-full bg-transparent text-base text-foreground outline-none placeholder:text-faint"
             />
           </div>
-          <Command.List className="max-h-[300px] overflow-y-auto p-2">
-            <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
-              No results found.
-            </Command.Empty>
-            <Command.Group heading="Pages" className="px-1 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              {ROUTES.map((route) => (
+          <Command.List className="max-h-[380px] overflow-y-auto p-2.5">
+            <Command.Empty className="py-8 text-center text-sm text-muted-foreground">No results found.</Command.Empty>
+            <Command.Group
+              heading="Pages"
+              className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.16em] [&_[cmdk-group-heading]]:text-faint"
+            >
+              {ALL_NAV_ITEMS.map((route) => (
                 <Command.Item
-                  key={route.path}
-                  value={route.name}
-                  onSelect={() => navigate(route.path)}
-                  className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm text-foreground aria-selected:bg-accent"
+                  key={route.href}
+                  value={route.label}
+                  onSelect={() => navigate(route.href)}
+                  className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-[15px] text-foreground aria-selected:bg-accent"
                 >
-                  <route.icon className="h-4 w-4 text-muted-foreground" />
-                  {route.name}
+                  <route.icon className="h-5 w-5 text-faint group-aria-selected:text-sky-400" strokeWidth={1.75} />
+                  <span className="flex-1">{route.label}</span>
+                  <CornerDownLeft className="h-4 w-4 text-faint opacity-0 group-aria-selected:opacity-100" />
                 </Command.Item>
               ))}
             </Command.Group>

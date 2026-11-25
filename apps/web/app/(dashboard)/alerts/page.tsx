@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect } from "react"
+import { BellRing, ShieldAlert, TriangleAlert } from "lucide-react"
 import { useDashboardStore } from "@/stores/dashboard-store"
 import { apiFetch } from "@/lib/api-client"
-import { SectionCard } from "@/components/shared/section-card"
-import { AiEscalationCard } from "@/components/fleet/ai-escalation-card"
 import { cn } from "@/lib/cn"
 import { formatRelativeTime } from "@/lib/format"
-import { AlertTriangle, ShieldAlert, Bell } from "lucide-react"
+import { PageHeader } from "@/components/shared/page-header"
+import { SectionCard } from "@/components/shared/section-card"
+import { AiEscalationCard } from "@/components/fleet/ai-escalation-card"
 
 export default function AlertsPage() {
   const alerts = useDashboardStore((s) => s.alerts)
@@ -23,62 +24,70 @@ export default function AlertsPage() {
   }, [overview])
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight"><span className="text-watch">Alerts</span> & Escalations</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {alerts.length} active alerts · {aiEscalations.length} AI escalations
-        </p>
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        eyebrow="Alerts"
+        title={
+          <>
+            Signals that <span className="text-gradient">need a human.</span>
+          </>
+        }
+        description="Fault and degradation alerts from fleet telemetry, plus anything the AI escalated."
+        actions={
+          <span className="chip">
+            {alerts.length} alerts · {aiEscalations.length} escalations
+          </span>
+        }
+      />
 
       {aiEscalations.length > 0 && (
-        <SectionCard title="AI Escalations" description="Issues flagged by the AI reasoning engine">
+        <SectionCard title="AI escalations" description="Issues flagged by the reasoning engine">
           <AiEscalationCard escalations={aiEscalations} />
         </SectionCard>
       )}
 
-      <SectionCard title="Active Alerts" description="Real-time fault and degradation alerts from fleet telemetry">
+      <SectionCard title="Active alerts" description="Newest first, straight from vehicle telemetry">
         {alerts.length > 0 ? (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col divide-y divide-border">
             {alerts.map((alert) => {
               const isCritical = alert.severity === "critical" || alert.severity === "safety"
               return (
-                <div
-                  key={alert.id}
-                  className={cn(
-                    "flex items-start gap-3 glass-card rounded-xl border-l-2 p-3 transition-colors hover:bg-glass-hover/50",
-                    isCritical ? "border-l-critical" : "border-l-watch",
-                  )}
-                >
-                  <div className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-                    isCritical ? "bg-critical-muted text-critical" : "bg-watch-muted text-watch",
-                  )}>
-                    {isCritical ? <ShieldAlert className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">{alert.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {alert.vehicleId} · {alert.subsystem} · {alert.count} occurrences
-                    </p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {formatRelativeTime(alert.occurredAt)}
-                    </p>
-                  </div>
-                  <span className={cn(
-                    "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                    isCritical ? "bg-critical-muted text-critical" : "bg-watch-muted text-watch",
-                  )}>
-                    {alert.severity}
+                <div key={alert.id} className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
+                  <span
+                    className={cn(
+                      "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border",
+                      isCritical ? "border-critical/30 bg-critical-muted text-critical" : "border-border bg-white/[0.04] text-watch"
+                    )}
+                  >
+                    {isCritical ? <ShieldAlert size={20} strokeWidth={1.75} /> : <TriangleAlert size={20} strokeWidth={1.75} />}
                   </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-semibold text-foreground">{alert.title}</p>
+                    <p className="mt-1 text-[15px] text-muted-foreground">
+                      <span className="font-mono">{alert.vehicleId}</span> · <span className="capitalize">{alert.subsystem}</span> ·{" "}
+                      {alert.count} occurrences
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium capitalize",
+                        isCritical ? "border-critical/30 bg-critical-muted text-frost" : "border-border bg-white/[0.04] text-muted-foreground"
+                      )}
+                    >
+                      <span className={cn("h-1.5 w-1.5 rounded-full", isCritical ? "bg-critical" : "bg-watch")} />
+                      {alert.severity}
+                    </span>
+                    <span className="font-mono text-sm text-faint">{formatRelativeTime(alert.occurredAt)}</span>
+                  </div>
                 </div>
               )
             })}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <Bell className="mb-3 h-8 w-8 opacity-40" />
-            <p className="text-sm">No active alerts.</p>
+          <div className="flex flex-col items-center justify-center py-14 text-muted-foreground">
+            <BellRing className="mb-4 h-10 w-10 text-faint" strokeWidth={1.5} />
+            <p className="text-base">No active alerts.</p>
           </div>
         )}
       </SectionCard>

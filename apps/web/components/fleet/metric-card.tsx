@@ -1,4 +1,5 @@
 "use client"
+import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/cn"
 
 interface TrendProps {
@@ -11,46 +12,44 @@ interface MetricCardProps {
   value: string | number
   detail?: string
   tone?: "default" | "healthy" | "watch" | "critical"
+  icon?: LucideIcon
   trend?: TrendProps
 }
 
-const toneDot: Record<string, string> = {
-  default: "bg-primary/50",
-  healthy: "bg-healthy",
-  watch: "bg-watch",
-  critical: "bg-critical",
+const toneIcon: Record<string, string> = {
+  default: "bg-accent text-sky-400 border-sky-500/25",
+  healthy: "bg-healthy-muted text-healthy border-healthy/25",
+  watch: "bg-watch-muted text-watch border-watch/25",
+  critical: "bg-critical-muted text-critical border-critical/25",
 }
 
-export function MetricCard({ label, value, detail, tone = "default", trend }: MetricCardProps) {
+export function MetricCard({ label, value, detail, tone = "default", icon: Icon, trend }: MetricCardProps) {
   return (
-    <div className={cn(
-      "glass-card rounded-xl p-5 transition-all duration-200 hover:bg-glass-hover"
-    )}>
-      <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-        <span className={cn("h-2 w-2 rounded-full", toneDot[tone])} />
-        {label}
-      </p>
-      <div className="mt-2 flex items-end gap-2">
-        <span className="text-3xl font-bold tracking-tight text-foreground">
-          {value}
-        </span>
-        {trend && (
-          <span className={cn(
-            "mb-1 text-sm font-medium",
-            trend.direction === "up" && "text-healthy",
-            trend.direction === "down" && "text-critical",
-            trend.direction === "flat" && "text-muted-foreground"
-          )}>
-            {trend.direction === "up" && "▲"}
-            {trend.direction === "down" && "▼"}
-            {trend.direction === "flat" && "—"}
-            {" "}{trend.value}
+    <div className="glass-panel group rounded-2xl p-6 transition-[transform,border-color] duration-500 ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-1 hover:border-border-strong">
+      <div className="flex items-center justify-between gap-3">
+        <p className="label">{label}</p>
+        {Icon && (
+          <span className={cn("flex h-10 w-10 items-center justify-center rounded-xl border", toneIcon[tone])}>
+            <Icon size={20} strokeWidth={1.75} />
           </span>
         )}
       </div>
-      {detail && (
-        <p className="mt-1.5 text-xs text-muted-foreground">{detail}</p>
-      )}
+      <div className="mt-4 flex items-end gap-2.5">
+        <span className="stat text-[44px] leading-none text-foreground">{value}</span>
+        {trend && (
+          <span
+            className={cn(
+              "mb-1 text-sm font-medium",
+              trend.direction === "up" && "text-healthy",
+              trend.direction === "down" && "text-critical",
+              trend.direction === "flat" && "text-muted-foreground"
+            )}
+          >
+            {trend.direction === "up" ? "▲" : trend.direction === "down" ? "▼" : "—"} {trend.value}
+          </span>
+        )}
+      </div>
+      {detail && <p className="mt-3 text-sm text-muted-foreground">{detail}</p>}
     </div>
   )
 }

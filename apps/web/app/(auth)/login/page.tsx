@@ -66,15 +66,15 @@ export default function LoginPage() {
           </div>
           <div className="text-center">
             <h1 className="text-[15px] font-semibold tracking-tight text-sidebar-active">
-              kazindustries
+              Fleet Command
             </h1>
-            <p className="mt-0.5 text-[12px] text-sidebar-foreground">
+            <p className="mt-0.5 text-xs text-sidebar-foreground">
               Service Orchestration Platform
             </p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-sidebar-border bg-[hsl(224_50%_7%)] px-8 py-8 shadow-2xl shadow-black/50">
+        <div className="rounded-2xl border border-sidebar-border glass-popover px-8 py-8 shadow-2xl shadow-black/50">
           <div className="mb-6">
             <h2 className="text-[17px] font-semibold text-sidebar-active">Sign in</h2>
             <p className="mt-0.5 text-[13px] text-sidebar-foreground">
@@ -113,7 +113,7 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-1.5">
-              <label htmlFor="email" className="block text-[12px] font-medium text-sidebar-foreground">
+              <label htmlFor="email" className="block text-xs font-medium text-sidebar-foreground">
                 Email address
               </label>
               <input
@@ -122,7 +122,7 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 spellCheck={false}
-                placeholder="fleet@kazindustries.com"
+                placeholder="fleet@example.com"
                 className={cn(
                   "h-[38px] w-full rounded-lg border bg-white/[0.05] px-3.5 text-[13px] text-sidebar-active placeholder:text-sidebar-foreground/40",
                   "transition-[border-color,box-shadow] duration-150",
@@ -133,14 +133,14 @@ export default function LoginPage() {
                 )}
               />
               {errors.email && (
-                <p className="text-[11px] text-critical">{errors.email.message}</p>
+                <p className="text-xs text-critical">{errors.email.message}</p>
               )}
             </div>
 
             <div className="space-y-1.5">
               <label
                 htmlFor="password"
-                className="block text-[12px] font-medium text-sidebar-foreground"
+                className="block text-xs font-medium text-sidebar-foreground"
               >
                 Password
               </label>
@@ -170,7 +170,7 @@ export default function LoginPage() {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-[11px] text-critical">{errors.password.message}</p>
+                <p className="text-xs text-critical">{errors.password.message}</p>
               )}
             </div>
 
@@ -185,8 +185,8 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="mt-6 text-center text-[11px] text-sidebar-foreground/30">
-          © 2026 kazindustries · Internal use only
+        <p className="mt-6 text-center text-xs text-sidebar-foreground/30">
+          © 2026 Fleet Command
         </p>
       </div>
     </div>

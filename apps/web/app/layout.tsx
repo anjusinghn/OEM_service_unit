@@ -1,31 +1,50 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import type { ReactNode } from "react"
-import { Outfit, IBM_Plex_Mono } from "next/font/google"
+import localFont from "next/font/local"
 import { Providers } from "../components/providers"
 
 import "./globals.css"
 
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  weight: ["400", "500", "600", "700"],
+const inter = localFont({
+  src: "./fonts/inter.woff2",
+  weight: "100 900",
+  variable: "--font-inter",
+  display: "swap",
 })
 
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  weight: ["400", "500"],
+const stackNotch = localFont({
+  src: "./fonts/stack-sans-notch.woff2",
+  weight: "100 900",
+  variable: "--font-stack-notch",
+  display: "swap",
+})
+
+const dmMono = localFont({
+  src: [
+    { path: "./fonts/dm-mono-400.woff2", weight: "400" },
+    { path: "./fonts/dm-mono-500.woff2", weight: "500" },
+  ],
+  variable: "--font-dm-mono",
+  display: "swap",
 })
 
 export const metadata: Metadata = {
-  title: "kazindustries",
-  description: "Service orchestration layer for OEM aftersales.",
+  title: "Fleet Command",
+  description: "Service orchestration for commercial vehicle fleets.",
+}
+
+export const viewport: Viewport = {
+  themeColor: "#06121c",
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${outfit.variable} ${mono.variable}`}>
+    <html
+      lang="en"
+      className={`dark ${inter.variable} ${stackNotch.variable} ${dmMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body>
         <Providers>{children}</Providers>
       </body>
     </html>

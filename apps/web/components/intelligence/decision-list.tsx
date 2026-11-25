@@ -9,27 +9,20 @@ interface DecisionListProps {
 
 export function DecisionList({ decisions, tone = "healthy" }: DecisionListProps) {
   if (decisions.length === 0) {
-    return (
-      <p className="py-6 text-center text-sm text-muted-foreground">No decisions recorded yet.</p>
-    )
+    return <p className="py-8 text-center text-[15px] text-muted-foreground">No decisions recorded yet.</p>
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col divide-y divide-border">
       {decisions.slice(0, 5).map((item) => (
-        <div key={item.decisionLogId} className="flex items-center justify-between glass-card rounded-xl p-3">
-          <div>
-            <p className="text-sm font-medium text-foreground">
-              {item.decisionType} · {item.vehicleId}
+        <div key={item.decisionLogId} className="flex items-center justify-between gap-4 py-3.5 first:pt-0 last:pb-0">
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-medium capitalize text-foreground">
+              {item.decisionType} <span className="font-mono normal-case text-muted-foreground">· {item.vehicleId}</span>
             </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {formatRelativeTime(item.createdAt)}
-            </p>
+            <p className="mt-0.5 text-sm text-faint">{formatRelativeTime(item.createdAt)}</p>
           </div>
-          <span className={cn(
-            "font-mono text-sm font-bold",
-            tone === "healthy" ? "text-healthy" : "text-critical",
-          )}>
+          <span className={cn("stat text-2xl", tone === "healthy" ? "text-sky-300" : "text-critical")}>
             {item.rewardScore.toFixed(2)}
           </span>
         </div>

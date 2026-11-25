@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events"
 
 import { buildChennaiDispatchPlan } from "./chennai-dispatch.js"
 
-import { canUseAi, buildFewShotExamples, buildLearnedPatterns, buildWeightAdjustmentProposals, renderFewShotExamples, runDispatchReasoning } from "@kaz/ai"
+import { canUseAi, buildFewShotExamples, buildLearnedPatterns, buildWeightAdjustmentProposals, renderFewShotExamples, heuristicDispatchFallback, runDispatchReasoning } from "@kaz/ai"
 import {
   type Prisma,
   advanceChennaiRepair,
@@ -622,7 +622,7 @@ class RepositoryStore {
     return snapshot.depotRecommendations[vehicleId] ?? []
   }
 
-  async getDispatchPlan(vehicleId: string) {
+  async getDispatchPlan(vehicleId: string, previewOnly = false) {
     const { state, snapshot } = await this.buildPayload()
     const vehicle = state.vehicles.find((item) => item.id === vehicleId)
     const health = snapshot.healthByVehicle[vehicleId]
@@ -636,6 +636,9 @@ class RepositoryStore {
     }
     const regional = vehicle.buildBatch === "CHENNAI-SIM"
     if (regional && !input.faults.length) return null
+    if (previewOnly) return regional
+      ? buildChennaiDispatchPlan(depotRecommendations, health)
+      : heuristicDispatchFallback(input)
     const plan = regional
       ? await buildChennaiDispatchPlan(depotRecommendations, health, canUseAi() ? () => runDispatchReasoning(input) : undefined)
       : await runDispatchReasoning({

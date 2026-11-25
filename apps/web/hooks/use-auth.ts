@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { getToken, setToken, clearToken, parseToken, type JWTPayload } from "../lib/auth"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+import { API_BASE_URL } from "../lib/api-client"
 
 interface LoginCredentials {
   email: string
@@ -36,7 +36,7 @@ export function useAuth(): AuthState {
     async ({ email, password }: LoginCredentials) => {
       setIsLoading(true)
       try {
-        const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+        const res = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),

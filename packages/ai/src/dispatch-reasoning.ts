@@ -33,7 +33,7 @@ const summarizationPrompt = ChatPromptTemplate.fromMessages([
   ["human", "DispatchContext: {dispatchContext}\nAgentTrace: {agentTrace}\nFewShotExamples: {fewShotExamples}"]
 ])
 
-const heuristicDispatchFallback = (input: DispatchReasoningInput): AiDispatchPlan => {
+export const heuristicDispatchFallback = (input: DispatchReasoningInput): AiDispatchPlan => {
   const depot = input.depotRecommendations[0]
 
   return {

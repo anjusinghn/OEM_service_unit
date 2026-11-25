@@ -1,6 +1,6 @@
 export { aiConfig, canUseAi, createOpenRouterClient } from "./client"
 export { runDepotReasoning } from "./depot-reasoning"
-export { runDispatchReasoning } from "./dispatch-reasoning"
+export { heuristicDispatchFallback, runDispatchReasoning } from "./dispatch-reasoning"
 export { runEscalationReasoning } from "./escalation-reasoning"
 export { runPriorityReasoning } from "./priority-reasoning"
 export { computeRewardSignals } from "./reward"

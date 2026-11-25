@@ -36,6 +36,8 @@ import { createServer } from "../server.js"
 import { demoStore } from "../store.js"
 
 process.env.USE_DEMO_STORE = "true"
+process.env.ALLOW_MUTATIONS = "true"
+process.env.PUBLIC_DEMO = "false"
 
 const adminPayload: AuthPayload = {
   userId: "user-admin-001",
@@ -275,7 +277,7 @@ describe("api integration", () => {
       const response = await request.get("/health")
 
       expect(response.status).toBe(200)
-      expect(response.body).toEqual({ status: "ok", name: "kazindustries-api", phase: "phase-6" })
+      expect(response.body).toEqual({ status: "ok", name: "fleet-command-api", phase: "phase-6" })
     })
   })
 })

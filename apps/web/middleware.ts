@@ -6,12 +6,19 @@ const PUBLIC_PATHS = ["/login"]
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const demoOrigin = process.env.CHENNAI_DEMO_ORIGIN
-  if (process.env.SIMULATION_SCENARIO === "chennai-ashok-leyland" && demoOrigin) {
+  const chennai = process.env.SIMULATION_SCENARIO === "chennai-ashok-leyland" && demoOrigin
+  const publicDemo = process.env.PUBLIC_DEMO !== "false"
+  if (chennai || publicDemo) {
     if (pathname === "/login" || pathname.startsWith("/login/")) {
-      return NextResponse.redirect(new URL("/", demoOrigin))
+      const url = request.nextUrl.clone()
+      url.pathname = "/"
+      url.search = ""
+      return NextResponse.redirect(url)
     }
     return NextResponse.next()
   }
+  if (pathname.startsWith("/api/v1/") || pathname === "/health") return NextResponse.next()
+
   const token = request.cookies.get(TOKEN_COOKIE)?.value
   const isPublicPath = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 

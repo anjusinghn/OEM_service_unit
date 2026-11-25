@@ -13,9 +13,16 @@ const nextConfig = {
     optimizePackageImports: ["lucide-react"]
   },
   async rewrites() {
-    return [
-      { source: "/health", destination: `${apiProxy}/health` }
-    ]
+    const chennai = process.env.SIMULATION_SCENARIO === "chennai-ashok-leyland" && process.env.CHENNAI_DEMO_ORIGIN
+    // Chennai uses its local authenticated route. Other modes forward to the regular API.
+    return {
+      beforeFiles: chennai
+        ? [{ source: "/health", destination: `${apiProxy}/health` }]
+        : [
+            { source: "/api/v1/:path*", destination: `${apiProxy}/api/v1/:path*` },
+            { source: "/health", destination: `${apiProxy}/health` }
+          ]
+    }
   },
   async headers() {
     return [

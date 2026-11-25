@@ -208,7 +208,7 @@ export function DispatchAgent({ vehicleId }: Props) {
             )}
           >
             <Cpu size={15} />
-            Run AI Dispatch
+            {vehicle?.buildBatch === "CHENNAI-SIM" ? "Compare workshops" : "Run AI Dispatch"}
           </button>
         </motion.div>
       )}
@@ -242,7 +242,12 @@ export function DispatchAgent({ vehicleId }: Props) {
           transition={{ delay: 0.2 }}
           className="pt-1"
         >
-          <DispatchActions vehicleId={vehicleId} onCancel={handleReset} />
+          <DispatchActions
+            vehicleId={vehicleId}
+            recommendedDepotId={plan.candidates ? plan.depotId : undefined}
+            eligibleDepotIds={plan.candidates?.map((candidate) => candidate.depotId)}
+            onCancel={handleReset}
+          />
         </motion.div>
       )}
     </div>

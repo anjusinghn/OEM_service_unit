@@ -1,9 +1,15 @@
 import type { Job } from "bullmq"
 
-import { cacheRepository, enqueueJob, queueNames, signalRepository, type QueuePayloadMap } from "@kaz/db"
+import { cacheRepository, enqueueJob, ingestChennaiTelemetry, queueNames, signalRepository, type QueuePayloadMap } from "@kaz/db"
 
 export const processSignalIngest = async (job: Job<QueuePayloadMap[typeof queueNames.telemetryIngest]>) => {
-  const { snapshot } = job.data
+  const { snapshot, chennai } = job.data
+
+  if (chennai) {
+    if (!await ingestChennaiTelemetry(job.data)) return { vehicleId: snapshot.vehicleId, skipped: true }
+    await enqueueJob(queueNames.healthRecompute, { vehicleId: snapshot.vehicleId, cause: "signal", timestamp: snapshot.timestamp })
+    return { vehicleId: snapshot.vehicleId, timestamp: snapshot.timestamp }
+  }
 
   await signalRepository.insertSnapshot({
     vehicleId: snapshot.vehicleId,

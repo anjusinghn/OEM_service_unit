@@ -23,6 +23,8 @@ export {
   telemetryIngestQueue
 } from "./queues";
 export { resetAndSeed, resetDatabase, seedDatabase } from "./seed";
+export { advanceChennaiRepair, dispatchChennaiTruck } from "./chennai-service";
+export { ingestChennaiTelemetry, lockChennaiVehicle } from "./chennai-telemetry";
 
 export {
   cacheDelete,

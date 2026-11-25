@@ -20,6 +20,8 @@ import {
   type Vehicle
 } from "@kaz/shared"
 
+import { isChennaiVehicle, recommendChennaiDepots } from "./chennai"
+
 const severityWeight = (health: HealthScore) => (health.status === "critical" ? 100 : health.status === "watch" ? 65 : 24)
 
 const requiredPartsForSubsystem = (parts: Part[], subsystem: SubsystemKey) => {
@@ -74,6 +76,8 @@ export const recommendDepots = (
   state: DemoState,
   weakestSubsystem: SubsystemKey
 ): DepotRecommendation[] => {
+  if (isChennaiVehicle(vehicle)) return recommendChennaiDepots(vehicle, state, weakestSubsystem)
+
   const requiredParts = requiredPartsForSubsystem(state.parts, weakestSubsystem)
 
   return state.depots

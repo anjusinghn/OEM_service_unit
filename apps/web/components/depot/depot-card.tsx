@@ -1,7 +1,8 @@
-import type { Depot } from "@kaz/shared"
+import { chennaiWorkshops, type Depot } from "@kaz/shared"
 import { cn } from "@/lib/cn"
 
 export function DepotCard({ depot }: { depot: Depot }) {
+  const workshop = chennaiWorkshops.find((entry) => entry.id === depot.id)
   const open = depot.totalBays - depot.occupiedBays
   const utilization = depot.totalBays > 0 ? (depot.occupiedBays / depot.totalBays) * 100 : 0
   const tone = utilization > 85 ? "critical" : utilization > 60 ? "watch" : "healthy"
@@ -22,6 +23,17 @@ export function DepotCard({ depot }: { depot: Depot }) {
           {open} open
         </span>
       </div>
+
+      {workshop && (
+        <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+          <p>{workshop.address}</p>
+          <p>
+            <a href={workshop.source} target="_blank" rel="noreferrer" className="underline underline-offset-2">Workshop listing</a>
+            {workshop.pin === "approximate" && " · Approximate location"}
+            {" · Simulated capacity and capabilities"}
+          </p>
+        </div>
+      )}
 
       <div className="mt-4">
         <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted-foreground">

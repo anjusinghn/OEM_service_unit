@@ -48,7 +48,7 @@ export function KanbanCard({ request, vehicle }: KanbanCardProps) {
     }
   }
 
-  const isTerminal = request.status === "COMPLETED" || request.status === "CLOSED"
+  const isTerminal = request.status === "CLOSED" || request.status === "COMPLETED" && vehicle?.buildBatch !== "CHENNAI-SIM"
 
   return (
     <>
@@ -90,7 +90,7 @@ export function KanbanCard({ request, vehicle }: KanbanCardProps) {
                   busy && "opacity-50 cursor-not-allowed"
                 )}
               >
-                <ArrowRight className="h-3 w-3" /> Advance
+                <ArrowRight className="h-3 w-3" /> {request.status === "COMPLETED" ? "Close" : "Advance"}
               </button>
             )}
             {request.status === "IN_PROGRESS" && (

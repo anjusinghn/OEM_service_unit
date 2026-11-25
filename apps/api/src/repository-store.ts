@@ -1,8 +1,12 @@
 import { EventEmitter } from "node:events"
 
-import { buildFewShotExamples, buildLearnedPatterns, buildWeightAdjustmentProposals, renderFewShotExamples, runDispatchReasoning } from "@kaz/ai"
+import { buildChennaiDispatchPlan } from "./chennai-dispatch.js"
+
+import { canUseAi, buildFewShotExamples, buildLearnedPatterns, buildWeightAdjustmentProposals, renderFewShotExamples, runDispatchReasoning } from "@kaz/ai"
 import {
   type Prisma,
+  advanceChennaiRepair,
+  dispatchChennaiTruck,
   cacheRepository,
   dashboardChannel,
   depotRepository,
@@ -30,6 +34,7 @@ import {
 import { buildSnapshot, recommendDepots } from "@kaz/orchestration"
 import { computeHealthScore, dedupeAlerts } from "@kaz/signal-trust"
 import {
+  CHENNAI_SCENARIO,
   nowIso,
   type Alert,
   type DashboardSnapshot,
@@ -626,17 +631,17 @@ class RepositoryStore {
     const depotRecommendations = snapshot.depotRecommendations[vehicleId] ?? []
     const partsToStage = depotRecommendations[0]?.requiredParts.map((part) => part.partNumber) ?? []
     const serviceHistory = state.serviceHistory.filter((record) => record.vehicleId === vehicleId)
-    const intelligence = await this.buildIntelligenceSnapshot()
-
-    const plan = await runDispatchReasoning({
-      vehicle,
-      health,
-      faults: state.faults[vehicleId] ?? [],
-      depotRecommendations,
-      serviceHistory,
-      partsToStage,
-      fewShotExamples: renderFewShotExamples(intelligence.fewShotExamples)
-    })
+    const input = {
+      vehicle, health, faults: state.faults[vehicleId] ?? [], depotRecommendations, serviceHistory, partsToStage
+    }
+    const regional = vehicle.buildBatch === "CHENNAI-SIM"
+    if (regional && !input.faults.length) return null
+    const plan = regional
+      ? await buildChennaiDispatchPlan(depotRecommendations, health, canUseAi() ? () => runDispatchReasoning(input) : undefined)
+      : await runDispatchReasoning({
+        ...input, fewShotExamples: renderFewShotExamples((await this.buildIntelligenceSnapshot()).fewShotExamples)
+      })
+    if (!plan) return null
 
     await prisma.aiDecisionLog.create({
       data: {
@@ -809,7 +814,23 @@ class RepositoryStore {
     const priority = snapshot.priorityQueue.find((entry) => entry.vehicleId === vehicleId)
     if (!vehicle || !health || !priority) return null
 
-    const depotRec = recommendDepots(vehicle, state, health.weakestSubsystem)[0]
+    const depotRecommendations = snapshot.depotRecommendations[vehicleId] ?? []
+    if (vehicle.buildBatch === "CHENNAI-SIM") {
+      const recommendation = overrideDepotId
+        ? depotRecommendations.find((depot) => depot.depotId === overrideDepotId)
+        : depotRecommendations[0]
+      if (!recommendation) return null
+      const request = await dispatchChennaiTruck({
+        vehicleId, subsystem: health.weakestSubsystem, priorityScore: priority.score, recommendation
+      })
+      if (!request) return null
+      await this.emitDashboardRefresh("dispatch_event", { vehicleId, serviceRequestId: request.id })
+      return { request: mapServiceRequest(request), livePulse: {
+        id: `pulse-dispatch-${request.id}`, kind: "dispatch",
+        message: `Vehicle ${vehicleId} assigned a bay at ${request.depotId}.`, at: nowIso()
+      } }
+    }
+    const depotRec = depotRecommendations[0]
     const selectedDepotId = overrideDepotId ?? depotRec?.depotId
     if (!selectedDepotId) return null
 
@@ -900,7 +921,22 @@ class RepositoryStore {
     }
   }
 
+  private async updateChennaiRepair(requestId: string, status?: ServiceRequestStatus, completion?: ServiceCompletionInput): Promise<ServiceActionResult | null> {
+    const result = await advanceChennaiRepair(requestId, status, completion)
+    if (!result) return null
+    const { request, changed } = result
+    if (changed) {
+      await cacheRepository.invalidateVehicle(request.vehicleId)
+      await this.emitDashboardRefresh("service_update", { vehicleId: request.vehicleId, serviceRequestId: request.id, status: request.status })
+    }
+    return { request: mapServiceRequest(request), livePulse: {
+      id: `pulse-service-${request.id}-${request.status}`, kind: request.status === "COMPLETED" ? "complete" : "progress",
+      message: `Service request ${request.id} moved to ${request.status}.`, at: nowIso()
+    } }
+  }
+
   async advanceRequest(requestId: string, status?: ServiceRequestStatus): Promise<ServiceActionResult | null> {
+    if (process.env.SIMULATION_SCENARIO === CHENNAI_SCENARIO) return this.updateChennaiRepair(requestId, status)
     const existing = await serviceRequestRepository.findById(requestId)
     if (!existing) return null
     const updated = await serviceRequestRepository.updateStatus({ requestId, targetStatus: status })
@@ -931,6 +967,7 @@ class RepositoryStore {
   }
 
   async completeRequest(requestId: string, completionInput: ServiceCompletionInput = {}): Promise<ServiceActionResult | null> {
+    if (process.env.SIMULATION_SCENARIO === CHENNAI_SCENARIO) return this.updateChennaiRepair(requestId, "COMPLETED", completionInput)
     const existing = await serviceRequestRepository.findById(requestId)
     if (!existing) return null
 

@@ -1,4 +1,4 @@
-import { SUBSYSTEMS, clamp, round, type Alert, type HealthScore, type SubsystemKey, type VehicleFault, type VehicleSignalSnapshot } from "@kaz/shared"
+import { CHENNAI_FAULT_VEHICLE, SUBSYSTEMS, clamp, round, type Alert, type HealthScore, type SubsystemKey, type VehicleFault, type VehicleSignalSnapshot } from "@kaz/shared"
 
 const scoreSignalQuality = (snapshot: VehicleSignalSnapshot) => {
   const values = [
@@ -43,7 +43,8 @@ export const computeHealthScore = (snapshot: VehicleSignalSnapshot, faults: Vehi
   const weakestSubsystem = SUBSYSTEMS.reduce((weakest, current) => (subsystems[current] < subsystems[weakest] ? current : weakest), "engine")
   const overall = round(SUBSYSTEMS.reduce((sum, subsystem) => sum + subsystems[subsystem], 0) / SUBSYSTEMS.length, 1)
   const signalQuality = scoreSignalQuality(snapshot)
-  const status = overall < 55 ? "critical" : overall < 78 ? "watch" : "healthy"
+  const scriptedFault = snapshot.vehicleId === CHENNAI_FAULT_VEHICLE ? faults.find((fault) => fault.subsystem === "cooling") : undefined
+  const status = overall < 55 || scriptedFault?.severity === "critical" ? "critical" : overall < 78 || scriptedFault ? "watch" : "healthy"
   const trend = overall < 60 || faults.length > 0 ? "degrading" : overall > 88 ? "improving" : "stable"
 
   return {

@@ -1,5 +1,5 @@
 import { Queue, type JobsOptions, type QueueOptions } from "bullmq"
-import type { VehicleFault, VehicleSignalSnapshot } from "@kaz/shared"
+import type { Coordinates, VehicleFault, VehicleSignalSnapshot } from "@kaz/shared"
 
 const REDIS_URL = process.env.REDIS_URL ?? "redis://127.0.0.1:6379"
 const redisUrl = new URL(REDIS_URL)
@@ -33,6 +33,7 @@ export type QueueName = (typeof queueNames)[keyof typeof queueNames]
 export type TelemetryIngestJob = {
   vehicleId: string
   snapshot: VehicleSignalSnapshot
+  chennai?: { coordinates: Coordinates; fault?: VehicleFault }
   timestamp: string
   source: string
 }

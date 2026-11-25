@@ -175,6 +175,7 @@ export interface AiDispatchPlan {
   agentTrace: string[]
   model: string | null
   latencyMs: number | null
+  candidates?: DepotRecommendation[]
 }
 
 export interface AiEscalation {
@@ -205,6 +206,15 @@ export interface DepotRecommendation {
   partsReady: boolean
   reasons: string[]
   requiredParts: Part[]
+  schedule?: {
+    technicianId: string
+    travelMinutes: number
+    partsReadyMinutes: number
+    bayReadyMinutes: number
+    technicianReadyMinutes: number
+    repairMinutes: number
+    returnToServiceMinutes: number
+  }
   aiAssessment?: AiDepotAssessment | null
 }
 

@@ -11,7 +11,10 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
       ...options?.headers,
     },
   })
-  if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(typeof data?.error === "string" ? data.error : `API ${res.status}: ${path}`)
+  }
   return res.json() as Promise<T>
 }
 

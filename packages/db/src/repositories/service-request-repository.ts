@@ -100,7 +100,7 @@ export type CompleteServiceRequestInput = {
 }
 
 export const serviceRequestRepository = {
-  create(input: CreateServiceRequestInput) {
+  create(input: CreateServiceRequestInput, db: Prisma.TransactionClient = prisma) {
     const {
       vehicleId,
       priorityScore,
@@ -116,7 +116,7 @@ export const serviceRequestRepository = {
     const timelineStatuses = STATUS_ORDER.slice(0, statusIndex(effectiveStatus) + 1)
     const now = new Date()
 
-    return prisma.serviceRequest.create({
+    return db.serviceRequest.create({
       data: {
         vehicleId,
         priorityScore,
@@ -143,8 +143,8 @@ export const serviceRequestRepository = {
     })
   },
 
-  findById(requestId: string) {
-    return prisma.serviceRequest.findUnique({
+  findById(requestId: string, db: Prisma.TransactionClient = prisma) {
+    return db.serviceRequest.findUnique({
       where: { id: requestId },
       include: fullInclude
     })
@@ -177,10 +177,10 @@ export const serviceRequestRepository = {
     })
   },
 
-  updateStatus(input: UpdateServiceStatusInput) {
+  updateStatus(input: UpdateServiceStatusInput, transaction?: Prisma.TransactionClient) {
     const { requestId, targetStatus, note } = input
 
-    return prisma.$transaction(async (tx) => {
+    const apply = async (tx: Prisma.TransactionClient) => {
       const request = await tx.serviceRequest.findUniqueOrThrow({
         where: { id: requestId },
         include: { slaTracking: true }
@@ -252,7 +252,8 @@ export const serviceRequestRepository = {
         where: { id: requestId },
         include: fullInclude
       })
-    })
+    }
+    return transaction ? apply(transaction) : prisma.$transaction(apply)
   },
 
   assignDepotAndTechnician(input: AssignDepotAndTechnicianInput) {

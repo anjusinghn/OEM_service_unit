@@ -2,7 +2,9 @@ import type { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { pathToFileURL } from "node:url";
 
+import { CHENNAI_SCENARIO } from "@kaz/shared";
 import { prisma } from "./schema";
+import { seedChennai } from "./seed-chennai";
 
 // ── Deterministic PRNG ──────────────────────────────────────
 const seeded = (seed: number) => {
@@ -904,12 +906,19 @@ export async function seedDatabase(db: PrismaClient = prisma) {
 }
 
 export async function resetAndSeed(db: PrismaClient = prisma) {
+  if (process.env.SIMULATION_SCENARIO === CHENNAI_SCENARIO) {
+    throw new Error("The Chennai simulation is seeded separately from the national demo.");
+  }
   await resetDatabase(db);
   await seedDatabase(db);
 }
 
 async function main() {
-  await resetAndSeed();
+  if (process.env.SIMULATION_SCENARIO === CHENNAI_SCENARIO) {
+    await seedChennai(prisma);
+  } else {
+    await resetAndSeed();
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

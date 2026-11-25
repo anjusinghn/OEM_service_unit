@@ -154,13 +154,18 @@ process.on("SIGTERM", () => shutdown(0))
 async function main() {
   process.stdout.write("[orchestrator] starting web, api, and simulator first...\n")
 
-  startService("web", ["--filter", "@kaz/web", "dev"])
+  const webPort = Number(runtimeEnv.WEB_PORT ?? 3000)
+  const apiPort = Number(runtimeEnv.PORT ?? 4000)
+  const webArgs = ["--filter", "@kaz/web", "dev"]
+  if (runtimeEnv.WEB_PORT) webArgs.push("--port", String(webPort), "--hostname", "localhost")
+  startService("web", webArgs)
   startService("api", ["--filter", "@kaz/api", "dev"])
   startService("simulator", ["--filter", "@kaz/simulator", "dev"])
 
-  process.stdout.write("[orchestrator] waiting for frontend on :3000 and api on :4000 before starting worker...\n")
+  process.stdout.write(`[orchestrator] waiting for frontend on :${webPort} and api on :${apiPort} before starting worker...\n`)
 
-  await Promise.all([waitForPort(3000), waitForPort(4000)])
+  const host = runtimeEnv.WEB_PORT ? "localhost" : "127.0.0.1"
+  await Promise.all([waitForPort(webPort, host), waitForPort(apiPort, host)])
 
   process.stdout.write("[orchestrator] web and api are reachable. starting worker last...\n")
   startService("worker", ["--filter", "@kaz/worker", "dev"])

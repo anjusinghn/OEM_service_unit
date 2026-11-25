@@ -19,6 +19,8 @@ import {
   telemetryIngestQueue
 } from "@kaz/db"
 
+import { CHENNAI_SCENARIO } from "@kaz/shared"
+
 import { handleLogin, handleMe, requireAuth, requireRole } from "./auth.js"
 import { repositoryStore } from "./repository-store.js"
 import { demoStore } from "./store.js"
@@ -57,6 +59,7 @@ function param(v: string | string[] | undefined): string {
 
 export const createServer = (): express.Express => {
   const app = express()
+  const chennai = process.env.SIMULATION_SCENARIO === CHENNAI_SCENARIO
   const useDemoStore = process.env.USE_DEMO_STORE === "true"
   const store = useDemoStore ? demoStore : repositoryStore
   const sseClients = new Set<express.Response>()
@@ -148,7 +151,9 @@ export const createServer = (): express.Express => {
   app.get("/api/v1/orchestration/vehicles/:vehicleId/dispatch-plan", requireAuth, async (req, res) => {
     const plan = await repositoryStore.getDispatchPlan(param(req.params.vehicleId))
     if (!plan) {
-      res.status(404).json({ error: "Unable to build dispatch plan" })
+      res.status(chennai ? 409 : 404).json({ error: chennai
+        ? "No dispatch plan is available. Check the active fault and workshop availability."
+        : "Unable to build dispatch plan" })
       return
     }
     res.json(plan)
@@ -181,7 +186,9 @@ export const createServer = (): express.Express => {
     const depotId = typeof overrides.depotId === "string" ? overrides.depotId : undefined
     const result = await store.dispatchVehicle(param(req.params.vehicleId), depotId)
     if (!result) {
-      res.status(404).json({ error: "Unable to dispatch vehicle" })
+      res.status(chennai ? 409 : 404).json({ error: chennai
+        ? "The workshop is no longer available for this repair. Generate a new plan."
+        : "Unable to dispatch vehicle" })
       return
     }
     res.json(result)
@@ -219,6 +226,10 @@ export const createServer = (): express.Express => {
   })
 
   app.post("/api/v1/demo/reset", requireAuth, requireRole("PLATFORM_ADMIN"), async (_req, res) => {
+    if (chennai) {
+      res.status(409).json({ error: "Restart the Chennai scenario from its local launcher." })
+      return
+    }
     res.json(await store.reset())
   })
 

@@ -12,12 +12,15 @@ import { useDashboardStore } from "../../stores/dashboard-store"
 
 interface Props {
   vehicleId: string
+  recommendedDepotId?: string
+  eligibleDepotIds?: string[]
   onCancel: () => void
 }
 
-export function DispatchActions({ vehicleId, onCancel }: Props) {
+export function DispatchActions({ vehicleId, recommendedDepotId, eligibleDepotIds, onCancel }: Props) {
   const router = useRouter()
-  const depots = useDashboardStore((s) => s.depots)
+  const allDepots = useDashboardStore((s) => s.depots)
+  const depots = eligibleDepotIds ? allDepots.filter((depot) => eligibleDepotIds.includes(depot.id)) : allDepots
   const [loading, setLoading] = useState(false)
   const [modifyOpen, setModifyOpen] = useState(false)
   const [overrideDepotId, setOverrideDepotId] = useState<string>("ai")
@@ -25,14 +28,14 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
   const handleAccept = async () => {
     setLoading(true)
     try {
-      await apiPost(`/api/v1/orchestration/vehicles/${vehicleId}/dispatch`)
+      await apiPost(`/api/v1/orchestration/vehicles/${vehicleId}/dispatch`, recommendedDepotId ? { depotId: recommendedDepotId } : undefined)
       toast.success("Vehicle dispatched", {
         description: `${vehicleId} has been dispatched to the service depot.`,
       })
       router.push("/workflow")
-    } catch {
+    } catch (error) {
       toast.error("Dispatch failed", {
-        description: "Unable to dispatch vehicle. Please try again.",
+        description: error instanceof Error ? error.message : "Unable to dispatch vehicle.",
       })
     } finally {
       setLoading(false)
@@ -45,14 +48,15 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
     try {
       const body: Record<string, string> = {}
       if (overrideDepotId !== "ai") body.depotId = overrideDepotId
+      else if (recommendedDepotId) body.depotId = recommendedDepotId
       await apiPost(`/api/v1/orchestration/vehicles/${vehicleId}/dispatch`, body)
       toast.success("Vehicle dispatched", {
         description: `${vehicleId} has been dispatched with your overrides.`,
       })
       router.push("/workflow")
-    } catch {
+    } catch (error) {
       toast.error("Dispatch failed", {
-        description: "Unable to dispatch vehicle. Please try again.",
+        description: error instanceof Error ? error.message : "Unable to dispatch vehicle.",
       })
     } finally {
       setLoading(false)
@@ -142,7 +146,7 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
                       "focus:outline-none focus:ring-2 focus:ring-ring"
                     )}
                   >
-                    <Select.Value placeholder="Keep AI recommendation" />
+                    <Select.Value placeholder="Keep recommendation" />
                     <Select.Icon>
                       <ChevronDown size={14} />
                     </Select.Icon>
@@ -155,7 +159,7 @@ export function DispatchActions({ vehicleId, onCancel }: Props) {
                           className="relative flex cursor-pointer select-none items-center rounded px-3 py-1.5 text-sm text-foreground outline-none hover:bg-accent focus:bg-accent"
                         >
                           <Select.ItemText>
-                            Keep AI recommendation
+                            Keep recommendation
                           </Select.ItemText>
                         </Select.Item>
                         {depots.map((depot) => (

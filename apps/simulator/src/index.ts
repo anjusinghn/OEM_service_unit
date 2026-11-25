@@ -1,11 +1,16 @@
 import { closeQueues, enqueueJob, queueNames } from "@kaz/db"
 import { applyMockTick, createMockState } from "@kaz/oem-adapters-mock"
+import { CHENNAI_SCENARIO } from "@kaz/shared"
+
+import { createChennaiSimulator } from "./chennai.js"
 
 const TICK_INTERVAL_MS = Number(process.env.TICK_INTERVAL_MS ?? 10_000)
 const SIMULATOR_STARTUP_DELAY_MS = Number(process.env.SIMULATOR_STARTUP_DELAY_MS ?? 4_000)
 const SIMULATOR_SEED = Number(process.env.SIMULATOR_SEED ?? 101)
 const SOURCE_ID = process.env.SIMULATOR_SOURCE_ID ?? "mock-oem-demo"
 
+const chennaiTick = process.env.SIMULATION_SCENARIO === CHENNAI_SCENARIO
+  ? createChennaiSimulator(TICK_INTERVAL_MS, SIMULATOR_SEED) : undefined
 let currentState = createMockState(SIMULATOR_SEED)
 let tickHandle: NodeJS.Timeout | null = null
 let isShuttingDown = false
@@ -74,6 +79,10 @@ const runTick = async (initial = false) => {
   isTickRunning = true
 
   try {
+    if (chennaiTick) {
+      await chennaiTick()
+      return
+    }
     if (!initial) {
       currentState = applyMockTick(currentState)
     }
@@ -106,8 +115,9 @@ const shutdown = async (signal: string) => {
 }
 
 console.log("[simulator] continuous simulator ready")
-console.log(`[simulator] vehicles=${currentState.vehicles.length} depots=${currentState.depots.length} technicians=${currentState.technicians.length}`)
-console.log(`[simulator] intervalMs=${TICK_INTERVAL_MS} source=${SOURCE_ID}`)
+console.log(chennaiTick ? "[simulator] Greater Chennai scenario" :
+  `[simulator] vehicles=${currentState.vehicles.length} depots=${currentState.depots.length} technicians=${currentState.technicians.length}`)
+console.log(`[simulator] intervalMs=${TICK_INTERVAL_MS} source=${chennaiTick ? CHENNAI_SCENARIO : SOURCE_ID}`)
 console.log(`[simulator] startupDelayMs=${SIMULATOR_STARTUP_DELAY_MS}`)
 
 setTimeout(() => {

@@ -1,6 +1,7 @@
 import type { AiDispatchPlan } from "@kaz/shared"
 import { AlertTriangle, CheckCircle2, Clock, Copy, MapPin, Wrench } from "lucide-react"
 import { cn } from "../../lib/cn"
+import { useDashboardStore } from "../../stores/dashboard-store"
 
 interface Props {
   plan: AiDispatchPlan
@@ -31,6 +32,8 @@ function SectionHeader({
 }
 
 export function DispatchPlanCard({ plan }: Props) {
+  const depots = useDashboardStore((state) => state.depots)
+  const depotName = (id: string) => depots.find((depot) => depot.id === id)?.name ?? id
   const confidencePct = Math.round(plan.confidence * 100)
 
   return (
@@ -50,7 +53,7 @@ export function DispatchPlanCard({ plan }: Props) {
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span
+          {(!plan.candidates || plan.model) && <span
             className={cn(
               "font-medium",
               confidencePct >= 80
@@ -61,7 +64,7 @@ export function DispatchPlanCard({ plan }: Props) {
             )}
           >
             {confidencePct}% confidence
-          </span>
+          </span>}
           {plan.latencyMs !== null && (
             <span>{(plan.latencyMs / 1000).toFixed(1)}s</span>
           )}
@@ -80,12 +83,40 @@ export function DispatchPlanCard({ plan }: Props) {
             label="Depot"
           />
           <div className="font-semibold text-sm text-foreground mb-1">
-            {plan.depotId}
+            {depotName(plan.depotId)}
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {plan.depotReasoning}
           </p>
         </div>
+
+        {plan.candidates && (
+          <div className="overflow-x-auto px-5 py-4">
+            <table className="w-full text-left text-xs">
+              <caption className="mb-2 text-left font-semibold text-foreground">Simulated workshop estimates (minutes)</caption>
+              <thead className="text-muted-foreground">
+                <tr>
+                  <th scope="col" className="py-2 pr-3">Workshop</th>
+                  <th scope="col" className="py-2 pr-3">Travel</th>
+                  <th scope="col" className="py-2 pr-3">Parts ready</th>
+                  <th scope="col" className="py-2 pr-3">Repair</th>
+                  <th scope="col" className="py-2">Return to service</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plan.candidates.map(({ depotId, schedule }) => schedule && (
+                  <tr key={depotId} className="border-t border-border">
+                    <th scope="row" className="py-2 pr-3 font-medium">{depotName(depotId)}</th>
+                    <td>{schedule.travelMinutes}</td>
+                    <td>{schedule.partsReadyMinutes}</td>
+                    <td>{schedule.repairMinutes}</td>
+                    <td className={cn(depotId === plan.depotId && "font-semibold text-healthy")}>{schedule.returnToServiceMinutes}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {plan.partsToStage.length > 0 && (
           <div className="px-5 py-4">
@@ -152,7 +183,7 @@ export function DispatchPlanCard({ plan }: Props) {
           </div>
         )}
 
-        {plan.alternativePlan && (
+        {!plan.candidates && plan.alternativePlan && (
           <div className="px-5 py-4 bg-glass">
             <SectionHeader
               icon={<Copy size={13} className="text-muted-foreground" />}
@@ -164,7 +195,7 @@ export function DispatchPlanCard({ plan }: Props) {
                   Depot
                 </div>
                 <div className="font-medium text-sm text-foreground">
-                  {plan.alternativePlan.depotId}
+                  {depotName(plan.alternativePlan.depotId)}
                 </div>
               </div>
             </div>

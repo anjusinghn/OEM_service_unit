@@ -6,6 +6,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "node ./dev.mjs",
+    "dev:chennai": "node ./scripts/chennai.mjs",
     "dev:api": "pnpm --filter @kaz/api dev",
     "dev:turbo": "turbo run dev --parallel",
     "dev:web": "pnpm --filter @kaz/web dev",
